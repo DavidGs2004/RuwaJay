@@ -1,0 +1,659 @@
+@import "tailwindcss";
+
+/* ===== RuwaJay Premium Design System ===== */
+/* Inspired by Guatemalan textile patterns, warm terracotta architecture, and tropical landscapes */
+
+@theme {
+  /* Primary Palette — derived from the logo */
+  --color-forest: #0B5D3B;
+  --color-forest-light: #0e7048;
+  --color-forest-dark: #084a2f;
+  --color-jade: #168A55;
+  --color-jade-light: #1ea364;
+  --color-terracota: #D84420;
+  --color-terracota-light: #e65a38;
+  --color-terracota-dark: #b8381a;
+  --color-naranja: #F07824;
+  --color-dorado: #D4962A;
+  --color-dorado-light: #e6b04a;
+  --color-dorado-muted: #c8a95e;
+  --color-cafe: #3B2118;
+  --color-cafe-light: #5c3d30;
+  --color-crema: #FBF3E8;
+  --color-crema-dark: #f0e2cf;
+  --color-crema-warm: #f7ead8;
+  --color-azul-ruta: #2477C9;
+  --color-azul-ruta-light: #3a8fd9;
+
+  /* Neutral & Surface */
+  --color-surface: #FBF3E8;
+  --color-surface-card: #FFFFFF;
+  --color-surface-elevated: #FFFCF7;
+  --color-text-primary: #2D1810;
+  --color-text-secondary: #6B5549;
+  --color-text-muted: #9E8C82;
+  --color-border: #E8D9C8;
+  --color-border-light: #F2E8DB;
+
+  /* Typography */
+  --font-sans: 'Nunito Sans', system-ui, -apple-system, sans-serif;
+
+  /* Refined Shadows */
+  --shadow-xs: 0 1px 3px rgba(45, 24, 16, 0.04);
+  --shadow-card: 0 4px 20px rgba(45, 24, 16, 0.07), 0 1px 4px rgba(45, 24, 16, 0.04);
+  --shadow-card-hover: 0 12px 36px rgba(45, 24, 16, 0.12), 0 4px 12px rgba(45, 24, 16, 0.06);
+  --shadow-elevated: 0 16px 48px rgba(45, 24, 16, 0.1), 0 4px 16px rgba(45, 24, 16, 0.05);
+  --shadow-popup: 0 24px 64px rgba(45, 24, 16, 0.18), 0 8px 24px rgba(45, 24, 16, 0.08);
+  --shadow-glow-terracota: 0 8px 32px rgba(216, 68, 32, 0.25);
+  --shadow-glow-forest: 0 8px 32px rgba(11, 93, 59, 0.2);
+  --shadow-inner-warm: inset 0 2px 8px rgba(45, 24, 16, 0.06);
+
+  /* Animations */
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-soft: pulse-soft 3s ease-in-out infinite;
+  --animate-slide-up: slide-up 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-marker-pop: marker-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-shimmer: shimmer 2s ease-in-out infinite;
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-crema);
+  color: var(--color-cafe);
+  line-height: 1.65;
+  overflow-x: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(22, 138, 85, 0.15);
+  color: var(--color-forest);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-dorado-muted); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-forest); }
+
+/* ===== Keyframes ===== */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes auth-panel-in {
+  from { opacity: 0; transform: translate3d(18px, 4px, 0) scale(0.992); filter: blur(2px); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+
+.auth-panel-in {
+  animation: auth-panel-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* Post-login welcome loader */
+.ruwajay-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 38%, rgba(255, 212, 71, 0.2), transparent 31rem), rgba(255, 247, 232, 0.98);
+  backdrop-filter: blur(8px);
+  opacity: 1;
+  transition: opacity 400ms ease, visibility 400ms ease;
+}
+.ruwajay-loader.is-leaving { opacity: 0; visibility: hidden; }
+.loader-content { width: min(330px, 88vw); text-align: center; }
+.loader-emblem { position: relative; width: min(232px, 66vw); aspect-ratio: 1; margin: 0 auto 22px; filter: drop-shadow(0 18px 22px rgba(48, 67, 43, 0.16)); }
+.loader-ring, .loader-home { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.loader-ring { animation: ruwa-loader-spin 8s linear infinite; }
+.loader-home { animation: ruwa-loader-float 2.8s ease-in-out infinite; }
+.loader-sun { transform-box: fill-box; transform-origin: center; animation: ruwa-loader-sun 1.8s ease-in-out infinite; }
+.loader-door-light { animation: ruwa-loader-glow 1.8s ease-in-out infinite alternate; }
+.loader-path { stroke-dasharray: 116; stroke-dashoffset: 116; animation: ruwa-loader-path 2.8s ease-in-out infinite; }
+.loader-shadow { transform-box: fill-box; transform-origin: center; animation: ruwa-loader-shadow 2.8s ease-in-out infinite; }
+.loader-brand { margin: 0; color: #003d29; font-size: clamp(1.55rem, 5vw, 2rem); font-weight: 900; letter-spacing: -0.04em; }
+.loader-brand span { color: #f04b23; }
+.loader-message { min-height: 1.5em; margin: 6px 0 0; color: rgba(23, 60, 45, 0.76); font-size: 0.98rem; font-weight: 700; }
+.loader-dots { display: inline-flex; width: 1.35em; justify-content: space-between; margin-left: 0.18em; }
+.loader-dots i { width: 0.25em; height: 0.25em; border-radius: 50%; background: #f04b23; animation: ruwa-loader-dot 1.2s ease-in-out infinite; }
+.loader-dots i:nth-child(2) { animation-delay: 160ms; }
+.loader-dots i:nth-child(3) { animation-delay: 320ms; }
+@keyframes ruwa-loader-spin { to { transform: rotate(360deg); } }
+@keyframes ruwa-loader-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes ruwa-loader-sun { 0%, 100% { transform: scale(0.92) rotate(0deg); opacity: 0.78; } 50% { transform: scale(1.08) rotate(12deg); opacity: 1; } }
+@keyframes ruwa-loader-glow { from { opacity: 0.7; filter: drop-shadow(0 0 2px #f7a900); } to { opacity: 1; filter: drop-shadow(0 0 9px #ffd447); } }
+@keyframes ruwa-loader-path { 0% { stroke-dashoffset: 116; opacity: 0.15; } 45%, 72% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: -116; opacity: 0.15; } }
+@keyframes ruwa-loader-shadow { 0%, 100% { transform: scaleX(1); opacity: 0.19; } 50% { transform: scaleX(0.82); opacity: 0.1; } }
+@keyframes ruwa-loader-dot { 0%, 70%, 100% { transform: translateY(0); opacity: 0.25; } 35% { transform: translateY(-4px); opacity: 1; } }
+
+@keyframes marker-pop {
+  0% { transform: translateY(24px) scale(0); opacity: 0; }
+  60% { transform: translateY(-4px) scale(1.12); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes radar {
+  0% { transform: scale(0.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+@keyframes bounce-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes zigzag-scroll {
+  0% { background-position: 0 0; }
+  100% { background-position: 48px 0; }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ===== Guatemalan Textile Border Patterns ===== */
+/* Zigzag chevron pattern matching the logo's circular border */
+.pattern-zigzag {
+  position: relative;
+}
+.pattern-zigzag::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background:
+    linear-gradient(135deg, var(--color-forest) 25%, transparent 25%) -12px 0,
+    linear-gradient(225deg, var(--color-forest) 25%, transparent 25%) -12px 0,
+    linear-gradient(315deg, var(--color-forest) 25%, transparent 25%),
+    linear-gradient(45deg, var(--color-forest) 25%, transparent 25%);
+  background-size: 24px 8px;
+  background-color: var(--color-dorado);
+}
+
+/* Diamond textile band — inspired by the logo's ornamental diamonds */
+.pattern-diamond-band {
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-terracota) 0px,
+    var(--color-terracota) 3px,
+    transparent 3px,
+    transparent 6px,
+    var(--color-dorado) 6px,
+    var(--color-dorado) 9px,
+    transparent 9px,
+    transparent 12px,
+    var(--color-jade) 12px,
+    var(--color-jade) 15px,
+    transparent 15px,
+    transparent 18px,
+    var(--color-forest) 18px,
+    var(--color-forest) 21px,
+    transparent 21px,
+    transparent 24px
+  );
+  opacity: 0.85;
+}
+
+/* Thicker multicolor band */
+.pattern-weave-band {
+  height: 5px;
+  background: linear-gradient(90deg,
+    var(--color-forest) 0%, var(--color-forest) 15%,
+    var(--color-jade) 15%, var(--color-jade) 30%,
+    var(--color-dorado) 30%, var(--color-dorado) 50%,
+    var(--color-terracota) 50%, var(--color-terracota) 70%,
+    var(--color-naranja) 70%, var(--color-naranja) 85%,
+    var(--color-dorado) 85%, var(--color-dorado) 100%
+  );
+}
+
+/* Subtle background textile overlay */
+.pattern-bg-subtle {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(212, 150, 42, 0.03) 10px,
+      rgba(212, 150, 42, 0.03) 12px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 10px,
+      rgba(11, 93, 59, 0.02) 10px,
+      rgba(11, 93, 59, 0.02) 12px
+    );
+}
+
+/* ===== Glass Surfaces ===== */
+.bg-glass {
+  background: rgba(251, 243, 232, 0.88);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+
+.bg-glass-dark {
+  background: rgba(11, 93, 59, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* ===== Premium Card ===== */
+.card-premium {
+  background: var(--color-surface-card);
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-card);
+  transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+  .card-premium:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: var(--color-dorado-muted);
+    transform: translateY(-4px);
+  }
+}
+
+/* Tilt 3D effect */
+.tilt-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 0.2s ease-out, box-shadow 0.35s ease;
+}
+
+/* ===== Buttons ===== */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--color-terracota), var(--color-terracota-light));
+  color: white;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 50px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 4px 16px rgba(216, 68, 32, 0.3);
+  text-decoration: none;
+  letter-spacing: 0.01em;
+}
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-glow-terracota);
+  background: linear-gradient(135deg, var(--color-terracota-dark), var(--color-terracota));
+}
+.btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: var(--color-surface-card);
+  color: var(--color-forest);
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 50px;
+  border: 2px solid var(--color-forest);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: var(--shadow-xs);
+  text-decoration: none;
+}
+.btn-secondary:hover {
+  background: var(--color-forest);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow-forest);
+}
+
+.btn-forest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--color-forest), var(--color-forest-light));
+  color: white;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 50px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 4px 16px rgba(11, 93, 59, 0.25);
+  text-decoration: none;
+}
+.btn-forest:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-glow-forest);
+}
+
+/* ===== Text Gradient ===== */
+.text-gradient-brand {
+  background: linear-gradient(135deg, var(--color-forest) 0%, var(--color-jade) 40%, var(--color-dorado) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-warm {
+  background: linear-gradient(135deg, var(--color-terracota) 0%, var(--color-naranja) 50%, var(--color-dorado) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ===== Map Styles ===== */
+.leaflet-container {
+  font-family: var(--font-sans) !important;
+  border-radius: 20px;
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 20px !important;
+  box-shadow: var(--shadow-popup) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid var(--color-border-light) !important;
+}
+.leaflet-popup-content { margin: 0 !important; width: auto !important; }
+.leaflet-popup-tip { background: white !important; }
+.custom-leaflet-marker { background: none !important; border: none !important; }
+.user-marker { background: none !important; border: none !important; }
+
+@media (max-width: 767px) {
+  .leaflet-control-zoom a,
+  .leaflet-control-layers-toggle {
+    width: 44px !important;
+    height: 44px !important;
+    line-height: 44px !important;
+  }
+
+  .leaflet-control-attribution {
+    max-width: calc(100vw - 40px);
+    font-size: 9px !important;
+    white-space: normal;
+  }
+}
+
+/* ===== Radar ===== */
+.radar-ring {
+  border: 2px solid var(--color-jade);
+  border-radius: 50%;
+  position: absolute;
+  animation: radar 2.5s ease-out infinite;
+}
+.radar-ring:nth-child(2) { animation-delay: 0.6s; }
+.radar-ring:nth-child(3) { animation-delay: 1.2s; }
+
+/* ===== Loading Skeleton ===== */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-crema-dark) 25%, var(--color-crema) 50%, var(--color-crema-dark) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: 12px;
+}
+
+/* ===== Focus Visible ===== */
+:focus-visible {
+  outline: 3px solid var(--color-dorado);
+  outline-offset: 3px;
+}
+
+/* Form controls use their styled container/border as the focus indicator. */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+/* Search inputs inherit focus from their pill/container without drawing a box inside it. */
+.search-pill-input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+.search-destination-field:has(.search-pill-input:focus-visible) {
+  outline: 3px solid var(--color-dorado);
+  outline-offset: 2px;
+}
+
+@keyframes search-panel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.search-dropdown-panel {
+  animation: search-panel-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  scrollbar-gutter: stable;
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.15s !important;
+    scroll-behavior: auto !important;
+  }
+  .tilt-card, .card-premium:hover { transform: none !important; }
+}
+
+/* ===== Scrollbar-less containers ===== */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ===== Section Divider with diamond ===== */
+.divider-diamond {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+}
+.divider-diamond::before,
+.divider-diamond::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+}
+.divider-diamond .diamond {
+  width: 10px;
+  height: 10px;
+  background: var(--color-dorado);
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+
+/* ===== Maya Decorative Borders ===== */
+/* Top and bottom artisan border bands inspired by Guatemalan textiles */
+
+.maya-border-top,
+.maya-border-bottom {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  background: var(--color-forest);
+  overflow: hidden;
+}
+
+.maya-border-top::before,
+.maya-border-bottom::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-terracota) 0px,
+    var(--color-terracota) 8px,
+    var(--color-dorado) 8px,
+    var(--color-dorado) 16px,
+    var(--color-forest) 16px,
+    var(--color-forest) 24px,
+    var(--color-jade) 24px,
+    var(--color-jade) 32px,
+    var(--color-naranja) 32px,
+    var(--color-naranja) 40px,
+    var(--color-crema) 40px,
+    var(--color-crema) 44px,
+    var(--color-terracota) 44px,
+    var(--color-terracota) 52px
+  );
+}
+
+.maya-border-top::after,
+.maya-border-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background:
+    linear-gradient(135deg, var(--color-dorado) 25%, transparent 25%) -6px 0,
+    linear-gradient(225deg, var(--color-dorado) 25%, transparent 25%) -6px 0,
+    linear-gradient(315deg, var(--color-dorado) 25%, transparent 25%),
+    linear-gradient(45deg, var(--color-dorado) 25%, transparent 25%);
+  background-size: 12px 10px;
+  background-color: var(--color-forest);
+}
+
+/* Decorative divider band with center diamond ornament */
+.maya-divider-band {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  background: linear-gradient(
+    180deg,
+    var(--color-forest) 0%,
+    var(--color-forest) 35%,
+    var(--color-jade) 35%,
+    var(--color-jade) 50%,
+    var(--color-dorado) 50%,
+    var(--color-dorado) 65%,
+    var(--color-terracota) 65%,
+    var(--color-terracota) 80%,
+    var(--color-naranja) 80%,
+    var(--color-naranja) 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.maya-divider-band::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 20px,
+      rgba(255, 255, 255, 0.08) 20px,
+      rgba(255, 255, 255, 0.08) 22px
+    );
+}
+
+.maya-divider-band::after {
+  content: '◆';
+  position: relative;
+  z-index: 2;
+  font-size: 22px;
+  color: var(--color-dorado);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  filter: drop-shadow(0 0 6px rgba(212, 150, 42, 0.5));
+}
+
+/* Guatemalan Textile Pattern Ribbon */
+.pattern-textile-ribbon {
+  background: repeating-linear-gradient(
+    90deg,
+    #D84420 0px, #D84420 10px,
+    #F07824 10px, #F07824 20px,
+    #D4962A 20px, #D4962A 30px,
+    #168A55 30px, #168A55 40px,
+    #0B5D3B 40px, #0B5D3B 50px
+  );
+  background-size: 50px 100%;
+}
