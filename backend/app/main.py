@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -86,6 +87,23 @@ def init_db():
                 reset_token TEXT,
                 used_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS favorites (
+                user_id INTEGER NOT NULL,
+                property_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, property_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                property_id TEXT NOT NULL,
+                rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+                comment TEXT NOT NULL,
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
         """)
         columns = {column["name"] for column in connection.execute("PRAGMA table_info(users)")}
         if "phone" not in columns:
@@ -126,6 +144,12 @@ class ResetPasswordRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class ReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(min_length=3, max_length=2000)
+    tags: list[str] = Field(default_factory=list, max_length=8)
 
 
 # Anti-Brute-Force In-Memory Sliding Window Rate Limiter
@@ -406,6 +430,91 @@ def login(payload: LoginRequest, request: Request):
 @app.get("/api/auth/me")
 def me(user=Depends(current_user)):
     return {"user": public_user(user)}
+
+
+@app.get("/api/favorites")
+def get_favorites(user=Depends(current_user)):
+    with db() as connection:
+        rows = connection.execute(
+            "SELECT property_id FROM favorites WHERE user_id=? ORDER BY created_at DESC",
+            (user["id"],),
+        ).fetchall()
+    return {"favorites": [row["property_id"] for row in rows]}
+
+
+@app.put("/api/favorites/{property_id}")
+def add_favorite(property_id: str, user=Depends(current_user)):
+    clean_id = sanitize_str(property_id)
+    if not clean_id or len(clean_id) > 160:
+        raise HTTPException(422, "El identificador de la propiedad no es válido.")
+    with db() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO favorites(user_id, property_id, created_at) VALUES(?,?,?)",
+            (user["id"], clean_id, datetime.now(timezone.utc).isoformat()),
+        )
+    return {"property_id": clean_id, "favorite": True}
+
+
+@app.delete("/api/favorites/{property_id}")
+def remove_favorite(property_id: str, user=Depends(current_user)):
+    with db() as connection:
+        connection.execute(
+            "DELETE FROM favorites WHERE user_id=? AND property_id=?",
+            (user["id"], property_id),
+        )
+    return {"property_id": property_id, "favorite": False}
+
+
+@app.get("/api/properties/{property_id}/reviews")
+def get_reviews(property_id: str):
+    with db() as connection:
+        rows = connection.execute(
+            """SELECT reviews.id, reviews.rating, reviews.comment, reviews.tags_json,
+                      reviews.created_at, users.name, users.id AS user_id
+               FROM reviews JOIN users ON users.id = reviews.user_id
+               WHERE reviews.property_id=? ORDER BY reviews.created_at DESC""",
+            (property_id,),
+        ).fetchall()
+    return {
+        "reviews": [
+            {
+                "id": f"api-{row['id']}",
+                "userName": row["name"],
+                "rating": row["rating"],
+                "comment": row["comment"],
+                "tags": json.loads(row["tags_json"]),
+                "date": row["created_at"][:10],
+                "verifiedTenant": False,
+                "userId": str(row["user_id"]),
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.post("/api/properties/{property_id}/reviews", status_code=201)
+def create_review(property_id: str, payload: ReviewRequest, user=Depends(current_user)):
+    comment = sanitize_str(payload.comment)
+    if not comment:
+        raise HTTPException(422, "La reseña no puede estar vacía.")
+    tags = [sanitize_str(tag) for tag in payload.tags[:8] if sanitize_str(tag)]
+    created_at = datetime.now(timezone.utc).isoformat()
+    with db() as connection:
+        cursor = connection.execute(
+            "INSERT INTO reviews(user_id, property_id, rating, comment, tags_json, created_at) VALUES(?,?,?,?,?,?)",
+            (user["id"], property_id, payload.rating, comment, json.dumps(tags), created_at),
+        )
+    return {
+        "review": {
+            "id": f"api-{cursor.lastrowid}",
+            "userName": user["name"],
+            "rating": payload.rating,
+            "comment": comment,
+            "tags": tags,
+            "date": created_at[:10],
+            "verifiedTenant": False,
+        }
+    }
 
 
 @app.post("/api/auth/password/change")

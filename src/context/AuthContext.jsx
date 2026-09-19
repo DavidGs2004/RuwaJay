@@ -1,18 +1,18 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { firebaseAuth, firestore, firebaseWebEnabled } from '../lib/firebase';
 
 const AuthContext = createContext(null);
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-
-async function api(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || 'No se pudo completar la solicitud.');
-  return data;
-}
-
 
 export { AVATAR_OPTIONS } from '../data/avatars';
 
@@ -39,28 +39,41 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('ruwajay_token');
-    if (!token) { setIsInitializing(false); return; }
-    api('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then((data) => setUser(loadProfileExtras(data.user)))
-      .catch(() => {
-        localStorage.removeItem('ruwajay_token');
-        localStorage.removeItem('ruwajay_user');
-      })
-      .finally(() => setIsInitializing(false));
+    if (!firebaseWebEnabled || !firebaseAuth) {
+      setIsInitializing(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(firestore, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUser(loadProfileExtras({ id: firebaseUser.uid, ...userData }));
+          } else {
+            // Fallback if document doesn't exist yet
+            setUser(loadProfileExtras({ id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || 'Usuario' }));
+          }
+        } catch (error) {
+          console.error("Error loading user profile:", error);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
+      setIsInitializing(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (user) localStorage.setItem('ruwajay_user', JSON.stringify(user));
-    else localStorage.removeItem('ruwajay_user');
-  }, [user]);
-
-  const authenticate = async (path, payload) => {
+  const login = async (email, password) => {
     setIsLoading(true);
     try {
-      const data = await api(path, { method: 'POST', body: JSON.stringify(payload) });
-      localStorage.setItem('ruwajay_token', data.access_token);
-      const enrichedUser = loadProfileExtras(data.user);
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      const userDoc = await getDoc(doc(firestore, 'users', credential.user.uid));
+      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...userDoc.data() });
       setUser(enrichedUser);
       setIsPostAuthLoading(true);
       window.setTimeout(() => setIsPostAuthLoading(false), 3000);
@@ -68,20 +81,47 @@ export function AuthProvider({ children }) {
     } finally { setIsLoading(false); }
   };
 
-  const login = (email, password) => authenticate('/api/auth/login', { email, password });
-  const register = (name, email, password, role, phone) => authenticate('/api/auth/register', { name, email, password, role, phone });
-  const requestPasswordReset = (email) => api('/api/auth/password/request', { method: 'POST', body: JSON.stringify({ email }) });
-  const verifyResetCode = (email, code) => api('/api/auth/password/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
-  const resetPassword = (resetToken, password) => api('/api/auth/password/reset', { method: 'POST', body: JSON.stringify({ reset_token: resetToken, password }) });
+  const register = async (name, email, password, role, phone) => {
+    setIsLoading(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      const profile = {
+        name: name.trim(),
+        email: email.trim(),
+        role: role || 'seeker',
+        phone: phone || null,
+        createdAt: serverTimestamp(),
+      };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('ruwajay_user');
-    localStorage.removeItem('ruwajay_token');
+      await setDoc(doc(firestore, 'users', credential.user.uid), profile);
+
+      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...profile });
+      setUser(enrichedUser);
+      setIsPostAuthLoading(true);
+      window.setTimeout(() => setIsPostAuthLoading(false), 3000);
+      return enrichedUser;
+    } finally { setIsLoading(false); }
   };
 
+  const logout = () => signOut(firebaseAuth);
+
+  const requestPasswordReset = (email) => sendPasswordResetEmail(firebaseAuth, email);
+
   /** Update profile fields (name, phone, bio, avatarId, avatarImage, dpiData, verified) and persist extras locally */
-  const updateProfile = (updates) => {
+  const updateProfile = async (updates) => {
+    if (!user) return;
+
+    // Update Firestore if needed (e.g., name, phone)
+    const firestoreUpdates = {};
+    if ('name' in updates) firestoreUpdates.name = updates.name;
+    if ('phone' in updates) firestoreUpdates.phone = updates.phone;
+
+    if (Object.keys(firestoreUpdates).length > 0) {
+      try {
+        await setDoc(doc(firestore, 'users', user.id), firestoreUpdates, { merge: true });
+      } catch (e) { console.error("Error updating firestore profile:", e); }
+    }
+
     setUser((previous) => {
       if (!previous) return previous;
       const next = { ...previous, ...updates };
@@ -99,15 +139,14 @@ export function AuthProvider({ children }) {
     });
   };
 
-  /** Change password (validates current password → sets new password via secure backend API) */
+  /** Change password (validates current password → sets new password via Firebase) */
   const changePassword = async (currentPassword, newPassword) => {
-    if (!user) throw new Error('No hay sesión activa.');
-    const token = localStorage.getItem('ruwajay_token');
-    return api('/api/auth/password/change', {
-      method: 'POST',
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) throw new Error('No hay sesión activa.');
+
+    const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+    await reauthenticateWithCredential(firebaseUser, credential);
+    return updatePassword(firebaseUser, newPassword);
   };
 
   /** Request identity verification (DPI badge + verification data) */
@@ -132,7 +171,7 @@ export function AuthProvider({ children }) {
     });
   };
 
-  return <AuthContext.Provider value={{ user, isLoading, isInitializing, isPostAuthLoading, login, register, logout, updateProfile, changePassword, requestVerification, purgeDpiData, requestPasswordReset, verifyResetCode, resetPassword }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, isLoading, isInitializing, isPostAuthLoading, login, register, logout, updateProfile, changePassword, requestVerification, purgeDpiData, requestPasswordReset }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

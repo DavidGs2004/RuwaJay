@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Home, MapPin, DollarSign, Upload, CheckCircle, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import RuwaSelect from '../components/ui/RuwaSelect';
 import { GUATEMALA_DEPARTMENTS_ONLY, getZonesForDepartment } from '../data/guatemalaLocations';
 import { sanitizeText } from '../utils/security';
+import { publishPropertyToFirebase, uploadPropertyImages } from '../lib/propertyService';
+import { firebaseAuth } from '../lib/firebase';
 
 export default function PublishPage() {
   const navigate = useNavigate();
@@ -41,6 +43,11 @@ export default function PublishPage() {
   };
 
   const [published, setPublished] = useState(false);
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState('');
+
+  useEffect(() => () => selectedImages.forEach(({ preview }) => URL.revokeObjectURL(preview)), [selectedImages]);
 
   if (!user || user.role !== 'owner') {
     return (
@@ -55,14 +62,16 @@ export default function PublishPage() {
     );
   }
 
-  const handlePublish = (e) => {
+  const handlePublish = async (e) => {
     e.preventDefault();
+    setIsPublishing(true);
+    setPublishError('');
 
     // Persist the new property to localStorage so it shows in "Mis Propiedades"
     const cleanTitle = sanitizeText(formData.title);
     const newProperty = {
       id: `custom-${Date.now()}`,
-      ownerId: user?.id || 'unknown',
+      ownerId: firebaseAuth?.currentUser?.uid || user?.id || 'unknown',
       title: cleanTitle || `${formData.type === 'casa' ? 'Casa' : 'Apartamento'} en ${formData.zone}`,
       type: formData.type,
       price: formData.price,
@@ -82,12 +91,20 @@ export default function PublishPage() {
     };
 
     try {
-      const existing = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-      existing.push(newProperty);
-      localStorage.setItem('ruwajay_custom_properties', JSON.stringify(existing));
-    } catch { /* ignore */ }
+      const imageUrls = await uploadPropertyImages(
+        selectedImages.map(({ file }) => file),
+        newProperty.id
+      );
+      newProperty.images = imageUrls;
+      await publishPropertyToFirebase(newProperty);
+    } catch (error) {
+      setPublishError(error?.message || 'No se pudo subir la propiedad. Revisa la configuración de Firebase.');
+      setIsPublishing(false);
+      return;
+    }
 
     setPublished(true);
+    setIsPublishing(false);
     setTimeout(() => {
       navigate('/perfil?tab=propiedades');
     }, 2000);
@@ -294,11 +311,34 @@ export default function PublishPage() {
                 <div className="space-y-4 animate-[fade-in_0.3s_ease-out]">
                   <h3 className="font-bold text-cafe text-base mb-2">Paso 3: Fotografías y Confirmación</h3>
                   
-                  <div className="cursor-pointer rounded-2xl border-2 border-dashed border-border bg-crema/30 p-5 text-center transition-colors hover:bg-crema/60 sm:p-8">
+                  <label className="block cursor-pointer rounded-2xl border-2 border-dashed border-border bg-crema/30 p-5 text-center transition-colors hover:bg-crema/60 sm:p-8">
                     <Upload size={36} className="mx-auto text-forest mb-2" />
                     <p className="font-bold text-sm text-cafe">Sube las fotos de la vivienda</p>
                     <p className="text-xs text-text-muted mt-1">Fachada, sala, cocina, habitaciones y baño</p>
-                  </div>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="sr-only"
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || []).slice(0, 8);
+                        setSelectedImages((previous) => {
+                          previous.forEach(({ preview }) => URL.revokeObjectURL(preview));
+                          return files.map((file) => ({ file, preview: URL.createObjectURL(file) }));
+                        });
+                      }}
+                    />
+                  </label>
+
+                  {selectedImages.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {selectedImages.map(({ file, preview }) => (
+                        <img key={`${file.name}-${file.lastModified}`} src={preview} alt={file.name} className="aspect-square w-full rounded-xl object-cover" />
+                      ))}
+                    </div>
+                  )}
+
+                  {publishError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{publishError}</p>}
 
                   <div className="p-4 bg-crema/50 rounded-2xl space-y-1 text-xs text-text-secondary">
                     <p className="font-bold text-cafe">Resumen de publicación:</p>
@@ -319,7 +359,7 @@ export default function PublishPage() {
                       type="submit"
                       className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-terracota px-8 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-terracota-dark sm:w-auto"
                     >
-                      <CheckCircle size={18} /> Publicar propiedad
+                      <CheckCircle size={18} /> {isPublishing ? 'Publicando...' : 'Publicar propiedad'}
                     </button>
                   </div>
                 </div>

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { demoReviews } from '../../data/properties';
+import { doc, setDoc } from 'firebase/firestore';
+import { firebaseAuth, firestore } from '../../lib/firebase';
 
 const QUICK_TAGS = [
   'Zona muy segura',
@@ -29,6 +31,7 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [likedReviews, setLikedReviews] = useState({});
+  const apiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
   // Sync user name if logged in
   useEffect(() => {
@@ -37,27 +40,35 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
     }
   }, [user]);
 
-  // Load reviews: seed demo reviews + custom reviews from localStorage
+  // Load API reviews first, keeping demo and local data as a graceful fallback.
   useEffect(() => {
+    const initial = demoReviews[propertyId] || [
+      {
+        id: `seed-${propertyId}-1`,
+        userName: 'Carlos Marroquín',
+        userAvatar: null,
+        rating: 4.9,
+        date: '10 de Enero, 2026',
+        verifiedTenant: true,
+        comment: 'La propiedad superó mis expectativas. Todo muy limpio, seguro y el contrato fue claro y sin sorpresas.',
+        tags: ['Zona muy segura', 'Agua constante', 'Excelente ubicación'],
+      },
+    ];
     try {
       const stored = JSON.parse(localStorage.getItem(`ruwajay_reviews_${propertyId}`) || '[]');
-      const initial = demoReviews[propertyId] || [
-        {
-          id: `seed-${propertyId}-1`,
-          userName: 'Carlos Marroquín',
-          userAvatar: null,
-          rating: 4.9,
-          date: '10 de Enero, 2026',
-          verifiedTenant: true,
-          comment: 'La propiedad superó mis expectativas. Todo muy limpio, seguro y el contrato fue claro y sin sorpresas.',
-          tags: ['Zona muy segura', 'Agua constante', 'Excelente ubicación'],
-        },
-      ];
       setReviews([...stored, ...initial]);
     } catch {
-      setReviews(demoReviews[propertyId] || []);
+      setReviews(initial);
     }
-  }, [propertyId]);
+    fetch(`${apiUrl}/api/properties/${encodeURIComponent(propertyId)}/reviews`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (Array.isArray(data?.reviews) && data.reviews.length) {
+          setReviews((previous) => [...data.reviews, ...previous.filter((review) => !review.id.startsWith('api-'))]);
+        }
+      })
+      .catch(() => { /* Conserva datos locales y demo. */ });
+  }, [propertyId, apiUrl]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -83,7 +94,7 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
     }));
   };
 
-  const handleSubmitReview = (e) => {
+  const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!comment.trim()) return;
 
@@ -101,7 +112,36 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
       isNew: true,
     };
 
-    // Save to localStorage
+    const token = localStorage.getItem('ruwajay_token');
+    if (token) {
+      try {
+        const response = await fetch(`${apiUrl}/api/properties/${encodeURIComponent(propertyId)}/reviews`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ rating: userRating, comment: comment.trim(), tags: selectedTags }),
+        });
+        if (!response.ok) throw new Error('No se pudo guardar la reseña.');
+        const data = await response.json();
+        setReviews((prev) => [data.review, ...prev]);
+        const firebaseUser = firebaseAuth?.currentUser;
+        if (firebaseUser && firestore) {
+          setDoc(doc(firestore, 'properties', String(propertyId), 'reviews', data.review.id), {
+            ...data.review,
+            userId: firebaseUser.uid,
+            createdAt: Date.now(),
+          }).catch(() => { /* La API conserva la reseña aunque Firestore no responda. */ });
+        }
+        setIsSubmitting(false);
+        setShowAddModal(false);
+        setComment('');
+        setSuccessMessage('¡Gracias por tu opinión! Tu reseña ha sido publicada con éxito.');
+        setTimeout(() => setSuccessMessage(''), 4000);
+        return;
+      } catch {
+        // Fallback local below keeps the form usable during an API outage.
+      }
+    }
+
     try {
       const stored = JSON.parse(localStorage.getItem(`ruwajay_reviews_${propertyId}`) || '[]');
       const updated = [newReview, ...stored];

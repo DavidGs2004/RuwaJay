@@ -10,6 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+android-app/.gradle
+android-app/.idea
+android-app/.kotlin
+android-app/build
+android-app/app/build
+android-app/android-app
 *.local
 .env
 *.db

@@ -15,6 +15,8 @@ import PropertyCard from '../components/property/PropertyCard';
 import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
 import { sanitizeText, validateImageFile, maskSensitive } from '../utils/security';
+import { firebaseAuth } from '../lib/firebase';
+import { subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
 
 /* ── Guatemalan Departments list ── */
 const GT_DEPARTMENTS = [
@@ -53,26 +55,6 @@ function getPasswordChecks(pw) {
 function isStrongPassword(pw) {
   const c = getPasswordChecks(pw);
   return c.length && c.upper && c.lower && c.number && c.symbol;
-}
-
-/* ── Custom properties from localStorage ── */
-function getCustomProperties(userId) {
-  try {
-    return JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]')
-      .filter((p) => p.ownerId === userId);
-  } catch { return []; }
-}
-
-function updateCustomProperty(propertyId, updates) {
-  try {
-    const all = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-    const idx = all.findIndex((p) => p.id === propertyId);
-    if (idx >= 0) {
-      all[idx] = { ...all[idx], ...updates };
-      localStorage.setItem('ruwajay_custom_properties', JSON.stringify(all));
-    }
-    return all;
-  } catch { return []; }
 }
 
 /* ── WhatsApp Icon ── */
@@ -205,11 +187,17 @@ export default function ProfilePage() {
     }
   }, [user, editingProfile]);
 
-  // Load custom properties for owner
+  // Keep owner properties backed by the shared Firestore collection.
   useEffect(() => {
-    if (user?.id) {
-      setMyProperties(getCustomProperties(user.id));
+    const ownerId = firebaseAuth?.currentUser?.uid;
+    if (!ownerId) {
+      setMyProperties([]);
+      return undefined;
     }
+
+    return subscribeToProperties((properties) => {
+      setMyProperties(properties.filter((property) => property.ownerId === ownerId));
+    });
   }, [user?.id, activeTab]);
 
   /* ── Visits State & Persistence ── */
@@ -414,10 +402,13 @@ export default function ProfilePage() {
     setVerifyDone(true);
   };
 
-  const handleTogglePropertyStatus = (propertyId, currentStatus) => {
+  const handleTogglePropertyStatus = async (propertyId, currentStatus) => {
     const newStatus = currentStatus === 'disponible' ? 'alquilada' : 'disponible';
-    const updated = updateCustomProperty(propertyId, { status: newStatus });
-    setMyProperties(updated.filter((p) => p.ownerId === user?.id));
+    try {
+      await updatePropertyStatus(propertyId, newStatus);
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo actualizar el estado de la propiedad.');
+    }
   };
 
   const isOwner = user?.role === 'owner';
