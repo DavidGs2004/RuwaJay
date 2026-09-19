@@ -20,8 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ruwajay.data.model.Conversation
+import com.example.ruwajay.data.repository.ChatRepository
 import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,9 +35,40 @@ fun InboxScreen(
     onConversationClick: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val conversations = MockDataRepository.conversations
+    val chatRepo = remember { ChatRepository() }
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    var firestoreConversations by remember { mutableStateOf<List<Conversation>>(emptyList()) }
 
-    val filteredConversations = conversations.filter {
+    DisposableEffect(currentUser?.uid) {
+        if (currentUser == null) return@DisposableEffect onDispose {}
+        
+        val listener = chatRepo.observeConversations(currentUser.uid) { maps ->
+            firestoreConversations = maps.map { map ->
+                val ts = map["lastMessageTimestamp"] as? Timestamp
+                val dateStr = ts?.let {
+                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.toDate())
+                } ?: ""
+                
+                Conversation(
+                    id = map["id"] as? String ?: "",
+                    propertyId = map["propertyId"] as? String ?: "",
+                    ownerId = map["ownerId"] as? String ?: "",
+                    participantName = map["propertyTitle"] as? String ?: "Propietario",
+                    participantAvatar = null,
+                    participantOnline = false,
+                    participantPhone = "",
+                    participantRole = "Vendedor",
+                    unreadCount = if (map["lastSenderId"] != currentUser.uid) 1 else 0,
+                    lastMessage = map["lastMessage"] as? String ?: "",
+                    lastMessageTimestamp = dateStr,
+                    messages = emptyList()
+                )
+            }
+        }
+        onDispose { listener.remove() }
+    }
+
+    val filteredConversations = firestoreConversations.filter {
         it.participantName.contains(searchQuery, ignoreCase = true) ||
         it.lastMessage.contains(searchQuery, ignoreCase = true)
     }
@@ -40,7 +76,7 @@ fun InboxScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mensajes", color = BrandTextPrimary, fontWeight = FontWeight.Black) },
+                title = { Text("Mensajes Privados", color = BrandTextPrimary, fontWeight = FontWeight.Black) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Regresar", tint = BrandTextPrimary)
@@ -63,7 +99,7 @@ fun InboxScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                placeholder = { Text("Buscar conversación...", fontSize = 14.sp) },
+                placeholder = { Text("Buscar mensajes...", fontSize = 14.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = BrandTextMuted) },
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -75,16 +111,22 @@ fun InboxScreen(
                 singleLine = true
             )
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(filteredConversations) { conv ->
-                    ConversationItem(
-                        conversation = conv,
-                        onClick = { onConversationClick(conv.id) }
-                    )
-                    HorizontalDivider(color = BrandCremaDark, thickness = 1.dp)
+            if (firestoreConversations.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No tienes conversaciones aún", color = BrandTextMuted)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(filteredConversations) { conv ->
+                        ConversationItem(
+                            conversation = conv,
+                            onClick = { onConversationClick(conv.id) }
+                        )
+                        HorizontalDivider(color = BrandCremaDark, thickness = 1.dp)
+                    }
                 }
             }
         }
@@ -96,8 +138,6 @@ fun ConversationItem(
     conversation: Conversation,
     onClick: () -> Unit
 ) {
-    val property = MockDataRepository.properties.find { it.id == conversation.propertyId }
-    
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -120,15 +160,6 @@ fun ConversationItem(
                 fontWeight = FontWeight.Black,
                 fontSize = 20.sp
             )
-            if (conversation.participantOnline) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(BrandJade)
-                        .align(Alignment.BottomEnd)
-                )
-            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -154,16 +185,6 @@ fun ConversationItem(
                 )
             }
             
-            if (property != null) {
-                Text(
-                    text = property.title,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BrandForest,
-                    maxLines = 1
-                )
-            }
-            
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -181,18 +202,10 @@ fun ConversationItem(
                 if (conversation.unreadCount > 0) {
                     Box(
                         modifier = Modifier
-                            .size(18.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(BrandTerracota),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = conversation.unreadCount.toString(),
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
+                            .background(BrandTerracota)
+                    )
                 }
             }
         }

@@ -35,11 +35,13 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
-      allow read, write: if signedIn() && request.auth.uid in resource.data.participants;
-      allow create: if signedIn();
+      // Check if user is a participant for READ and UPDATE
+      allow read, update: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create: if signedIn(); // Participants array should be set on create
 
       match /messages/{messageId} {
-        allow read, write: if signedIn();
+        // Message access depends on the parent conversation participants
+        allow read, create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
       }
     }
   }

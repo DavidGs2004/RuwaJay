@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { deleteDoc, doc, getDocs, collection, setDoc } from 'firebase/firestore';
-import { firebaseAuth, firestore } from '../lib/firebase';
+import { deleteDoc, doc, onSnapshot, collection, setDoc } from 'firebase/firestore';
+import { firestore } from '../lib/firebase';
 
 const FavoritesContext = createContext(null);
 
@@ -23,11 +23,18 @@ export function FavoritesProvider({ children }) {
       return;
     }
 
-    getDocs(collection(firestore, 'users', user.id, 'favorites'))
-      .then((snapshot) => setFavorites(snapshot.docs.map((favorite) => favorite.id)))
-      .catch((e) => {
-        console.error("Error loading favorites from firestore:", e);
-      });
+    // Listener en tiempo real para sincronización instantánea entre Web y App
+    const unsubscribe = onSnapshot(
+      collection(firestore, 'users', user.id, 'favorites'),
+      (snapshot) => {
+        setFavorites(snapshot.docs.map((favorite) => favorite.id));
+      },
+      (e) => {
+        console.error("Error listening to favorites from firestore:", e);
+      }
+    );
+
+    return () => unsubscribe();
   }, [user?.id]);
 
   useEffect(() => {
@@ -43,11 +50,6 @@ export function FavoritesProvider({ children }) {
 
     const removing = favorites.includes(propertyId);
 
-    // Optimistic update
-    setFavorites((prev) =>
-      removing ? prev.filter((id) => id !== propertyId) : [...prev, propertyId]
-    );
-
     try {
       const favoriteRef = doc(firestore, 'users', user.id, 'favorites', String(propertyId));
       if (removing) {
@@ -57,8 +59,6 @@ export function FavoritesProvider({ children }) {
       }
     } catch (e) {
       console.error("Error toggling favorite in firestore:", e);
-      // Rollback on error
-      setFavorites(favorites);
     }
   }, [user, favorites]);
 

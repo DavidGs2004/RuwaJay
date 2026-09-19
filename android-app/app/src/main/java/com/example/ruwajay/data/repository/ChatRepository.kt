@@ -6,17 +6,26 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.firestore.FieldValue
 
 class ChatRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
+    fun observeConversations(userId: String, onChange: (List<Map<String, Any>>) -> Unit) =
+        firestore.collection("conversations")
+            .whereArrayContains("participants", userId)
+            .orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, _ ->
+                onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
+            }
+
     fun observeMessages(roomId: String, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
             .orderBy("createdAt", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, _ ->
-                onChange(snapshot?.documents?.map { it.data.orEmpty() } ?: emptyList())
+                onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
             }
 
     fun sendText(roomId: String, text: String, onResult: (Result<Unit>) -> Unit) {
@@ -51,13 +60,26 @@ class ChatRepository(
     }
 
     private fun addMessage(roomId: String, payload: Map<String, Any>, onResult: (Result<Unit>) -> Unit) {
-        val user = auth.currentUser
+        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
+        
         val message = payload + mapOf(
-            "senderId" to (user?.uid ?: "anonymous"),
-            "createdAt" to System.currentTimeMillis()
+            "senderId" to user.uid,
+            "senderName" to (user.displayName ?: "Usuario"),
+            "createdAt" to FieldValue.serverTimestamp()
         )
+        
         firestore.collection("conversations").document(roomId).collection("messages").add(message)
-            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnSuccessListener {
+                // Update conversation metadata
+                firestore.collection("conversations").document(roomId).update(
+                    mapOf(
+                        "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
+                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                        "lastSenderId" to user.uid
+                    )
+                )
+                onResult(Result.success(Unit)) 
+            }
             .addOnFailureListener { onResult(Result.failure(it)) }
     }
 }

@@ -20,10 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ruwajay.data.model.Conversation
 import com.example.ruwajay.data.model.Message
-import com.example.ruwajay.data.repository.MockDataRepository
+import com.example.ruwajay.data.repository.ChatRepository
 import com.example.ruwajay.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.Timestamp
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,67 +34,56 @@ fun ChatScreen(
     conversationId: String,
     onNavigateBack: () -> Unit
 ) {
-    // In a real app, this would be managed by a ViewModel and observe state.
-    // For demo parity, we use mutable state seeded from the mock repository.
-    var conversation by remember { 
-        mutableStateOf(
-            MockDataRepository.conversations.find { it.id == conversationId } 
-            ?: MockDataRepository.conversations.first()
-        )
-    }
-    
+    val chatRepo = remember { ChatRepository() }
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var draftText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
+    DisposableEffect(conversationId) {
+        val listener = chatRepo.observeMessages(conversationId) { maps ->
+            messages = maps.map { map ->
+                val ts = map["createdAt"] as? Timestamp
+                val dateStr = ts?.let {
+                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.toDate())
+                } ?: ""
+                
+                Message(
+                    id = map["id"] as? String ?: "",
+                    senderId = map["senderId"] as? String ?: "",
+                    isUser = map["senderId"] == currentUser?.uid,
+                    senderName = map["senderName"] as? String ?: "Usuario",
+                    text = map["text"] as? String ?: "",
+                    timestamp = dateStr,
+                    status = map["status"] as? String ?: "sent"
+                )
+            }
+        }
+        onDispose { listener.remove() }
+    }
     
     // Auto-scroll to bottom on new messages
-    LaunchedEffect(conversation.messages.size) {
-        if (conversation.messages.isNotEmpty()) {
-            listState.animateScrollToItem(conversation.messages.size - 1)
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
         }
     }
 
     val quickQuestions = listOf(
-        "¿Aceptan mascotas en la vivienda?",
-        "¿Cuánto solicitan de depósito en garantía?",
-        "¿Cuándo podríamos agendar una visita en persona?"
+        "¿Sigue disponible?",
+        "¿Aceptan mascotas?",
+        "¿Cuándo puedo ir a verla?"
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(BrandForest),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = conversation.participantName.first().toString(),
-                                color = Color.White,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 16.sp
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(conversation.participantName, fontWeight = FontWeight.Black, fontSize = 15.sp)
-                            if (conversation.participantOnline) {
-                                Text("En línea ahora", color = BrandForest, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            }
-                        }
-                    }
+                    Text("Chat Privado", fontWeight = FontWeight.Black, fontSize = 16.sp)
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* Simulated Call */ }) {
-                        Icon(Icons.Default.Phone, contentDescription = "Llamar", tint = BrandCafe)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -101,10 +93,7 @@ fun ChatScreen(
             Column {
                 // Quick Questions
                 LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(BrandCrema)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().background(BrandCrema).padding(12.dp, 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(quickQuestions) { question ->
@@ -114,78 +103,38 @@ fun ChatScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, BrandCremaDark),
                             onClick = { draftText = question }
                         ) {
-                            Text(
-                                text = question,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = BrandCafe
-                            )
+                            Text(question, Modifier.padding(12.dp, 6.dp), 12.sp, FontWeight.Bold, BrandCafe)
                         }
                     }
                 }
                 
                 // Input Area
-                Surface(
-                    color = Color.White,
-                    shadowElevation = 8.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { /* Attach photo */ }) {
-                            Icon(Icons.Default.Image, contentDescription = "Adjuntar foto", tint = BrandTextMuted)
-                        }
-                        IconButton(onClick = { /* Send Voice Note */ }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Nota de voz", tint = BrandTextMuted)
-                        }
-                        
+                Surface(color = Color.White, shadowElevation = 8.dp) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = draftText,
                             onValueChange = { draftText = it },
-                            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                            placeholder = { Text("Escribe un mensaje...", fontSize = 14.sp) },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Mensaje...", fontSize = 14.sp) },
                             shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = BrandForest,
-                                unfocusedBorderColor = BrandCremaDark,
-                                focusedContainerColor = Color(0xFFFDFBF7),
-                                unfocusedContainerColor = Color(0xFFFDFBF7)
+                                unfocusedBorderColor = BrandCremaDark
                             ),
                             maxLines = 3
                         )
-                        
+                        Spacer(Modifier.width(8.dp))
                         IconButton(
                             onClick = {
                                 if (draftText.isNotBlank()) {
-                                    val newMessage = Message(
-                                        id = "msg-${System.currentTimeMillis()}",
-                                        senderId = "user-demo",
-                                        isUser = true,
-                                        senderName = "Tú",
-                                        text = draftText,
-                                        timestamp = "Ahora",
-                                        status = "sent"
-                                    )
-                                    conversation = conversation.copy(
-                                        messages = conversation.messages + newMessage,
-                                        lastMessage = draftText,
-                                        lastMessageTimestamp = "Ahora"
-                                    )
+                                    chatRepo.sendText(conversationId, draftText) { }
                                     draftText = ""
                                 }
                             },
                             enabled = draftText.isNotBlank(),
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (draftText.isNotBlank()) BrandForest else BrandCremaDark,
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.clip(CircleShape)
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = BrandForest, contentColor = Color.White)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar", modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(18.dp))
                         }
                     }
                 }
@@ -195,37 +144,11 @@ fun ChatScreen(
     ) { paddingValues ->
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp),
             contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Safety Banner
-            item {
-                Surface(
-                    color = Color(0xFFFFF3CD),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = BrandTerracota, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Consejo de seguridad: No realices depósitos antes de visitar el inmueble.",
-                            color = Color(0xFF856404),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            items(conversation.messages) { message ->
+            items(messages) { message ->
                 MessageBubble(message = message)
             }
         }
@@ -235,67 +158,19 @@ fun ChatScreen(
 @Composable
 fun MessageBubble(message: Message) {
     val isUser = message.isUser
-    
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-    ) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
         Surface(
             color = if (isUser) Color(0xFFD9FDD3) else Color.White,
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isUser) 16.dp else 2.dp,
-                bottomEnd = if (isUser) 2.dp else 16.dp
-            ),
-            shadowElevation = 1.dp,
-            modifier = Modifier.widthIn(max = 280.dp)
+            shape = RoundedCornerShape(12.dp),
+            shadowElevation = 1.dp
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = if (isUser) "Tú (Inquilino)" else message.senderName,
-                    color = BrandForest,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                
-                Text(
-                    text = message.text,
-                    color = BrandCafe,
-                    fontSize = 14.sp
-                )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = message.timestamp,
-                        color = BrandTextMuted,
-                        fontSize = 10.sp
-                    )
-                    if (isUser) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.Check, // Simplified check marks
-                            contentDescription = null,
-                            tint = if (message.status == "read") Color(0xFF53BDEB) else BrandTextMuted,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
+            Column(Modifier.padding(10.dp)) {
+                if (!isUser) {
+                    Text(message.senderName, color = BrandForest, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 }
+                Text(message.text, color = BrandCafe, fontSize = 14.sp)
+                Text(message.timestamp, Modifier.align(Alignment.End), BrandTextMuted, 9.sp)
             }
         }
     }
-}
-
-@Composable
-fun LazyRow(modifier: Modifier = Modifier, horizontalArrangement: Arrangement.Horizontal = Arrangement.Start, content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
-    androidx.compose.foundation.lazy.LazyRow(
-        modifier = modifier,
-        horizontalArrangement = horizontalArrangement,
-        content = content
-    )
 }
