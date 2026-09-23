@@ -448,5 +448,3 @@ private fun TurnStep(number: Int, instruction: String, color: Color) {
     }
 }
 
-private fun Double.roundToInt(): Int = kotlin.math.roundToInt(this)
-private fun kotlin.math.roundToInt(d: Double): Int = d.toInt().let { if (d - it >= 0.5) it + 1 else it }

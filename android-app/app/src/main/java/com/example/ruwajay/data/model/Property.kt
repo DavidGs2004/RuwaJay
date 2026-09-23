@@ -33,7 +33,10 @@ data class Location(
     val approximateAddress: String? = null,
     val exactAddress: String? = null,
     val mapCoordinates: Coordinates? = null
-)
+) {
+    val coordinates: Coordinates
+        get() = mapCoordinates ?: Coordinates(14.6349, -90.5069)
+}
 
 data class Coordinates(
     val lat: Double,

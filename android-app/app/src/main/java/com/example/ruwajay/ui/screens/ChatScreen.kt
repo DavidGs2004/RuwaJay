@@ -3,6 +3,7 @@ package com.example.ruwajay.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -103,7 +104,13 @@ fun ChatScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, BrandCremaDark),
                             onClick = { draftText = question }
                         ) {
-                            Text(question, Modifier.padding(12.dp, 6.dp), 12.sp, FontWeight.Bold, BrandCafe)
+                            Text(
+                                text = question,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BrandCafe
+                            )
                         }
                     }
                 }
@@ -169,7 +176,7 @@ fun MessageBubble(message: Message) {
                     Text(message.senderName, color = BrandForest, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 }
                 Text(message.text, color = BrandCafe, fontSize = 14.sp)
-                Text(message.timestamp, Modifier.align(Alignment.End), BrandTextMuted, 9.sp)
+                Text(message.timestamp, modifier = Modifier.align(Alignment.End), color = BrandTextMuted, fontSize = 9.sp)
             }
         }
     }

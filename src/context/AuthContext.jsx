@@ -7,7 +7,9 @@ import {
   sendPasswordResetEmail,
   updatePassword,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  verifyPasswordResetCode,
+  confirmPasswordReset
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firebaseAuth, firestore, firebaseWebEnabled } from '../lib/firebase';
@@ -44,36 +46,42 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(firestore, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setUser(loadProfileExtras({ id: firebaseUser.uid, ...userData }));
+        // Real-time listener for the user document
+        const userDocRef = doc(firestore, 'users', firebaseUser.uid);
+        const unsubDoc = onSnapshot(userDocRef, (snapshot) => {
+          if (snapshot.exists()) {
+            setUser(loadProfileExtras({ id: firebaseUser.uid, ...snapshot.data() }));
           } else {
-            // Fallback if document doesn't exist yet
             setUser(loadProfileExtras({ id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || 'Usuario' }));
           }
-        } catch (error) {
-          console.error("Error loading user profile:", error);
-          setUser(null);
-        }
+          setIsInitializing(false);
+        }, (error) => {
+          console.error("Error listening to profile updates:", error);
+          setIsInitializing(false);
+        });
+
+        return () => unsubDoc();
       } else {
         setUser(null);
+        setIsInitializing(false);
       }
-      setIsInitializing(false);
     });
 
     return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
+    if (!firebaseWebEnabled || !firebaseAuth || !firestore) {
+      throw new Error('Firebase Web no está configurado. Revisa las variables VITE_FIREBASE_API_KEY y VITE_FIREBASE_APP_ID.');
+    }
+
     setIsLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
       const userDoc = await getDoc(doc(firestore, 'users', credential.user.uid));
-      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...userDoc.data() });
+      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...(userDoc.exists() ? userDoc.data() : {}) });
       setUser(enrichedUser);
       setIsPostAuthLoading(true);
       window.setTimeout(() => setIsPostAuthLoading(false), 3000);
@@ -105,7 +113,12 @@ export function AuthProvider({ children }) {
 
   const logout = () => signOut(firebaseAuth);
 
-  const requestPasswordReset = (email) => sendPasswordResetEmail(firebaseAuth, email);
+  const requestPasswordReset = (email) => {
+    if (!firebaseWebEnabled || !firebaseAuth) {
+      throw new Error('Firebase Web no está configurado.');
+    }
+    return sendPasswordResetEmail(firebaseAuth, email);
+  };
 
   /** Update profile fields (name, phone, bio, avatarId, avatarImage, dpiData, verified) and persist extras locally */
   const updateProfile = async (updates) => {

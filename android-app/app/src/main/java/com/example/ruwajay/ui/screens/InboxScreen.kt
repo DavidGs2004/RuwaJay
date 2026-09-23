@@ -54,7 +54,6 @@ fun InboxScreen(
                     propertyId = map["propertyId"] as? String ?: "",
                     ownerId = map["ownerId"] as? String ?: "",
                     participantName = map["propertyTitle"] as? String ?: "Propietario",
-                    participantAvatar = null,
                     participantOnline = false,
                     participantPhone = "",
                     participantRole = "Vendedor",

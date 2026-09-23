@@ -8,7 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Calculator
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -63,7 +63,7 @@ fun RentCalculatorDialog(
                             modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Calculator, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Calculate, null, tint = Color.White, modifier = Modifier.size(20.dp))
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))

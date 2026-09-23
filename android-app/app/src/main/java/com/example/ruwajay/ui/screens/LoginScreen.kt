@@ -53,12 +53,28 @@ import com.example.ruwajay.ui.theme.BrandTerracota
 import com.example.ruwajay.ui.theme.BrandTextPrimary
 import com.example.ruwajay.ui.theme.BrandTextSecondary
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.ruwajay.R
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Stars
+
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isRegister by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf("seeker") } // "seeker" or "owner"
+    var phone by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val authRepository = remember { AuthRepository() }
@@ -78,59 +94,112 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
             .padding(horizontal = 16.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-        // Logo
-        Text("R", color = BrandTerracota, fontWeight = FontWeight.ExtraBold, fontSize = 52.sp)
-        Text("RuwaJay", color = BrandTextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 30.sp)
+        // Logo Oficial
+        Image(
+            painter = painterResource(id = R.drawable.ic_logo),
+            contentDescription = "RuwaJay Logo",
+            modifier = Modifier
+                .size(100.dp)
+                .clip(CircleShape)
+                .background(Color.White, CircleShape)
+                .padding(4.dp)
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("RuwaJay", color = BrandTextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp, letterSpacing = (-0.5).sp)
         Text(
             if (isRegister) "Crea tu cuenta gratuita" else "Bienvenido de vuelta",
             color = BrandGold,
             fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(36.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-        // Form card
+        // Form card con animación
         androidx.compose.material3.Surface(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(28.dp),
             color = Color.White,
+            shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    if (isRegister) "Crear Cuenta" else "Iniciar Sesión",
-                    fontWeight = FontWeight.ExtraBold,
-                    color = BrandTextPrimary,
-                    fontSize = 20.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+            Column(modifier = Modifier.padding(24.dp)) {
+                AnimatedContent(
+                    targetState = isRegister,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    },
+                    label = "TitleAnimation"
+                ) { registering ->
+                    Text(
+                        if (registering) "Crear Cuenta" else "Iniciar Sesión",
+                        fontWeight = FontWeight.Black,
+                        color = BrandCafe,
+                        fontSize = 24.sp
+                    )
+                }
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().background(BrandCremaDark, RoundedCornerShape(14.dp)).padding(4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BrandCremaDark.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    TextButton(
+                    val tabModifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                    
+                    Surface(
                         onClick = { isRegister = false },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColors(
-                            containerColor = if (!isRegister) BrandTerracota else Color.Transparent,
-                            contentColor = if (!isRegister) Color.White else BrandTextSecondary
-                        )
-                    ) { Text("Iniciar sesión", fontWeight = FontWeight.Bold) }
-                    TextButton(
+                        modifier = tabModifier,
+                        color = if (!isRegister) Color.White else Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = if (!isRegister) 2.dp else 0.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("Acceder", fontWeight = FontWeight.ExtraBold, color = if (!isRegister) BrandTerracota else BrandTextSecondary, fontSize = 13.sp)
+                        }
+                    }
+                    Surface(
                         onClick = { isRegister = true },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.textButtonColors(
-                            containerColor = if (isRegister) BrandForest else Color.Transparent,
-                            contentColor = if (isRegister) Color.White else BrandTextSecondary
-                        )
-                    ) { Text("Registrarme", fontWeight = FontWeight.Bold) }
+                        modifier = tabModifier,
+                        color = if (isRegister) Color.White else Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = if (isRegister) 2.dp else 0.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("Registrarme", fontWeight = FontWeight.ExtraBold, color = if (isRegister) BrandForest else BrandTextSecondary, fontSize = 13.sp)
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 if (isRegister) {
+                    // Role selection
+                    Text("¿Qué deseas hacer?", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = role == "seeker",
+                            onClick = { role = "seeker" },
+                            label = { Text("Busco vivienda", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        FilterChip(
+                            selected = role == "owner",
+                            onClick = { role = "owner" },
+                            label = { Text("Quiero publicar", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -143,6 +212,21 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    if (role == "owner") {
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = { phone = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Teléfono de contacto") },
+                            leadingIcon = { Icon(Icons.Default.Phone, null, tint = BrandForest) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = fieldColors(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                 }
 
                 OutlinedTextField(
@@ -180,7 +264,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                                 authRepository.sendPasswordReset(email) { result ->
                                     isLoading = false
                                     message = result.exceptionOrNull()?.localizedMessage
-                                        ?: "Revisa tu correo para cambiar la contraseña."
+                                        ?: "Se ha enviado un enlace a tu correo para restablecer tu contraseña."
                                 }
                             }
                         },
@@ -190,7 +274,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                         Text("¿Olvidaste tu contraseña?", color = BrandForest, fontSize = 12.sp)
                     }
                 } else {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 message?.let { text ->
@@ -208,10 +292,15 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                             message = "Completa los campos requeridos."
                             return@Button
                         }
+                        if (isRegister && role == "owner" && phone.isBlank()) {
+                            message = "Se requiere un teléfono para cuentas de propietario."
+                            return@Button
+                        }
+
                         isLoading = true
                         message = null
                         if (isRegister) {
-                            authRepository.register(name, email, password, ::handleResult)
+                            authRepository.register(name, email, password, role, phone.takeIf { it.isNotBlank() }, ::handleResult)
                         } else {
                             authRepository.signIn(email, password, ::handleResult)
                         }

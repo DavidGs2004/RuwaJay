@@ -1,5 +1,8 @@
 package com.example.ruwajay.ui.screens
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -32,6 +36,7 @@ import com.example.ruwajay.ui.theme.*
 import com.example.ruwajay.ui.components.OsmMapView
 import com.example.ruwajay.ui.components.OsmMarker
 import org.osmdroid.util.GeoPoint
+import kotlinx.coroutines.delay
 
 @Composable
 fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
@@ -42,6 +47,13 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
     var maxPriceFilter by remember { mutableStateOf<Int?>(null) }
     var comparedPropertyIds by remember { mutableStateOf(setOf<String>()) }
     var showCompareDialog by remember { mutableStateOf(false) }
+    
+    // Feedback de carga inicial
+    var isInitialLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(800)
+        isInitialLoading = false
+    }
 
     val filters = listOf("todos", "casa", "apartamento", "disponible", "reservada")
     val allProperties = rememberProperties()
@@ -66,7 +78,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                 .fillMaxSize()
                 .background(BrandCrema)
         ) {
-            // Header
+            // ── HEADER REFINADO ──
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -82,74 +94,101 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                         text = "Explorar Viviendas",
                         color = BrandForest,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 22.sp
+                        fontSize = 26.sp,
+                        letterSpacing = (-0.5).sp
                     )
                     
-                    // Toggle Vista
-                    Row(
-                        modifier = Modifier
-                            .background(Color.White, RoundedCornerShape(12.dp))
-                            .padding(2.dp)
+                    // Toggle Vista Estilizado
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(14.dp),
+                        shadowElevation = 2.dp
                     ) {
-                        val listSelected = viewMode == "lista"
-                        Surface(
-                            onClick = { viewMode = "lista" },
-                            color = if (listSelected) BrandForest else Color.Transparent,
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.List,
-                                contentDescription = "Lista",
-                                tint = if (listSelected) Color.White else BrandTextMuted,
-                                modifier = Modifier.padding(8.dp).size(20.dp)
-                            )
-                        }
-                        Surface(
-                            onClick = { viewMode = "mapa" },
-                            color = if (!listSelected) BrandForest else Color.Transparent,
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Map,
-                                contentDescription = "Mapa",
-                                tint = if (!listSelected) Color.White else BrandTextMuted,
-                                modifier = Modifier.padding(8.dp).size(20.dp)
-                            )
+                        Row(modifier = Modifier.padding(2.dp)) {
+                            val listSelected = viewMode == "lista"
+                            
+                            IconButton(
+                                onClick = { viewMode = "lista" },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        if (listSelected) BrandForest else Color.Transparent,
+                                        RoundedCornerShape(11.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    Icons.Default.List, 
+                                    null, 
+                                    tint = if (listSelected) Color.White else BrandTextMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewMode = "mapa" },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        if (!listSelected) BrandForest else Color.Transparent,
+                                        RoundedCornerShape(11.dp)
+                                    )
+                            ) {
+                                Icon(
+                                    Icons.Default.Map, 
+                                    null, 
+                                    tint = if (!listSelected) Color.White else BrandTextMuted,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
                 
                 Text(
-                    text = "${filtered.size} propiedades encontradas",
+                    text = if (isInitialLoading) "Cargando lo mejor para ti..." else "${filtered.size} opciones encontradas en Guatemala",
                     color = BrandTextSecondary,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = { searchText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Buscar por zona, tipo...", color = BrandTextMuted) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = BrandForest)
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BrandForest,
-                        unfocusedBorderColor = BrandCremaDark,
-                        focusedTextColor = BrandTextPrimary,
-                        unfocusedTextColor = BrandTextPrimary,
-                        cursorColor = BrandForest,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Barra de búsqueda con elevación
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Zona, colonia o ciudad...", color = BrandTextMuted) },
+                        leadingIcon = { Icon(Icons.Default.Search, null, tint = BrandForest) },
+                        trailingIcon = { 
+                            if (searchText.isNotEmpty()) {
+                                IconButton(onClick = { searchText = "" }) {
+                                    Icon(Icons.Default.Close, null, tint = BrandTextMuted)
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            cursorColor = BrandForest
+                        ),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LazyRow(
@@ -160,12 +199,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                             FilterChip(
                                 selected = selectedFilter == filter,
                                 onClick = { selectedFilter = filter },
-                                label = {
-                                    Text(
-                                        text = filter.replaceFirstChar { it.uppercase() },
-                                        fontSize = 12.sp
-                                    )
-                                },
+                                label = { Text(filter.replaceFirstChar { it.uppercase() }, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = BrandTerracota,
                                     selectedLabelColor = Color.White,
@@ -177,17 +211,22 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                                     selected = selectedFilter == filter,
                                     selectedBorderColor = BrandTerracota,
                                     borderColor = BrandCremaDark
-                                )
+                                ),
+                                shape = RoundedCornerShape(12.dp)
                             )
                         }
                     }
                     
-                    // Botón Calculadora
+                    Spacer(Modifier.width(8.dp))
+                    
+                    // Botón Calculadora Animado
                     IconButton(
                         onClick = { showCalculator = true },
-                        modifier = Modifier.background(BrandForest.copy(0.1f), RoundedCornerShape(12.dp))
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(BrandForest.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
                     ) {
-                        Icon(Icons.Default.Calculator, null, tint = BrandForest)
+                        Icon(Icons.Default.Calculator, null, tint = BrandForest, modifier = Modifier.size(20.dp))
                     }
                 }
                 
@@ -195,57 +234,71 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                     Spacer(modifier = Modifier.height(8.dp))
                     SuggestionChip(
                         onClick = { maxPriceFilter = null },
-                        label = { Text("Presupuesto: ≤ Q $maxPriceFilter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Presupuesto: ≤ Q $maxPriceFilter", fontSize = 11.sp, fontWeight = FontWeight.Black) },
                         icon = { Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp)) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(containerColor = BrandForest.copy(0.1f), labelColor = BrandForest)
+                        colors = SuggestionChipDefaults.suggestionChipColors(containerColor = BrandForest.copy(0.1f), labelColor = BrandForest),
+                        shape = RoundedCornerShape(8.dp)
                     )
                 }
             }
 
-            // Contenido
-            if (filtered.isEmpty()) {
-                EmptyState()
-            } else if (viewMode == "mapa") {
-                ExploreMapView(filtered, onPropertyClick)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp, bottom = 100.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filtered) { property ->
-                        PropertyCard(
-                            property = property,
-                            onClick = { onPropertyClick(property.id) },
-                            isCompared = comparedPropertyIds.contains(property.id),
-                            onCompareToggle = { selected ->
-                                if (selected) {
-                                    if (comparedPropertyIds.size < 3) comparedPropertyIds = comparedPropertyIds + property.id
-                                } else {
-                                    comparedPropertyIds = comparedPropertyIds - property.id
+            // ── CONTENIDO CON ANIMACIÓN ──
+            Crossfade(
+                targetState = if (isInitialLoading) "loading" else viewMode,
+                animationSpec = tween(500),
+                label = "ExploreContentTransition"
+            ) { state ->
+                when (state) {
+                    "loading" -> LoadingState()
+                    "mapa" -> ExploreMapView(filtered, onPropertyClick)
+                    else -> {
+                        if (filtered.isEmpty()) {
+                            EmptyState()
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp, bottom = 100.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                items(filtered) { property ->
+                                    PropertyCard(
+                                        property = property,
+                                        onClick = { onPropertyClick(property.id) },
+                                        isCompared = comparedPropertyIds.contains(property.id),
+                                        onCompareToggle = { selected ->
+                                            if (selected) {
+                                                if (comparedPropertyIds.size < 3) comparedPropertyIds = comparedPropertyIds + property.id
+                                            } else {
+                                                comparedPropertyIds = comparedPropertyIds - property.id
+                                            }
+                                        }
+                                    )
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }
         }
         
-        // Botón Flotante Comparar
+        // ── BOTÓN FLOTANTE COMPARAR ──
         if (comparedPropertyIds.size >= 2) {
             ExtendedFloatingActionButton(
                 onClick = { showCompareDialog = true },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp),
                 containerColor = BrandTerracota,
                 contentColor = Color.White,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp),
+                elevation = FloatingActionButtonDefaults.elevation(8.dp)
             ) {
                 Icon(Icons.Default.CompareArrows, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Comparar ${comparedPropertyIds.size} viviendas", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(10.dp))
+                Text("Comparar ${comparedPropertyIds.size} opciones", fontWeight = FontWeight.Black)
             }
         }
 
-        // Diálogo Calculadora
+        // Diálogos
         if (showCalculator) {
             RentCalculatorDialog(
                 onDismiss = { showCalculator = false },
@@ -256,7 +309,6 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
             )
         }
 
-        // Diálogo Comparar
         if (showCompareDialog) {
             PropertyCompareDialog(
                 properties = allProperties.filter { comparedPropertyIds.contains(it.id) },
@@ -266,6 +318,26 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                     onPropertyClick(id)
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun LoadingState() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        repeat(3) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().height(240.dp),
+                color = BrandCremaDark.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = BrandForest.copy(alpha = 0.2f))
+                }
+            }
         }
     }
 }
@@ -300,11 +372,11 @@ fun EmptyState() {
         Icon(
             Icons.Default.Search,
             contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = BrandTextMuted
+            modifier = Modifier.size(80.dp),
+            tint = BrandTextMuted.copy(alpha = 0.4f)
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text("No se encontraron propiedades", color = BrandTextPrimary, fontWeight = FontWeight.Bold)
-        Text("Intenta con otros filtros", color = BrandTextSecondary, fontSize = 13.sp)
+        Text("Sin resultados", color = BrandTextPrimary, fontWeight = FontWeight.Black, fontSize = 20.sp)
+        Text("Prueba cambiando los filtros o la zona", color = BrandTextSecondary, fontSize = 14.sp)
     }
 }

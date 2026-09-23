@@ -19,6 +19,8 @@ class AuthRepository(
         name: String,
         email: String,
         password: String,
+        role: String = "seeker",
+        phone: String? = null,
         onResult: (Result<Unit>) -> Unit
     ) {
         auth.createUserWithEmailAndPassword(email.trim(), password)
@@ -38,7 +40,8 @@ class AuthRepository(
                     "id" to user.uid,
                     "name" to name.trim(),
                     "email" to (user.email ?: email.trim()),
-                    "role" to "seeker",
+                    "role" to role,
+                    "phone" to phone,
                     "createdAt" to System.currentTimeMillis()
                 )
 

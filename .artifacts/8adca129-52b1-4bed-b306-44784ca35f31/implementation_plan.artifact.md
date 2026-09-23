@@ -1,55 +1,35 @@
-# Plan de Sincronización y Mejora de RuwaJay (Web + Móvil)
+# Plan de Unificación de Recuperación de Contraseña
 
-Este plan detalla los pasos necesarios para asegurar que el proyecto Android sea 100% funcional, equivalente a la versión web y que ambos compartan la misma base de datos en Firebase.
+Este plan asegura que la funcionalidad de "Olvidé mi contraseña" funcione correctamente en ambas plataformas utilizando el método estándar de Firebase (enlace por correo electrónico), eliminando procesos obsoletos que dependían del backend anterior.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> Actualmente existe una desconexión técnica entre la Web y la App Móvil:
-> 1. **Autenticación:** La web usa un backend FastAPI (SQLite), mientras que la App usa Firebase Auth directamente. Esto causa que los usuarios creados en un lado no existan en el otro.
-> 2. **Chat:** La web usa WebSockets (FastAPI), y la App usa Firestore. Los mensajes no se sincronizan entre plataformas.
-> 3. **Funcionalidades:** La App móvil carece de la "Calculadora Financiera 30/70" y el "Comparador de Propiedades" presentes en la web.
-
-Propongo unificar todo en **Firebase** para cumplir con el requerimiento de "estar conectados en Firebase".
+> **Cambio de Flujo:** En la Web, eliminaremos el proceso de "ingresar un código de 6 dígitos" (que era para el backend de Python) y lo cambiaremos por el flujo nativo de Firebase: se envía un enlace directamente al correo del usuario para que cambie su clave de forma segura.
 
 ## Proposed Changes
 
-### 📱 Android App (Mejoras de Paridad)
+### 📱 Android App (Ajuste de Mensajería)
 
-#### [MODIFY] [ExploreScreen.kt](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/android-app/app/src/main/java/com/example/ruwajay/ui/screens/ExploreScreen.kt)
-*   Añadir botón para abrir la **Calculadora Financiera 30/70**.
-*   Añadir botón para cambiar a **Vista de Mapa** (actualmente solo tiene lista).
+#### [MODIFY] [LoginScreen.kt](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/android-app/app/src/main/java/com/example/ruwajay/ui/screens/LoginScreen.kt)
+*   Ajustar el mensaje de éxito para que el usuario sepa que debe buscar un **enlace** en su correo, no un código.
 
-#### [NEW] [RentCalculatorDialog.kt](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/android-app/app/src/main/java/com/example/ruwajay/ui/components/RentCalculatorDialog.kt)
-*   Implementar la lógica de asequibilidad (regla 30/70) para sugerir presupuestos de renta basados en ingresos.
+---
 
-#### [NEW] [CompareManager.kt](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/android-app/app/src/main/java/com/example/ruwajay/ui/components/CompareManager.kt)
-*   Permitir seleccionar hasta 3 propiedades y ver una comparativa de precios, amenidades y ubicación.
+### 🌐 Web Frontend (Simplificación)
 
-### 🌐 Web Frontend (Sincronización Total con Firebase)
+#### [MODIFY] [LoginPage.jsx](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/src/pages/LoginPage.jsx)
+*   Simplificar el modo `reset`: ahora solo pedirá el correo y mostrará un mensaje de "Enlace enviado".
+*   Eliminar los pasos 2 (verificar código) y 3 (nueva contraseña dentro de la app), ya que Firebase maneja esto en su propia página segura.
 
 #### [MODIFY] [AuthContext.jsx](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/src/context/AuthContext.jsx)
-*   Cambiar la fuente de verdad de la autenticación de FastAPI a **Firebase Auth**.
-*   Eliminar la dependencia de `syncFirebaseIdentity` y usar el flujo nativo de Firebase para que sea igual a la App.
-
-#### [MODIFY] [ChatContext.jsx](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/src/context/ChatContext.jsx)
-*   Migrar el sistema de chat de WebSockets (FastAPI) a **Firebase Firestore**.
-*   Esto permitirá que un mensaje enviado desde la Web llegue instantáneamente a la App y viceversa.
-
-### ⚙️ Backend & Infraestructura
-
-#### [MODIFY] [firestore.rules](file:///C:/Aplicaciones_Android/proyectoExpo/proyectogithub/RuwaJay/firestore.rules)
-*   Verificar y ajustar las reglas de seguridad para permitir el chat y las propiedades de forma segura.
+*   Limpiar las funciones `verifyResetCode` y `resetPassword` que ya no son necesarias con el flujo de enlace directo.
 
 ---
 
 ## Verification Plan
 
-### Automated Tests
-*   Verificar la inicialización de Firebase en ambas plataformas.
-*   Probar el flujo de registro en Android y verificar que el usuario pueda loguearse en la Web.
-
 ### Manual Verification
-1.  **Flujo de Chat:** Enviar un mensaje desde la Web y recibirlo en el emulador de Android.
-2.  **Publicación:** Publicar una propiedad desde la App y verla reflejada en el catálogo Web.
-3.  **Calculadora:** Abrir la calculadora en Android y verificar que el cálculo de presupuesto sea correcto.
+1.  **Android:** Hacer clic en "¿Olvidaste tu contraseña?", ingresar un correo real y verificar que llegue el email de Firebase.
+2.  **Web:** Hacer clic en "¿Olvidaste tu contraseña?", ingresar el correo y confirmar que el mensaje indique que se envió un enlace.
+3.  **Flujo Completo:** Seguir el enlace del correo y cambiar la contraseña para asegurar que el acceso se recupere.

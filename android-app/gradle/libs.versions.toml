@@ -14,6 +14,7 @@ firebaseBom = "33.7.0"
 playServicesLocation = "21.3.0"
 mapsCompose = "6.4.1"
 playServicesMaps = "19.1.0"
+osmdroid = "6.1.18"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

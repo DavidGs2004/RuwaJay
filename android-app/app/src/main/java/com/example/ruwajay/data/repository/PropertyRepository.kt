@@ -15,6 +15,7 @@ import com.example.ruwajay.data.model.Location
 import com.example.ruwajay.data.model.Property
 import com.example.ruwajay.data.model.PropertyFeatures
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 
@@ -22,15 +23,13 @@ import com.google.firebase.storage.FirebaseStorage
 fun rememberProperties(
     firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ): List<Property> {
-    var properties by remember { mutableStateOf(MockDataRepository.properties) }
+    var properties by remember { mutableStateOf(emptyList<Property>()) }
 
     DisposableEffect(firestore) {
         val listener = firestore.collection("properties")
-            .whereEqualTo("status", "disponible")
             .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
-                val remoteProperties = snapshot.documents.mapNotNull(::propertyFromDocument)
-                if (remoteProperties.isNotEmpty()) properties = remoteProperties
+                if (error != null || snapshot == null) return@addSnapshotListener
+                properties = snapshot.documents.mapNotNull(::propertyFromDocument)
             }
 
         onDispose { listener.remove() }
@@ -52,6 +51,7 @@ fun publishProperty(
     exactAddress: String,
     bedrooms: Int,
     bathrooms: Int,
+    coordinates: Coordinates? = null,
     imageUris: List<Uri> = emptyList(),
     contentResolver: ContentResolver? = null,
     onResult: (Result<Unit>) -> Unit,
@@ -71,7 +71,7 @@ fun publishProperty(
         "description" to description.trim(),
         "price" to price,
         "deposit" to deposit,
-        "currency" to "GTQ",
+        "currency" to "Q",
         "type" to type,
         "status" to "disponible",
         "amenities" to emptyList<String>(),
@@ -90,9 +90,10 @@ fun publishProperty(
             "exactAddress" to exactAddress.trim(),
             "address" to exactAddress.trim(),
             "city" to municipality.trim(),
-            "mapCoordinates" to null
+            "mapCoordinates" to coordinates?.let { mapOf("lat" to it.lat, "lng" to it.lng) }
         ),
-        "createdAt" to System.currentTimeMillis()
+        "coordinates" to coordinates?.let { mapOf("lat" to it.lat, "lng" to it.lng) },
+        "createdAt" to FieldValue.serverTimestamp()
     )
 
     val propertyReference = firestore.collection("properties").document()
