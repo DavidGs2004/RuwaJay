@@ -26,6 +26,9 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +55,7 @@ import com.example.ruwajay.ui.theme.BrandGoldMuted
 import com.example.ruwajay.ui.theme.BrandTerracota
 import com.example.ruwajay.ui.theme.BrandTextPrimary
 import com.example.ruwajay.ui.theme.BrandTextSecondary
+import com.example.ruwajay.ui.theme.BrandCafe
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -337,6 +341,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = BrandTextPrimary,
+    unfocusedTextColor = BrandTextPrimary,
     focusedBorderColor = BrandForest,
     unfocusedBorderColor = BrandCremaDark,
     focusedLabelColor = BrandForest,

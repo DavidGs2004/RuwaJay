@@ -60,7 +60,6 @@ import com.example.ruwajay.data.repository.rememberProperties
 import com.example.ruwajay.ui.components.PropertyReviews
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.example.ruwajay.ui.components.AmenityChip
 import com.example.ruwajay.ui.theme.*
 import com.example.ruwajay.ui.components.OsmMapView
 import com.example.ruwajay.ui.components.OsmMarker
@@ -328,4 +327,18 @@ fun PropertyDetailScreen(
 private fun SectionTitle(title: String) {
     Text(title, color = BrandCafe, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
     Spacer(Modifier.height(6.dp))
+}
+
+@Composable
+fun AmenityChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(BrandCrema, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+    ) {
+        Icon(icon, null, tint = BrandForest, modifier = Modifier.size(13.dp))
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(text = label, fontSize = 11.sp, color = BrandCafe, fontWeight = FontWeight.Bold)
+    }
 }

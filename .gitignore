@@ -32,3 +32,5 @@ android-app/android-app
 *.njsproj
 *.sln
 *.sw?
+.firebase/
+

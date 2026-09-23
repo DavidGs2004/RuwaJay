@@ -11,7 +11,7 @@ import {
   verifyPasswordResetCode,
   confirmPasswordReset
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { firebaseAuth, firestore, firebaseWebEnabled } from '../lib/firebase';
 
 const AuthContext = createContext(null);

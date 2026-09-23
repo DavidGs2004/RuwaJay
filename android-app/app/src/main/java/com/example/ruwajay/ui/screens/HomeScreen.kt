@@ -194,6 +194,8 @@ fun HomeScreen(
                         },
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = BrandTextPrimary,
+                            unfocusedTextColor = BrandTextPrimary,
                             focusedBorderColor = BrandForest,
                             unfocusedBorderColor = BrandCremaDark,
                             focusedContainerColor = Color.White,

@@ -29,7 +29,9 @@ class MainActivity : ComponentActivity() {
                 // Rutas donde NO mostramos la barra inferior
                 val hiddenNavRoutes = listOf(
                     Screen.PropertyDetail.route,
-                    Screen.Login.route
+                    Screen.Login.route,
+                    Screen.Chat.route,
+                    Screen.Route.route
                 )
                 val showBottomNav = hiddenNavRoutes.none { currentRoute?.startsWith(it.split("/")[0]) == true }
 

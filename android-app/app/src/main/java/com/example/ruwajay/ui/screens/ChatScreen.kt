@@ -122,11 +122,15 @@ fun ChatScreen(
                             value = draftText,
                             onValueChange = { draftText = it },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Mensaje...", fontSize = 14.sp) },
+                            placeholder = { Text("Mensaje...", fontSize = 14.sp, color = BrandTextMuted) },
                             shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = BrandCafe,
+                                unfocusedTextColor = BrandCafe,
                                 focusedBorderColor = BrandForest,
-                                unfocusedBorderColor = BrandCremaDark
+                                unfocusedBorderColor = BrandCremaDark,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
                             ),
                             maxLines = 3
                         )
@@ -139,7 +143,12 @@ fun ChatScreen(
                                 }
                             },
                             enabled = draftText.isNotBlank(),
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = BrandForest, contentColor = Color.White)
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = BrandForest, 
+                                contentColor = Color.White,
+                                disabledContainerColor = BrandForest.copy(alpha = 0.3f),
+                                disabledContentColor = Color.White.copy(alpha = 0.6f)
+                            )
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(18.dp))
                         }

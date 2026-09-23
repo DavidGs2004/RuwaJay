@@ -11,11 +11,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Calculator
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material3.*
@@ -159,6 +161,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                     shadowElevation = 4.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    val focusManager = LocalFocusManager.current
                     OutlinedTextField(
                         value = searchText,
                         onValueChange = { searchText = it },
@@ -166,14 +169,21 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                         placeholder = { Text("Zona, colonia o ciudad...", color = BrandTextMuted) },
                         leadingIcon = { Icon(Icons.Default.Search, null, tint = BrandForest) },
                         trailingIcon = { 
-                            if (searchText.isNotEmpty()) {
-                                IconButton(onClick = { searchText = "" }) {
-                                    Icon(Icons.Default.Close, null, tint = BrandTextMuted)
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
+                                if (searchText.isNotEmpty()) {
+                                    IconButton(onClick = { searchText = "" }) {
+                                        Icon(Icons.Default.Close, null, tint = BrandTextMuted)
+                                    }
+                                }
+                                IconButton(onClick = { focusManager.clearFocus() }) {
+                                    Icon(Icons.Default.Search, "Buscar", tint = BrandForest)
                                 }
                             }
                         },
                         shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = BrandTextPrimary,
+                            unfocusedTextColor = BrandTextPrimary,
                             focusedBorderColor = Color.Transparent,
                             unfocusedBorderColor = Color.Transparent,
                             focusedContainerColor = Color.Transparent,
@@ -181,7 +191,8 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                             cursorColor = BrandForest
                         ),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
                     )
                 }
                 
@@ -226,7 +237,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                             .size(42.dp)
                             .background(BrandForest.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
                     ) {
-                        Icon(Icons.Default.Calculator, null, tint = BrandForest, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Calculate, null, tint = BrandForest, modifier = Modifier.size(20.dp))
                     }
                 }
                 
@@ -256,7 +267,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                             EmptyState()
                         } else {
                             LazyColumn(
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp, bottom = 100.dp),
+                                contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 100.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 items(filtered) { property ->
