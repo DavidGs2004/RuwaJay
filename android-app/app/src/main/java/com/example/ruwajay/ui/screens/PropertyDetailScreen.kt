@@ -57,6 +57,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.data.repository.rememberProperties
+import com.example.ruwajay.data.repository.ChatRepository
+import androidx.compose.material3.CircularProgressIndicator
 import com.example.ruwajay.ui.components.PropertyReviews
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -69,7 +71,7 @@ import org.osmdroid.util.GeoPoint
 fun PropertyDetailScreen(
     propertyId: String,
     onNavigateBack: () -> Unit = {},
-    onChatClick: () -> Unit = {},
+    onChatClick: (String) -> Unit = {},
     onRouteClick: () -> Unit = {}
 ) {
     val property = rememberProperties().find { it.id == propertyId }
@@ -81,6 +83,8 @@ fun PropertyDetailScreen(
     val firebaseUser = FirebaseAuth.getInstance().currentUser
     var isFavorite by remember(propertyId, firebaseUser?.uid) { mutableStateOf(false) }
     var reviewCount by remember(propertyId) { mutableStateOf(0) }
+    val chatRepo = remember { ChatRepository() }
+    var isCreatingChat by remember { mutableStateOf(false) }
 
     LaunchedEffect(propertyId, firebaseUser?.uid) {
         FirebaseFirestore.getInstance().collection("properties").document(propertyId)
@@ -298,14 +302,34 @@ fun PropertyDetailScreen(
             // Action Buttons
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = onChatClick,
+                onClick = {
+                    if (isCreatingChat) return@Button
+                    isCreatingChat = true
+                    chatRepo.getOrCreateConversation(
+                        propertyId = property.id,
+                        ownerId = property.ownerId,
+                        propertyTitle = property.title
+                    ) { result ->
+                        isCreatingChat = false
+                        result.onSuccess { convId ->
+                            onChatClick(convId)
+                        }.onFailure {
+                            onChatClick("")
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandForest)
+                colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
+                enabled = !isCreatingChat
             ) {
-                Icon(Icons.Default.Chat, null, tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Contactar propietario", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                if (isCreatingChat) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.Chat, null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Contactar propietario", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
             }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(

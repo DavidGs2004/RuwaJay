@@ -21,6 +21,52 @@ class ChatRepository(
                 onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
             }
 
+    fun getOrCreateConversation(
+        propertyId: String,
+        ownerId: String,
+        propertyTitle: String,
+        onResult: (Result<String>) -> Unit
+    ) {
+        val currentUser = auth.currentUser
+        if (currentUser == null) {
+            onResult(Result.failure(Exception("Debes iniciar sesión para iniciar un chat.")))
+            return
+        }
+
+        firestore.collection("conversations")
+            .whereEqualTo("propertyId", propertyId)
+            .whereArrayContains("participants", currentUser.uid)
+            .get()
+            .addOnSuccessListener { querySnapshot ->
+                if (!querySnapshot.isEmpty) {
+                    val existingDoc = querySnapshot.documents.first()
+                    onResult(Result.success(existingDoc.id))
+                } else {
+                    val targetOwnerId = if (ownerId.isNotBlank()) ownerId else "owner-1"
+                    val newConversation = mapOf(
+                        "propertyId" to propertyId,
+                        "ownerId" to targetOwnerId,
+                        "propertyTitle" to propertyTitle,
+                        "participants" to listOf(currentUser.uid, targetOwnerId),
+                        "lastMessage" to "Consulta sobre $propertyTitle",
+                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                        "lastSenderId" to currentUser.uid
+                    )
+
+                    firestore.collection("conversations").add(newConversation)
+                        .addOnSuccessListener { docRef ->
+                            onResult(Result.success(docRef.id))
+                        }
+                        .addOnFailureListener { error ->
+                            onResult(Result.failure(error))
+                        }
+                }
+            }
+            .addOnFailureListener { error ->
+                onResult(Result.failure(error))
+            }
+    }
+
     fun observeMessages(roomId: String, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
             .orderBy("createdAt", Query.Direction.ASCENDING)

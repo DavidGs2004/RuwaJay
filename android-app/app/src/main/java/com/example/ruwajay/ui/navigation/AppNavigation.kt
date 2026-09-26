@@ -46,7 +46,13 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             PropertyDetailScreen(
                 propertyId = id,
                 onNavigateBack = { navController.popBackStack() },
-                onChatClick = { navController.navigate(Screen.Inbox.route) },
+                onChatClick = { conversationId ->
+                    if (conversationId.isNotBlank()) {
+                        navController.navigate(Screen.Chat.createRoute(conversationId))
+                    } else {
+                        navController.navigate(Screen.Inbox.route)
+                    }
+                },
                 onRouteClick = { navController.navigate(Screen.Route.createRoute(id)) }
             )
         }

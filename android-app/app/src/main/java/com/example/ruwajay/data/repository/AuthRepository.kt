@@ -52,10 +52,11 @@ class AuthRepository(
     }
 
     fun sendPasswordReset(email: String, onResult: (Result<Unit>) -> Unit) {
+        auth.setLanguageCode("es")
         auth.sendPasswordResetEmail(email.trim())
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) onResult(Result.success(Unit))
-                else onResult(Result.failure(task.exception ?: Exception("No se pudo enviar el correo.")))
+                else onResult(Result.failure(task.exception ?: Exception("No se pudo enviar el correo de recuperación.")))
             }
     }
 }

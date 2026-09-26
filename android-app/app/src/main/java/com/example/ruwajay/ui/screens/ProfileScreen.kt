@@ -17,11 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ruwajay.data.repository.rememberProperties
+import com.example.ruwajay.ui.components.PropertyCard
 import com.example.ruwajay.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -41,6 +41,8 @@ fun ProfileScreen(
     var currentUser by remember { mutableStateOf(auth.currentUser) }
     var userData by remember { mutableStateOf<Map<String, Any>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var favoriteIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var chatsCount by remember { mutableStateOf(0) }
 
     // Listen for Auth changes (Login/Logout)
     DisposableEffect(Unit) {
@@ -48,6 +50,8 @@ fun ProfileScreen(
             currentUser = firebaseAuth.currentUser
             if (firebaseAuth.currentUser == null) {
                 userData = null
+                favoriteIds = emptyList()
+                chatsCount = 0
                 isLoading = false
             }
         }
@@ -58,17 +62,42 @@ fun ProfileScreen(
     // Real-time listener for user profile data in Firestore
     DisposableEffect(currentUser?.uid) {
         var listener: ListenerRegistration? = null
+        var favListener: ListenerRegistration? = null
+        var chatListener: ListenerRegistration? = null
+
         if (currentUser != null) {
             isLoading = true
-            listener = firestore.collection("users").document(currentUser!!.uid)
+            val uid = currentUser!!.uid
+            
+            listener = firestore.collection("users").document(uid)
                 .addSnapshotListener { snapshot, error ->
                     isLoading = false
                     if (error == null && snapshot != null) {
                         userData = snapshot.data
                     }
                 }
+
+            favListener = firestore.collection("users").document(uid)
+                .collection("favorites")
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        favoriteIds = snapshot.documents.map { it.id }
+                    }
+                }
+
+            chatListener = firestore.collection("conversations")
+                .whereArrayContains("participants", uid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        chatsCount = snapshot.size()
+                    }
+                }
         }
-        onDispose { listener?.remove() }
+        onDispose {
+            listener?.remove()
+            favListener?.remove()
+            chatListener?.remove()
+        }
     }
 
     // Derived values
@@ -106,8 +135,12 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Stats Row (could be real in future)
-            StatsRow()
+            // Stats Row
+            StatsRow(
+                likesCount = favoriteIds.size.toString(),
+                visitasCount = "0",
+                chatsCount = chatsCount.toString()
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -116,7 +149,7 @@ fun ProfileScreen(
 
             // Tab Content
             when (activeTab) {
-                "favoritos" -> FavoritosTab(onExploreClick = onExploreClick)
+                "favoritos" -> FavoritosTab(favoriteIds = favoriteIds, onExploreClick = onExploreClick)
                 "visitas" -> VisitasTab()
                 "configuracion" -> ConfiguracionTab(
                     userName = userName,
@@ -256,11 +289,11 @@ private fun ProfileHeader(
 }
 
 @Composable
-private fun StatsRow() {
+private fun StatsRow(likesCount: String, visitasCount: String, chatsCount: String) {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        StatCard("0", "Likes", BrandGold, modifier = Modifier.weight(1f))
-        StatCard("0", "Visitas", BrandForest, modifier = Modifier.weight(1f))
-        StatCard("0", "Chats", BrandCafe, modifier = Modifier.weight(1f))
+        StatCard(likesCount, "Favoritos", BrandGold, modifier = Modifier.weight(1f))
+        StatCard(visitasCount, "Citas", BrandForest, modifier = Modifier.weight(1f))
+        StatCard(chatsCount, "Chats", BrandCafe, modifier = Modifier.weight(1f))
     }
 }
 
@@ -286,9 +319,51 @@ private fun TabSelector(activeTab: String, onTabChange: (String) -> Unit) {
     }
 }
 
-@Composable fun FavoritosTab(onExploreClick: () -> Unit) { /* Unchanged but using real context eventually */ }
-@Composable fun VisitasTab() { /* Placeholder */ }
-@Composable fun ConfiguracionTab(userName: String, userEmail: String, userPhone: String, userRole: String, isVerified: Boolean, onInboxClick: () -> Unit) {
+@Composable
+fun FavoritosTab(favoriteIds: List<String>, onExploreClick: () -> Unit) {
+    val allProperties = rememberProperties()
+    val favoritedProperties = remember(favoriteIds, allProperties) {
+        allProperties.filter { favoriteIds.contains(it.id) }
+    }
+
+    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (favoritedProperties.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.FavoriteBorder, null, modifier = Modifier.size(48.dp), tint = BrandTextMuted)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Aún no tienes propiedades favoritas", fontWeight = FontWeight.Bold, color = BrandCafe)
+                Text("Toca el corazón en cualquier propiedad para guardarla aquí", fontSize = 12.sp, color = BrandTextMuted)
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = onExploreClick, colors = ButtonDefaults.buttonColors(containerColor = BrandForest)) {
+                    Text("Explorar Propiedades")
+                }
+            }
+        } else {
+            favoritedProperties.forEach { property ->
+                PropertyCard(property = property)
+            }
+        }
+    }
+}
+
+@Composable
+fun VisitasTab() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(Icons.Default.DateRange, null, modifier = Modifier.size(48.dp), tint = BrandForest)
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("No tienes visitas programadas", fontWeight = FontWeight.Bold, color = BrandCafe)
+        Text("Contacta al propietario de una vivienda para agendar una cita", fontSize = 12.sp, color = BrandTextMuted)
+    }
+}
+
+@Composable
+fun ConfiguracionTab(userName: String, userEmail: String, userPhone: String, userRole: String, isVerified: Boolean, onInboxClick: () -> Unit) {
     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         InfoItem(Icons.Default.Person, "Nombre", userName)
         InfoItem(Icons.Default.Email, "Email", userEmail)
@@ -300,7 +375,8 @@ private fun TabSelector(activeTab: String, onTabChange: (String) -> Unit) {
     }
 }
 
-@Composable fun InfoItem(icon: ImageVector, label: String, value: String) {
+@Composable
+fun InfoItem(icon: ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = BrandForest, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(12.dp))

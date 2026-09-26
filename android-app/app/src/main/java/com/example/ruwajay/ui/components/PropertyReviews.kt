@@ -20,19 +20,62 @@ import androidx.compose.ui.unit.sp
 import com.example.ruwajay.data.model.Review
 import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.Timestamp
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun PropertyReviews(propertyId: String, propertyTitle: String) {
-    var reviews by remember { 
-        mutableStateOf(MockDataRepository.reviews.filter { it.propertyId == propertyId }) 
-    }
+    var firestoreReviews by remember { mutableStateOf<List<Review>>(emptyList()) }
     var showAddModal by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf("") }
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    val auth = remember { FirebaseAuth.getInstance() }
+
+    DisposableEffect(propertyId) {
+        val listener = firestore.collection("properties")
+            .document(propertyId)
+            .collection("reviews")
+            .addSnapshotListener { snapshot, error ->
+                if (error == null && snapshot != null) {
+                    val loaded = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            val ts = doc.get("createdAt") as? Timestamp
+                            val dateStr = ts?.let {
+                                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it.toDate())
+                            } ?: "Reciente"
+
+                            Review(
+                                id = doc.id,
+                                propertyId = propertyId,
+                                userName = doc.getString("userName") ?: "Inquilino",
+                                rating = (doc.get("rating") as? Number)?.toDouble() ?: 5.0,
+                                date = dateStr,
+                                verifiedTenant = doc.getBoolean("verifiedTenant") ?: true,
+                                comment = doc.getString("comment") ?: "",
+                                tags = (doc.get("tags") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                                isNew = false
+                            )
+                        } catch (_: Exception) { null }
+                    }
+                    firestoreReviews = loaded
+                }
+            }
+        onDispose { listener.remove() }
+    }
+
+    val displayReviews = remember(firestoreReviews) {
+        if (firestoreReviews.isNotEmpty()) firestoreReviews
+        else MockDataRepository.reviews.filter { it.propertyId == propertyId }
+    }
     
-    val stats = remember(reviews) {
-        if (reviews.isEmpty()) return@remember Pair(5.0, 0)
-        val avg = reviews.map { it.rating }.average()
-        Pair(avg, reviews.size)
+    val stats = remember(displayReviews) {
+        if (displayReviews.isEmpty()) return@remember Pair(5.0, 0)
+        val avg = displayReviews.map { it.rating }.average()
+        Pair(avg, displayReviews.size)
     }
 
     Column(
@@ -137,18 +180,24 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
             AddReviewForm(
                 onCancel = { showAddModal = false },
                 onSubmit = { rating, comment, tags ->
-                    val newReview = Review(
-                        id = "rev-${System.currentTimeMillis()}",
-                        propertyId = propertyId,
-                        userName = "Miguel Cotzojay", // Simulated logged in user
-                        rating = rating.toDouble(),
-                        date = "Ahora",
-                        verifiedTenant = true,
-                        comment = comment,
-                        tags = tags,
-                        isNew = true
+                    val currentUser = auth.currentUser
+                    val nameToUse = currentUser?.displayName ?: "Inquilino Verificado"
+                    val payload = mapOf(
+                        "propertyId" to propertyId,
+                        "userName" to nameToUse,
+                        "userId" to (currentUser?.uid ?: "anonymous"),
+                        "rating" to rating,
+                        "comment" to comment,
+                        "tags" to tags,
+                        "verifiedTenant" to true,
+                        "createdAt" to FieldValue.serverTimestamp()
                     )
-                    reviews = listOf(newReview) + reviews
+
+                    firestore.collection("properties")
+                        .document(propertyId)
+                        .collection("reviews")
+                        .add(payload)
+
                     showAddModal = false
                     successMessage = "¡Gracias por tu opinión! Tu reseña ha sido publicada con éxito."
                 }
@@ -159,10 +208,10 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
 
         // Reviews List
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            reviews.forEach { review ->
+            displayReviews.forEach { review ->
                 ReviewItem(review)
             }
-            if (reviews.isEmpty()) {
+            if (displayReviews.isEmpty()) {
                 Text(
                     "No hay opiniones todavía. ¡Sé el primero en opinar!",
                     color = BrandTextMuted,

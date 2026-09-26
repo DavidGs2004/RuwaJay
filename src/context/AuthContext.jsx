@@ -232,23 +232,19 @@ export function AuthProvider({ children }) {
     } finally { setIsLoading(false); }
   };
 
-  const requestPasswordReset = (email) => {
+  const requestPasswordReset = async (email) => {
     if (!firebaseWebEnabled || !firebaseAuth) {
       throw new Error('Firebase Web no está configurado.');
     }
     
-    // 1. Forzar idioma a Español
     firebaseAuth.languageCode = 'es';
 
-    // 2. Configurar la redirección a tu aplicación web con el código
-    const actionCodeSettings = {
-      //url: `${window.location.origin}/reset-password`,// si es local comentamos el siguiente para habilitar nuevamente este.
-      // Apuntamos directo a tu Hosting desplegado con la ruta de restablecer
-      url: 'https://ruwa-jay.web.app/reset-password',
-      handleCodeInApp: true,
-    };
-
-    return sendPasswordResetEmail(firebaseAuth, email, actionCodeSettings);
+    try {
+      return await sendPasswordResetEmail(firebaseAuth, email);
+    } catch (error) {
+      console.error("Error al enviar correo de restablecimiento:", error);
+      throw error;
+    }
   };
 
   const updateProfile = async (updates) => {
