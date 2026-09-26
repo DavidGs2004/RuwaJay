@@ -18,6 +18,7 @@ import ChatPage from './pages/ChatPage';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
 import PublishPage from './pages/PublishPage';
+import ResetPasswordPage from './pages/ResetPasswordPage'; // <--- Importamos la nueva página
 import RuwaJayLoader from './components/ui/RuwaJayLoader';
 import PropertyCompareModal from './components/property/PropertyCompareModal';
 import ChatNotificationToast from './components/chat/ChatNotificationToast';
@@ -38,16 +39,25 @@ function RuwaJayRoutes() {
   const isChatRoute = location.pathname === '/chat';
 
   if (isInitializing) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#FAF5EE]"><div className="h-10 w-10 animate-spin rounded-full border-4 border-forest/20 border-t-forest" aria-label="Verificando sesión" /></div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF5EE]">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-forest/20 border-t-forest" aria-label="Verificando sesión" />
+      </div>
+    );
   }
 
   if (isPostAuthLoading) return <RuwaJayLoader />;
 
+  // Rutas accesibles sin haber iniciado sesión
   if (!user) {
     return (
       <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-crema font-sans text-cafe antialiased">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          {/* Ruta pública para restablecer contraseña desde el enlace del correo */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Capturar la URL por defecto que manda Firebase en los correos */}
+          <Route path="/__/auth/action" element={<ResetPasswordPage />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </div>
@@ -67,6 +77,8 @@ function RuwaJayRoutes() {
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="/publicar" element={<PublishPage />} />
+          {/* Si ya está en sesión e intenta entrar aquí, lo redirige al home */}
+          <Route path="/reset-password" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

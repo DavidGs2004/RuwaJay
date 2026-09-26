@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext';
+import { deleteDoc, doc, onSnapshot, collection, setDoc } from 'firebase/firestore';
+import { firestore } from '../lib/firebase';
 
 const FavoritesContext = createContext(null);
 
 export function FavoritesProvider({ children }) {
+  const { user } = useAuth();
   const [favorites, setFavorites] = useState(() => {
     const saved = localStorage.getItem('ruwajay_favorites');
     return saved ? JSON.parse(saved) : [];
@@ -14,6 +18,26 @@ export function FavoritesProvider({ children }) {
   });
 
   useEffect(() => {
+    if (!user || !firestore) {
+      setFavorites([]);
+      return;
+    }
+
+    // Listener en tiempo real para sincronización instantánea entre Web y App
+    const unsubscribe = onSnapshot(
+      collection(firestore, 'users', user.id, 'favorites'),
+      (snapshot) => {
+        setFavorites(snapshot.docs.map((favorite) => favorite.id));
+      },
+      (e) => {
+        console.error("Error listening to favorites from firestore:", e);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.id]);
+
+  useEffect(() => {
     localStorage.setItem('ruwajay_favorites', JSON.stringify(favorites));
   }, [favorites]);
 
@@ -21,13 +45,22 @@ export function FavoritesProvider({ children }) {
     localStorage.setItem('ruwajay_recent_searches', JSON.stringify(recentSearches));
   }, [recentSearches]);
 
-  const toggleFavorite = useCallback((propertyId) => {
-    setFavorites((prev) =>
-      prev.includes(propertyId)
-        ? prev.filter((id) => id !== propertyId)
-        : [...prev, propertyId]
-    );
-  }, []);
+  const toggleFavorite = useCallback(async (propertyId) => {
+    if (!user || !firestore) return;
+
+    const removing = favorites.includes(propertyId);
+
+    try {
+      const favoriteRef = doc(firestore, 'users', user.id, 'favorites', String(propertyId));
+      if (removing) {
+        await deleteDoc(favoriteRef);
+      } else {
+        await setDoc(favoriteRef, { propertyId: String(propertyId), createdAt: Date.now() });
+      }
+    } catch (e) {
+      console.error("Error toggling favorite in firestore:", e);
+    }
+  }, [user, favorites]);
 
   const isFavorite = useCallback(
     (propertyId) => favorites.includes(propertyId),

@@ -62,12 +62,26 @@ export default function ChatPage() {
     }
   }, [activeConversationId, markAsRead]);
 
-  // Scroll to bottom when new messages arrive or when typing
+  // Scroll to bottom refined (intelligent scroll)
   useEffect(() => {
     const feed = messagesFeedRef.current;
     if (!feed) return;
-    feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
+
+    const isAtBottom = feed.scrollHeight - feed.scrollTop <= feed.clientHeight + 150;
+    if (isAtBottom) {
+      feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
+    }
   }, [activeConversation?.messages, typingMap]);
+
+  // Force scroll on first load of conversation
+  useEffect(() => {
+    const feed = messagesFeedRef.current;
+    if (feed && activeConversationId) {
+      setTimeout(() => {
+        feed.scrollTop = feed.scrollHeight;
+      }, 100);
+    }
+  }, [activeConversationId]);
 
   // Simulated call timer
   useEffect(() => {
@@ -463,18 +477,18 @@ export default function ChatPage() {
                   return (
                     <div
                       key={msg.id}
-                      className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-[fade-in_0.15s_ease-out]`}
+                      className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-[fade-in_0.2s_ease-out]`}
                     >
                       <div
-                        className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl p-3.5 shadow-xs ${
+                        className={`relative max-w-[88%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm transition-all hover:shadow-md ${
                           isUser
-                            ? 'bg-[#D9FDD3] text-cafe rounded-br-2xs border border-[#C2E8BC]'
-                            : 'bg-white text-cafe rounded-bl-2xs border border-border/70'
+                            ? 'bg-forest text-white rounded-br-none border border-forest/20'
+                            : 'bg-white text-cafe rounded-bl-none border border-border/50'
                         }`}
                       >
-                        {/* Sender header name */}
-                        <p className={`text-[10px] font-black mb-1 ${isUser ? 'text-forest text-right' : 'text-forest'}`}>
-                          {isUser ? 'Tú (Inquilino)' : activeConversation.participantName}
+                        {/* Sender header name refined */}
+                        <p className={`text-[9px] font-black uppercase tracking-widest mb-1.5 opacity-80 ${isUser ? 'text-white/80 text-right' : 'text-forest'}`}>
+                          {isUser ? 'Enviado por ti' : activeConversation.participantName}
                         </p>
 
                         {/* Image if attached */}
@@ -487,32 +501,32 @@ export default function ChatPage() {
                         {/* Voice Note Simulation */}
                         {msg.isVoice ? (
                           <div className="flex items-center gap-2.5 py-1">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-forest text-white">
+                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isUser ? 'bg-white text-forest' : 'bg-forest text-white'}`}>
                               <Mic size={15} />
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="h-4 w-1 rounded-full bg-forest/60" />
-                              <span className="h-6 w-1 rounded-full bg-forest" />
-                              <span className="h-3 w-1 rounded-full bg-forest/40" />
-                              <span className="h-5 w-1 rounded-full bg-forest/70" />
-                              <span className="h-2 w-1 rounded-full bg-forest/30" />
-                              <span className="h-4 w-1 rounded-full bg-forest/60" />
+                              <span className={`h-4 w-1 rounded-full ${isUser ? 'bg-white/60' : 'bg-forest/60'}`} />
+                              <span className={`h-6 w-1 rounded-full ${isUser ? 'bg-white' : 'bg-forest'}`} />
+                              <span className={`h-3 w-1 rounded-full ${isUser ? 'bg-white/40' : 'bg-forest/40'}`} />
+                              <span className={`h-5 w-1 rounded-full ${isUser ? 'bg-white/70' : 'bg-forest/70'}`} />
+                              <span className={`h-2 w-1 rounded-full ${isUser ? 'bg-white/30' : 'bg-forest/30'}`} />
+                              <span className={`h-4 w-1 rounded-full ${isUser ? 'bg-white/60' : 'bg-forest/60'}`} />
                             </div>
-                            <span className="text-[11px] font-mono font-bold text-text-muted">0:08</span>
+                            <span className={`text-[11px] font-mono font-bold ${isUser ? 'text-white/80' : 'text-text-muted'}`}>0:08</span>
                           </div>
                         ) : (
-                          <p className="text-xs sm:text-sm font-medium leading-relaxed break-words whitespace-pre-wrap">
+                          <p className={`text-xs sm:text-sm font-semibold leading-relaxed break-words whitespace-pre-wrap ${isUser ? 'text-white' : 'text-cafe'}`}>
                             {msg.text}
                           </p>
                         )}
 
                         {/* Timestamp and status check */}
-                        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-text-muted/80">
+                        <div className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] font-bold ${isUser ? 'text-white/70' : 'text-text-muted/70'}`}>
                           <span>{msg.timestamp}</span>
                           {isUser && (
                             <CheckCheck
-                              size={13}
-                              className={msg.status === 'read' ? 'text-[#53BDEB]' : 'text-forest/70'}
+                              size={12}
+                              className={msg.status === 'read' ? 'text-jade' : 'text-white/50'}
                             />
                           )}
                         </div>

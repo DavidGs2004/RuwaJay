@@ -1,26 +1,47 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  verifyPasswordResetCode,
+  confirmPasswordReset
+} from 'firebase/auth';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { firebaseAuth, firestore, firebaseWebEnabled } from '../lib/firebase';
 
 const AuthContext = createContext(null);
-const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-
-async function api(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.detail || 'No se pudo completar la solicitud.');
-  return data;
-}
-
 
 export { AVATAR_OPTIONS } from '../data/avatars';
+
+// Configuración de tiempos
+// Modifica este valor para definir los minutos de inactividad antes de mostrar el modal.
+// Para pruebas rápidas de 10 segundos puedes usar: 10 * 1000
+const IDLE_TIME_BEFORE_WARNING_MS = 10 * 1000; 
+const WARNING_COUNTDOWN_SECONDS = 60; 
+const INACTIVITY_STORAGE_KEY = 'ruwajay_last_activity';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isPostAuthLoading, setIsPostAuthLoading] = useState(false);
+
+  // Estados del modal de inactividad
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [countdown, setCountdown] = useState(WARNING_COUNTDOWN_SECONDS);
+
+  const idleTimerRef = useRef(null);
+  const isModalOpenRef = useRef(false);
+
+  // Mantiene sincronizado el ref con el estado para que los event listeners lo lean en tiempo real
+  useEffect(() => {
+    isModalOpenRef.current = showWarningModal;
+  }, [showWarningModal]);
 
   // Load saved profile extras (avatar, bio, verification) from localStorage
   const loadProfileExtras = (baseUser) => {
@@ -38,29 +59,150 @@ export function AuthProvider({ children }) {
     } catch { /* ignore */ }
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem('ruwajay_token');
-    if (!token) { setIsInitializing(false); return; }
-    api('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-      .then((data) => setUser(loadProfileExtras(data.user)))
-      .catch(() => {
-        localStorage.removeItem('ruwajay_token');
-        localStorage.removeItem('ruwajay_user');
-      })
-      .finally(() => setIsInitializing(false));
+  // Función de logout completa
+  const logout = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    setShowWarningModal(false);
+    localStorage.removeItem(INACTIVITY_STORAGE_KEY);
+    return signOut(firebaseAuth);
   }, []);
 
+  // 1. Efecto aislado dedicado exclusivamente a la cuenta regresiva
   useEffect(() => {
-    if (user) localStorage.setItem('ruwajay_user', JSON.stringify(user));
-    else localStorage.removeItem('ruwajay_user');
-  }, [user]);
+    if (!showWarningModal) return;
 
-  const authenticate = async (path, payload) => {
+    setCountdown(WARNING_COUNTDOWN_SECONDS);
+
+    const intervalId = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId);
+          logout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [showWarningModal, logout]);
+
+  // 2. Temporizador para disparar el modal tras periodo de inactividad
+  const resetTimers = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (isModalOpenRef.current) return;
+
+    const now = Date.now();
+    const lastActivity = parseInt(localStorage.getItem(INACTIVITY_STORAGE_KEY) || now.toString(), 10);
+    const elapsed = now - lastActivity;
+
+    if (elapsed >= IDLE_TIME_BEFORE_WARNING_MS) {
+      setShowWarningModal(true);
+      return;
+    }
+
+    idleTimerRef.current = setTimeout(() => {
+      setShowWarningModal(true);
+    }, IDLE_TIME_BEFORE_WARNING_MS - elapsed);
+  }, []);
+
+  // 3. Registrar actividad
+  const recordActivity = useCallback(() => {
+    if (isModalOpenRef.current) return;
+
+    localStorage.setItem(INACTIVITY_STORAGE_KEY, Date.now().toString());
+    resetTimers();
+  }, [resetTimers]);
+
+  // 4. Acción al dar clic en "Sí, sigo en sesión"
+  const handleKeepSessionAlive = () => {
+    setShowWarningModal(false);
+    localStorage.setItem(INACTIVITY_STORAGE_KEY, Date.now().toString());
+    resetTimers();
+  };
+
+  // 5. Monitoreo de eventos en la ventana
+  useEffect(() => {
+    if (!user) {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      setShowWarningModal(false);
+      localStorage.removeItem(INACTIVITY_STORAGE_KEY);
+      return;
+    }
+
+    recordActivity();
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    
+    let lastThrottledTime = 0;
+    const handleUserActivity = () => {
+      if (isModalOpenRef.current) return; // Si el modal está activo, ignora movimientos
+
+      const now = Date.now();
+      if (now - lastThrottledTime > 1000) {
+        lastThrottledTime = now;
+        recordActivity();
+      }
+    };
+
+    const handleStorageChange = (e) => {
+      if (e.key === INACTIVITY_STORAGE_KEY && !isModalOpenRef.current) {
+        resetTimers();
+      }
+    };
+
+    activityEvents.forEach((ev) => window.addEventListener(ev, handleUserActivity, { passive: true }));
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      activityEvents.forEach((ev) => window.removeEventListener(ev, handleUserActivity));
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [user, recordActivity, resetTimers]);
+
+  // Sincronización de Firebase Auth y Firestore
+  useEffect(() => {
+    if (!firebaseWebEnabled || !firebaseAuth) {
+      setIsInitializing(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+      if (firebaseUser) {
+        const userDocRef = doc(firestore, 'users', firebaseUser.uid);
+        const unsubDoc = onSnapshot(userDocRef, (snapshot) => {
+          if (snapshot.exists()) {
+            setUser(loadProfileExtras({ id: firebaseUser.uid, ...snapshot.data() }));
+          } else {
+            setUser(loadProfileExtras({ id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || 'Usuario' }));
+          }
+          setIsInitializing(false);
+        }, (error) => {
+          console.error("Error listening to profile updates:", error);
+          setIsInitializing(false);
+        });
+
+        return () => unsubDoc();
+      } else {
+        setUser(null);
+        setIsInitializing(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const login = async (email, password) => {
+    if (!firebaseWebEnabled || !firebaseAuth || !firestore) {
+      throw new Error('Firebase Web no está configurado. Revisa las variables VITE_FIREBASE_API_KEY y VITE_FIREBASE_APP_ID.');
+    }
+
     setIsLoading(true);
     try {
-      const data = await api(path, { method: 'POST', body: JSON.stringify(payload) });
-      localStorage.setItem('ruwajay_token', data.access_token);
-      const enrichedUser = loadProfileExtras(data.user);
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      const userDoc = await getDoc(doc(firestore, 'users', credential.user.uid));
+      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...(userDoc.exists() ? userDoc.data() : {}) });
       setUser(enrichedUser);
       setIsPostAuthLoading(true);
       window.setTimeout(() => setIsPostAuthLoading(false), 3000);
@@ -68,24 +210,59 @@ export function AuthProvider({ children }) {
     } finally { setIsLoading(false); }
   };
 
-  const login = (email, password) => authenticate('/api/auth/login', { email, password });
-  const register = (name, email, password, role, phone) => authenticate('/api/auth/register', { name, email, password, role, phone });
-  const requestPasswordReset = (email) => api('/api/auth/password/request', { method: 'POST', body: JSON.stringify({ email }) });
-  const verifyResetCode = (email, code) => api('/api/auth/password/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
-  const resetPassword = (resetToken, password) => api('/api/auth/password/reset', { method: 'POST', body: JSON.stringify({ reset_token: resetToken, password }) });
+  const register = async (name, email, password, role, phone) => {
+    setIsLoading(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      const profile = {
+        name: name.trim(),
+        email: email.trim(),
+        role: role || 'seeker',
+        phone: phone || null,
+        createdAt: serverTimestamp(),
+      };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('ruwajay_user');
-    localStorage.removeItem('ruwajay_token');
+      await setDoc(doc(firestore, 'users', credential.user.uid), profile);
+
+      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...profile });
+      setUser(enrichedUser);
+      setIsPostAuthLoading(true);
+      window.setTimeout(() => setIsPostAuthLoading(false), 3000);
+      return enrichedUser;
+    } finally { setIsLoading(false); }
   };
 
-  /** Update profile fields (name, phone, bio, avatarId, avatarImage, dpiData, verified) and persist extras locally */
-  const updateProfile = (updates) => {
+  const requestPasswordReset = async (email) => {
+    if (!firebaseWebEnabled || !firebaseAuth) {
+      throw new Error('Firebase Web no está configurado.');
+    }
+    
+    firebaseAuth.languageCode = 'es';
+
+    try {
+      return await sendPasswordResetEmail(firebaseAuth, email);
+    } catch (error) {
+      console.error("Error al enviar correo de restablecimiento:", error);
+      throw error;
+    }
+  };
+
+  const updateProfile = async (updates) => {
+    if (!user) return;
+
+    const firestoreUpdates = {};
+    if ('name' in updates) firestoreUpdates.name = updates.name;
+    if ('phone' in updates) firestoreUpdates.phone = updates.phone;
+
+    if (Object.keys(firestoreUpdates).length > 0) {
+      try {
+        await setDoc(doc(firestore, 'users', user.id), firestoreUpdates, { merge: true });
+      } catch (e) { console.error("Error updating firestore profile:", e); }
+    }
+
     setUser((previous) => {
       if (!previous) return previous;
       const next = { ...previous, ...updates };
-      // Persist profile-specific extras to localStorage keyed by user ID
       const extras = {};
       if ('avatarId' in updates) extras.avatarId = updates.avatarId;
       if ('avatarImage' in updates) extras.avatarImage = updates.avatarImage;
@@ -99,18 +276,15 @@ export function AuthProvider({ children }) {
     });
   };
 
-  /** Change password (validates current password → sets new password via secure backend API) */
   const changePassword = async (currentPassword, newPassword) => {
-    if (!user) throw new Error('No hay sesión activa.');
-    const token = localStorage.getItem('ruwajay_token');
-    return api('/api/auth/password/change', {
-      method: 'POST',
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) throw new Error('No hay sesión activa.');
+
+    const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+    await reauthenticateWithCredential(firebaseUser, credential);
+    return updatePassword(firebaseUser, newPassword);
   };
 
-  /** Request identity verification (DPI badge + verification data) */
   const requestVerification = (dpiData = {}) => {
     const verifiedData = {
       ...dpiData,
@@ -123,7 +297,6 @@ export function AuthProvider({ children }) {
     return Promise.resolve({ success: true, dpiData: verifiedData });
   };
 
-  /** Safely revoke and purge sensitive DPI identification data */
   const purgeDpiData = () => {
     if (!user) return;
     updateProfile({
@@ -132,7 +305,93 @@ export function AuthProvider({ children }) {
     });
   };
 
-  return <AuthContext.Provider value={{ user, isLoading, isInitializing, isPostAuthLoading, login, register, logout, updateProfile, changePassword, requestVerification, purgeDpiData, requestPasswordReset, verifyResetCode, resetPassword }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      isInitializing, 
+      isPostAuthLoading, 
+      login, 
+      register, 
+      logout, 
+      updateProfile, 
+      changePassword, 
+      requestVerification, 
+      purgeDpiData, 
+      requestPasswordReset 
+    }}>
+      {children}
+
+      {/* Modal de Alerta por Inactividad */}
+      {showWarningModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 99999,
+          backdropFilter: 'blur(3px)'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '420px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            fontFamily: 'inherit'
+          }}>
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>⚠️</div>
+            <h2 style={{ margin: '0 0 12px', fontSize: '22px', color: '#1f2937', fontWeight: 'bold' }}>
+              Alerta de inactividad
+            </h2>
+            <p style={{ margin: '0 0 20px', fontSize: '15px', color: '#4b5563', lineHeight: '1.5' }}>
+              Se cerrará la sesión en <strong style={{ color: '#dc2626', fontSize: '18px' }}>{countdown} segundos</strong>. Da clic abajo para mantenerla activa.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={handleKeepSessionAlive}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#ea580c',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Sí, sigo en sesión
+              </button>
+              <button
+                onClick={logout}
+                style={{
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Cerrar ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
@@ -140,4 +399,3 @@ export function useAuth() {
   if (!context) throw new Error('useAuth debe usarse dentro de AuthProvider');
   return context;
 }
-

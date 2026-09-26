@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "716762704483",
+    "project_id": "ruwa-jay",
+    "storage_bucket": "ruwa-jay.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:716762704483:android:659e87033f566d228ca656",
+        "android_client_info": {
+          "package_name": "com.example.ruwajay"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "716762704483-fttj6cts9juucth2u5mu4m99hbff2to7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.ruwajay",
+            "certificate_hash": "707524ee0a04b5e359fcb22192595b7af32bf86d"
+          }
+        },
+        {
+          "client_id": "716762704483-edmm9mfbjt6u4l834kdsn3okn6c8gqag.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7e7FlB9V6uYtmFAwahY2DyUllKpiKBv8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "716762704483-edmm9mfbjt6u4l834kdsn3okn6c8gqag.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -15,6 +15,7 @@ import PropertyReviews from '../components/property/PropertyReviews';
 import PropertyLightbox from '../components/property/PropertyLightbox';
 import LeaseContractModal from '../components/property/LeaseContractModal';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
+import { subscribeToProperties } from '../lib/propertyService';
 
 function WhatsAppIcon({ size = 18, className = '' }) {
   return (
@@ -37,8 +38,13 @@ export default function PropertyDetailPage() {
   const { position } = useGeolocation();
   const { isInCompare, toggleCompare } = useCompare();
   const { user } = useAuth();
+  const [firebaseProperties, setFirebaseProperties] = useState([]);
 
-  const property = demoProperties.find((p) => p.id === id) || demoProperties[0];
+  useEffect(() => subscribeToProperties(setFirebaseProperties), []);
+
+  const property = firebaseProperties.find((p) => p.id === id)
+    || demoProperties.find((p) => p.id === id)
+    || demoProperties[0];
   const owner = demoOwners.find((o) => o.id === property.ownerId) || demoOwners[0];
   const fav = isFavorite(property.id);
   const inCompare = isInCompare(property.id);
@@ -88,7 +94,7 @@ export default function PropertyDetailPage() {
 
   const currentImages = getCategoryImages().length > 0 ? getCategoryImages() : [property.thumbnail];
 
-  const distance = position
+  const distance = position && property.coordinates?.lat && property.coordinates?.lng
     ? calculateDistance(position.lat, position.lng, property.coordinates.lat, property.coordinates.lng)
     : null;
 

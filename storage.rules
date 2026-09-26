@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /properties/{propertyId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if signedIn();
+    }
+
+    match /properties/{propertyId}/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /chat/{roomId}/{userId}/{fileName} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+  }
+}

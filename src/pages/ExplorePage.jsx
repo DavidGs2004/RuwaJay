@@ -12,6 +12,7 @@ import RuwaSelect from '../components/ui/RuwaSelect';
 import { GUATEMALA_DEPARTMENTS, getZonesForDepartment, getCoordinatesForDepartment, getCoordinatesForLocation } from '../data/guatemalaLocations';
 import SaveSearchModal from '../components/property/SaveSearchModal';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
+import { subscribeToProperties } from '../lib/propertyService';
 
 const MapView = lazy(() => import('../components/map/MapView'));
 
@@ -87,6 +88,9 @@ export default function ExplorePage() {
     searchParams.get('calculator') === 'true' || searchParams.get('calculadora') === 'true'
   );
   const [savedSearches, setSavedSearches] = useState([]);
+  const [firebaseProperties, setFirebaseProperties] = useState([]);
+
+  useEffect(() => subscribeToProperties(setFirebaseProperties), []);
 
   useEffect(() => {
     if (searchParams.get('calculator') === 'true' || searchParams.get('calculadora') === 'true') {
@@ -285,57 +289,11 @@ export default function ExplorePage() {
     }
   }, [position]);
 
-  // Combine demo properties and user custom properties from localStorage
+  // Firestore is the shared source; demo records remain only as a fallback for an empty database.
   const allProperties = useMemo(() => {
-    let custom = [];
-    try {
-      const stored = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-      custom = stored.map((item) => ({
-        id: item.id,
-        type: item.type || 'casa',
-        title: item.title,
-        description: item.description || '',
-        price: Number(item.price) || 3500,
-        deposit: Number(item.deposit) || Number(item.price) || 3500,
-        currency: 'Q',
-        bedrooms: Number(item.bedrooms) || 2,
-        bathrooms: Number(item.bathrooms) || 1,
-        area: 120,
-        areaUnit: 'm²',
-        parking: 1,
-        furnished: false,
-        petsAllowed: true,
-        patio: true,
-        servicesIncluded: ['Agua', 'Seguridad 24/7'],
-        address: {
-          approximate: item.approximateAddress || `${item.zone || 'Zona 10'}, ${item.municipality || 'Guatemala'}`,
-          exact: item.exactAddress || item.approximateAddress || '',
-          department: item.department || 'Guatemala',
-          municipality: item.municipality || 'Guatemala',
-          zone: item.zone || 'Zona 10',
-        },
-        coordinates: {
-          lat: 14.6000 + (Math.random() * 0.04 - 0.02),
-          lng: -90.5100 + (Math.random() * 0.04 - 0.02),
-        },
-        images: {
-          fachada: ['/Casas/cat-familiar.jpg'],
-        },
-        thumbnail: '/Casas/cat-familiar.jpg',
-        thumbnails: ['/Casas/cat-familiar.jpg'],
-        status: item.status || 'disponible',
-        verified: true,
-        visitAvailable: true,
-        availableDate: 'Inmediata',
-        ownerId: item.ownerId || 'current-user',
-        isNew: true,
-        createdAt: item.createdAt || new Date().toISOString(),
-      }));
-    } catch {
-      custom = [];
-    }
-    return [...demoProperties, ...custom];
-  }, []);
+    const merged = firebaseProperties.length > 0 ? firebaseProperties : demoProperties;
+    return Array.from(new Map(merged.map((property) => [property.id, property])).values());
+  }, [firebaseProperties]);
 
   // Filter and sort properties
   const filteredProperties = useMemo(() => {
