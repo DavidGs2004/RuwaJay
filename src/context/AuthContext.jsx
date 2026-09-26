@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -18,11 +18,30 @@ const AuthContext = createContext(null);
 
 export { AVATAR_OPTIONS } from '../data/avatars';
 
+// Configuración de tiempos
+// Modifica este valor para definir los minutos de inactividad antes de mostrar el modal.
+// Para pruebas rápidas de 10 segundos puedes usar: 10 * 1000
+const IDLE_TIME_BEFORE_WARNING_MS = 10 * 1000; 
+const WARNING_COUNTDOWN_SECONDS = 60; 
+const INACTIVITY_STORAGE_KEY = 'ruwajay_last_activity';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isPostAuthLoading, setIsPostAuthLoading] = useState(false);
+
+  // Estados del modal de inactividad
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [countdown, setCountdown] = useState(WARNING_COUNTDOWN_SECONDS);
+
+  const idleTimerRef = useRef(null);
+  const isModalOpenRef = useRef(false);
+
+  // Mantiene sincronizado el ref con el estado para que los event listeners lo lean en tiempo real
+  useEffect(() => {
+    isModalOpenRef.current = showWarningModal;
+  }, [showWarningModal]);
 
   // Load saved profile extras (avatar, bio, verification) from localStorage
   const loadProfileExtras = (baseUser) => {
@@ -40,6 +59,109 @@ export function AuthProvider({ children }) {
     } catch { /* ignore */ }
   };
 
+  // Función de logout completa
+  const logout = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    setShowWarningModal(false);
+    localStorage.removeItem(INACTIVITY_STORAGE_KEY);
+    return signOut(firebaseAuth);
+  }, []);
+
+  // 1. Efecto aislado dedicado exclusivamente a la cuenta regresiva
+  useEffect(() => {
+    if (!showWarningModal) return;
+
+    setCountdown(WARNING_COUNTDOWN_SECONDS);
+
+    const intervalId = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId);
+          logout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [showWarningModal, logout]);
+
+  // 2. Temporizador para disparar el modal tras periodo de inactividad
+  const resetTimers = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (isModalOpenRef.current) return;
+
+    const now = Date.now();
+    const lastActivity = parseInt(localStorage.getItem(INACTIVITY_STORAGE_KEY) || now.toString(), 10);
+    const elapsed = now - lastActivity;
+
+    if (elapsed >= IDLE_TIME_BEFORE_WARNING_MS) {
+      setShowWarningModal(true);
+      return;
+    }
+
+    idleTimerRef.current = setTimeout(() => {
+      setShowWarningModal(true);
+    }, IDLE_TIME_BEFORE_WARNING_MS - elapsed);
+  }, []);
+
+  // 3. Registrar actividad
+  const recordActivity = useCallback(() => {
+    if (isModalOpenRef.current) return;
+
+    localStorage.setItem(INACTIVITY_STORAGE_KEY, Date.now().toString());
+    resetTimers();
+  }, [resetTimers]);
+
+  // 4. Acción al dar clic en "Sí, sigo en sesión"
+  const handleKeepSessionAlive = () => {
+    setShowWarningModal(false);
+    localStorage.setItem(INACTIVITY_STORAGE_KEY, Date.now().toString());
+    resetTimers();
+  };
+
+  // 5. Monitoreo de eventos en la ventana
+  useEffect(() => {
+    if (!user) {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      setShowWarningModal(false);
+      localStorage.removeItem(INACTIVITY_STORAGE_KEY);
+      return;
+    }
+
+    recordActivity();
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    
+    let lastThrottledTime = 0;
+    const handleUserActivity = () => {
+      if (isModalOpenRef.current) return; // Si el modal está activo, ignora movimientos
+
+      const now = Date.now();
+      if (now - lastThrottledTime > 1000) {
+        lastThrottledTime = now;
+        recordActivity();
+      }
+    };
+
+    const handleStorageChange = (e) => {
+      if (e.key === INACTIVITY_STORAGE_KEY && !isModalOpenRef.current) {
+        resetTimers();
+      }
+    };
+
+    activityEvents.forEach((ev) => window.addEventListener(ev, handleUserActivity, { passive: true }));
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      activityEvents.forEach((ev) => window.removeEventListener(ev, handleUserActivity));
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [user, recordActivity, resetTimers]);
+
+  // Sincronización de Firebase Auth y Firestore
   useEffect(() => {
     if (!firebaseWebEnabled || !firebaseAuth) {
       setIsInitializing(false);
@@ -48,7 +170,6 @@ export function AuthProvider({ children }) {
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
       if (firebaseUser) {
-        // Real-time listener for the user document
         const userDocRef = doc(firestore, 'users', firebaseUser.uid);
         const unsubDoc = onSnapshot(userDocRef, (snapshot) => {
           if (snapshot.exists()) {
@@ -111,20 +232,28 @@ export function AuthProvider({ children }) {
     } finally { setIsLoading(false); }
   };
 
-  const logout = () => signOut(firebaseAuth);
-
   const requestPasswordReset = (email) => {
     if (!firebaseWebEnabled || !firebaseAuth) {
       throw new Error('Firebase Web no está configurado.');
     }
-    return sendPasswordResetEmail(firebaseAuth, email);
+    
+    // 1. Forzar idioma a Español
+    firebaseAuth.languageCode = 'es';
+
+    // 2. Configurar la redirección a tu aplicación web con el código
+    const actionCodeSettings = {
+      //url: `${window.location.origin}/reset-password`,// si es local comentamos el siguiente para habilitar nuevamente este.
+      // Apuntamos directo a tu Hosting desplegado con la ruta de restablecer
+      url: 'https://ruwa-jay.web.app/reset-password',
+      handleCodeInApp: true,
+    };
+
+    return sendPasswordResetEmail(firebaseAuth, email, actionCodeSettings);
   };
 
-  /** Update profile fields (name, phone, bio, avatarId, avatarImage, dpiData, verified) and persist extras locally */
   const updateProfile = async (updates) => {
     if (!user) return;
 
-    // Update Firestore if needed (e.g., name, phone)
     const firestoreUpdates = {};
     if ('name' in updates) firestoreUpdates.name = updates.name;
     if ('phone' in updates) firestoreUpdates.phone = updates.phone;
@@ -138,7 +267,6 @@ export function AuthProvider({ children }) {
     setUser((previous) => {
       if (!previous) return previous;
       const next = { ...previous, ...updates };
-      // Persist profile-specific extras to localStorage keyed by user ID
       const extras = {};
       if ('avatarId' in updates) extras.avatarId = updates.avatarId;
       if ('avatarImage' in updates) extras.avatarImage = updates.avatarImage;
@@ -152,7 +280,6 @@ export function AuthProvider({ children }) {
     });
   };
 
-  /** Change password (validates current password → sets new password via Firebase) */
   const changePassword = async (currentPassword, newPassword) => {
     const firebaseUser = firebaseAuth.currentUser;
     if (!firebaseUser) throw new Error('No hay sesión activa.');
@@ -162,7 +289,6 @@ export function AuthProvider({ children }) {
     return updatePassword(firebaseUser, newPassword);
   };
 
-  /** Request identity verification (DPI badge + verification data) */
   const requestVerification = (dpiData = {}) => {
     const verifiedData = {
       ...dpiData,
@@ -175,7 +301,6 @@ export function AuthProvider({ children }) {
     return Promise.resolve({ success: true, dpiData: verifiedData });
   };
 
-  /** Safely revoke and purge sensitive DPI identification data */
   const purgeDpiData = () => {
     if (!user) return;
     updateProfile({
@@ -184,7 +309,93 @@ export function AuthProvider({ children }) {
     });
   };
 
-  return <AuthContext.Provider value={{ user, isLoading, isInitializing, isPostAuthLoading, login, register, logout, updateProfile, changePassword, requestVerification, purgeDpiData, requestPasswordReset }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      isInitializing, 
+      isPostAuthLoading, 
+      login, 
+      register, 
+      logout, 
+      updateProfile, 
+      changePassword, 
+      requestVerification, 
+      purgeDpiData, 
+      requestPasswordReset 
+    }}>
+      {children}
+
+      {/* Modal de Alerta por Inactividad */}
+      {showWarningModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 99999,
+          backdropFilter: 'blur(3px)'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '420px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            fontFamily: 'inherit'
+          }}>
+            <div style={{ fontSize: '40px', marginBottom: '10px' }}>⚠️</div>
+            <h2 style={{ margin: '0 0 12px', fontSize: '22px', color: '#1f2937', fontWeight: 'bold' }}>
+              Alerta de inactividad
+            </h2>
+            <p style={{ margin: '0 0 20px', fontSize: '15px', color: '#4b5563', lineHeight: '1.5' }}>
+              Se cerrará la sesión en <strong style={{ color: '#dc2626', fontSize: '18px' }}>{countdown} segundos</strong>. Da clic abajo para mantenerla activa.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={handleKeepSessionAlive}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#ea580c',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Sí, sigo en sesión
+              </button>
+              <button
+                onClick={logout}
+                style={{
+                  backgroundColor: '#f3f4f6',
+                  color: '#374151',
+                  border: '1px solid #d1d5db',
+                  padding: '12px 18px',
+                  borderRadius: '10px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Cerrar ahora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
@@ -192,4 +403,3 @@ export function useAuth() {
   if (!context) throw new Error('useAuth debe usarse dentro de AuthProvider');
   return context;
 }
-

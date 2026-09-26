@@ -1,10 +1,4 @@
 {
-  "firestore": {
-    "rules": "firestore.rules"
-  },
-  "storage": {
-    "rules": "storage.rules"
-  },
   "hosting": {
     "public": "dist",
     "ignore": [
@@ -13,6 +7,10 @@
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/__/auth/action**",
+        "destination": "/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
