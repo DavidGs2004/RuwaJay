@@ -32,7 +32,8 @@ fun ProfileScreen(
     onLoginClick: () -> Unit = {},
     onInboxClick: () -> Unit = {},
     onExploreClick: () -> Unit = {},
-    onPublishClick: () -> Unit = {}
+    onPublishClick: () -> Unit = {},
+    onPropertyClick: (String) -> Unit = {}
 ) {
     val auth = FirebaseAuth.getInstance()
     val firestore = FirebaseFirestore.getInstance()
@@ -149,7 +150,11 @@ fun ProfileScreen(
 
             // Tab Content
             when (activeTab) {
-                "favoritos" -> FavoritosTab(favoriteIds = favoriteIds, onExploreClick = onExploreClick)
+                "favoritos" -> FavoritosTab(
+                    favoriteIds = favoriteIds,
+                    onExploreClick = onExploreClick,
+                    onPropertyClick = onPropertyClick
+                )
                 "visitas" -> VisitasTab()
                 "configuracion" -> ConfiguracionTab(
                     userName = userName,
@@ -320,7 +325,11 @@ private fun TabSelector(activeTab: String, onTabChange: (String) -> Unit) {
 }
 
 @Composable
-fun FavoritosTab(favoriteIds: List<String>, onExploreClick: () -> Unit) {
+fun FavoritosTab(
+    favoriteIds: List<String>,
+    onExploreClick: () -> Unit,
+    onPropertyClick: (String) -> Unit = {}
+) {
     val allProperties = rememberProperties()
     val favoritedProperties = remember(favoriteIds, allProperties) {
         allProperties.filter { favoriteIds.contains(it.id) }
@@ -343,7 +352,10 @@ fun FavoritosTab(favoriteIds: List<String>, onExploreClick: () -> Unit) {
             }
         } else {
             favoritedProperties.forEach { property ->
-                PropertyCard(property = property)
+                PropertyCard(
+                    property = property,
+                    onClick = { onPropertyClick(property.id) }
+                )
             }
         }
     }

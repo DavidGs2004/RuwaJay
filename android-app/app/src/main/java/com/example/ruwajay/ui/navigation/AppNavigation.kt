@@ -93,7 +93,8 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
                 onLoginClick = { navController.navigate(Screen.Login.route) },
                 onInboxClick = { navController.navigate(Screen.Inbox.route) },
                 onExploreClick = { navController.navigate(Screen.Explore.route) },
-                onPublishClick = { navController.navigate(Screen.Publish.route) }
+                onPublishClick = { navController.navigate(Screen.Publish.route) },
+                onPropertyClick = { id -> navController.navigate(Screen.PropertyDetail.createRoute(id)) }
             )
         }
         composable(Screen.Publish.route) {
