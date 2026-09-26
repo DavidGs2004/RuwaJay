@@ -421,7 +421,7 @@ export function ChatProvider({ children }) {
         const prop = demoProperties.find((p) => p.id === currentConv.propertyId) || demoProperties[0];
         const owner = demoOwners.find((o) => o.id === currentConv.ownerId) || demoOwners[0];
 
-        const replyText = generateRealisticReply(userMessageText, prop, owner);
+        const replyText = generateRealisticReply(cleanText, prop, owner);
         const replyTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         const replyMessage = {
