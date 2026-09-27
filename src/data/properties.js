@@ -39,15 +39,21 @@ export const PROPERTY_TYPES = {
 
 export const PROPERTY_STATUS = {
   AVAILABLE: 'disponible',
+  IN_VISIT: 'en_cita',
   RESERVED: 'reservada',
   RENTED: 'alquilada',
+  PAUSED: 'pausada',
 };
 
 export const VISIT_STATUS = {
   PENDING: 'pendiente',
-  ACCEPTED: 'aceptada',
+  CONFIRMED: 'confirmada',
+  ACCEPTED: 'confirmada',
+  IN_PROGRESS: 'en_curso',
   RESCHEDULED: 'reprogramada',
   REJECTED: 'rechazada',
+  EXPIRED: 'vencida',
+  CANCELLED: 'cancelada',
 };
 
 export const demoOwners = [
@@ -834,7 +840,9 @@ export function calculateDistance(lat1, lng1, lat2, lng2) {
 
 // Format price in Quetzales
 export function formatPrice(price) {
-  return `Q${price.toLocaleString('es-GT')}`;
+  const safePrice = Number(price);
+  if (!isFinite(safePrice)) return 'Q0';
+  return `Q${safePrice.toLocaleString('es-GT')}`;
 }
 
 // Format distance

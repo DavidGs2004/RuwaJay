@@ -59,4 +59,44 @@ class AuthRepository(
                 else onResult(Result.failure(task.exception ?: Exception("No se pudo enviar el correo de recuperación.")))
             }
     }
+
+    fun signInWithGoogle(idToken: String, onResult: (Result<Unit>) -> Unit) {
+        val credential = com.google.firebase.auth.GoogleAuthProvider.getCredential(idToken, null)
+        auth.signInWithCredential(credential)
+            .addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    onResult(Result.failure(task.exception ?: Exception("No se pudo autenticar con Google.")))
+                    return@addOnCompleteListener
+                }
+
+                val user = auth.currentUser
+                if (user == null) {
+                    onResult(Result.failure(Exception("Usuario de Google no disponible.")))
+                    return@addOnCompleteListener
+                }
+
+                val userRef = firestore.collection("users").document(user.uid)
+                userRef.get().addOnSuccessListener { snapshot ->
+                    if (!snapshot.exists()) {
+                        val profile = mapOf(
+                            "id" to user.uid,
+                            "name" to (user.displayName ?: "Usuario Google"),
+                            "email" to (user.email ?: ""),
+                            "photoURL" to (user.photoUrl?.toString() ?: ""),
+                            "role" to "seeker",
+                            "createdAt" to System.currentTimeMillis()
+                        )
+                        userRef.set(profile)
+                            .addOnSuccessListener { onResult(Result.success(Unit)) }
+                            .addOnFailureListener { error -> onResult(Result.failure(error)) }
+                    } else {
+                        onResult(Result.success(Unit))
+                    }
+                }.addOnFailureListener {
+                    // Si falla leer el doc, de todos modos el login en Auth fue exitoso
+                    onResult(Result.success(Unit))
+                }
+            }
+    }
 }
+

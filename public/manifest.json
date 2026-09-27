@@ -1,0 +1,21 @@
+{
+  "name": "RuwaJay — Hogar en Guatemala",
+  "short_name": "RuwaJay",
+  "description": "Plataforma de alquiler de casas y apartamentos en Guatemala",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBF3E8",
+  "theme_color": "#0B5D3B",
+  "icons": [
+    {
+      "src": "/logo/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

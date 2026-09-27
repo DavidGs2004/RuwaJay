@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
@@ -8,6 +8,8 @@ import { ChatProvider } from './context/ChatContext';
 import Header from './components/layout/Header';
 import MobileNav from './components/layout/MobileNav';
 import Footer from './components/layout/Footer';
+import MobileAppBanner from './components/ui/MobileAppBanner';
+import MobileAppConnectModal from './components/ui/MobileAppConnectModal';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -22,6 +24,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'; // <--- Importamos la
 import RuwaJayLoader from './components/ui/RuwaJayLoader';
 import PropertyCompareModal from './components/property/PropertyCompareModal';
 import ChatNotificationToast from './components/chat/ChatNotificationToast';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -37,6 +40,7 @@ function RuwaJayRoutes() {
   const { user, isInitializing, isPostAuthLoading } = useAuth();
   const location = useLocation();
   const isChatRoute = location.pathname === '/chat';
+  const [mobileAppModalOpen, setMobileAppModalOpen] = useState(false);
 
   if (isInitializing) {
     return (
@@ -66,6 +70,7 @@ function RuwaJayRoutes() {
 
   return (
     <div className={`flex min-h-screen w-full min-w-0 flex-col overflow-x-clip ${isChatRoute ? 'bg-[#FAF8F5]' : 'bg-crema'} font-sans text-cafe antialiased`}>
+      {!isChatRoute && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
       {!isChatRoute && <Header />}
       <div className="min-w-0 flex-1">
         <Routes>
@@ -86,6 +91,11 @@ function RuwaJayRoutes() {
       {!isChatRoute && <MobileNav />}
       <PropertyCompareModal />
       <ChatNotificationToast />
+      <MobileAppConnectModal
+        isOpen={mobileAppModalOpen}
+        onClose={() => setMobileAppModalOpen(false)}
+        targetPath={location.pathname}
+      />
     </div>
   );
 }
@@ -98,7 +108,9 @@ export default function App() {
           <ChatProvider>
             <Router>
               <ScrollToTop />
-              <RuwaJayRoutes />
+              <ErrorBoundary>
+                <RuwaJayRoutes />
+              </ErrorBoundary>
             </Router>
           </ChatProvider>
         </CompareProvider>

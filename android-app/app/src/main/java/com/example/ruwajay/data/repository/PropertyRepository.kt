@@ -196,3 +196,49 @@ private fun Map<*, *>.number(key: String): Double {
 private fun Map<*, *>.stringOr(key: String, fallback: String): String {
     return (this[key] as? String)?.trim()?.ifBlank { fallback } ?: fallback
 }
+
+// ── ADMIN FUNCTIONS ──
+fun updatePropertyStatus(
+    propertyId: String,
+    newStatus: String,
+    onResult: () -> Unit = {}
+) {
+    FirebaseFirestore.getInstance().collection("properties").document(propertyId)
+        .update("status", newStatus)
+        .addOnSuccessListener { onResult() }
+        .addOnFailureListener { }
+}
+
+fun deleteProperty(
+    propertyId: String,
+    onResult: () -> Unit = {}
+) {
+    FirebaseFirestore.getInstance().collection("properties").document(propertyId)
+        .delete()
+        .addOnSuccessListener { onResult() }
+        .addOnFailureListener { }
+}
+
+fun updateUserRole(
+    userId: String,
+    newRole: String,
+    onResult: () -> Unit = {}
+) {
+    FirebaseFirestore.getInstance().collection("users").document(userId)
+        .update("role", newRole)
+        .addOnSuccessListener { onResult() }
+        .addOnFailureListener { }
+}
+
+fun toggleUserSuspension(
+    userId: String,
+    suspended: Boolean,
+    onResult: () -> Unit = {}
+) {
+    FirebaseFirestore.getInstance().collection("users").document(userId)
+        .update("suspended", suspended)
+        .addOnSuccessListener { onResult() }
+        .addOnFailureListener { }
+}
+
+

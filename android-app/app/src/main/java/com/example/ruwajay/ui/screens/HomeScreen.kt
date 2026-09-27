@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ruwajay.R
 import com.example.ruwajay.data.repository.rememberProperties
+import com.example.ruwajay.data.repository.rememberSystemUpdates
 import com.example.ruwajay.ui.components.PropertyCard
 import com.example.ruwajay.ui.theme.BrandCafe
 import com.example.ruwajay.ui.theme.BrandCrema
@@ -59,6 +60,7 @@ import com.example.ruwajay.ui.theme.BrandCremaDark
 import com.example.ruwajay.ui.theme.BrandForest
 import com.example.ruwajay.ui.theme.BrandForestDark
 import com.example.ruwajay.ui.theme.BrandGoldMuted
+import com.example.ruwajay.ui.theme.BrandJade
 import com.example.ruwajay.ui.theme.BrandTextPrimary
 import com.example.ruwajay.ui.theme.BrandTextSecondary
 
@@ -73,6 +75,7 @@ fun HomeScreen(
         "Zona 10", "Zona 14", "Zona 15", "San Cristóbal", "Antigua", "Carretera a El Salvador"
     )
     val featuredProperties = rememberProperties().filter { it.status == "disponible" }
+    val systemUpdates = rememberSystemUpdates(includeInactive = false)
 
     LazyColumn(
         modifier = Modifier
@@ -236,6 +239,121 @@ fun HomeScreen(
                                         fontSize = 11.sp,
                                         color = BrandCafe,
                                         fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── NOVEDADES Y COMUNICADOS DEL SISTEMA ───────────────────
+        if (systemUpdates.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("📢", fontSize = 16.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Novedades y Actualizaciones",
+                                fontWeight = FontWeight.Bold,
+                                color = BrandCafe,
+                                fontSize = 16.sp
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = BrandForest.copy(alpha = 0.1f)
+                        ) {
+                            Text(
+                                text = "Oficial",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = BrandForest,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(systemUpdates) { update ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                shadowElevation = 2.dp,
+                                modifier = Modifier.width(280.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            color = when (update.category) {
+                                                "alerta" -> Color(0xFFFEE2E2)
+                                                "mantenimiento" -> Color(0xFFFEF3C7)
+                                                "mejora" -> Color(0xFFDBEAFE)
+                                                else -> BrandJade.copy(alpha = 0.15f)
+                                            },
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                update.category.uppercase(),
+                                                color = when (update.category) {
+                                                    "alerta" -> Color(0xFFDC2626)
+                                                    "mantenimiento" -> Color(0xFFB45309)
+                                                    "mejora" -> Color(0xFF1D4ED8)
+                                                    else -> BrandForest
+                                                },
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 9.sp,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+
+                                        if (update.priority == "urgente") {
+                                            Surface(
+                                                color = Color(0xFFDC2626),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    "URGENTE",
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Black,
+                                                    fontSize = 9.sp,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = update.title,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandCafe,
+                                        fontSize = 14.sp,
+                                        maxLines = 1
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = update.content,
+                                        color = BrandTextSecondary,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        maxLines = 3
                                     )
                                 }
                             }

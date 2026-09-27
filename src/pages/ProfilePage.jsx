@@ -5,7 +5,8 @@ import {
   Mail, Phone, Lock, Edit3, Check, X, Eye, EyeOff, BadgeCheck, Camera,
   Home, PlusCircle, ToggleLeft, ToggleRight, TrendingUp, Users, Calendar,
   FileText, AlertTriangle, Sparkles, ChevronDown, ChevronUp,
-  Upload, Trash2, Shield, CheckCircle2, FileCheck, Bookmark, Calculator
+  Upload, Trash2, Shield, CheckCircle2, FileCheck, Bookmark, Calculator,
+  RotateCcw, ArrowRight, AlertCircle, Clock3, MessageCircle, Megaphone, Radio, Bell, Send
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AVATAR_OPTIONS } from '../data/avatars';
@@ -17,6 +18,16 @@ import RentAffordabilityModal from '../components/property/RentAffordabilityModa
 import { sanitizeText, validateImageFile, maskSensitive } from '../utils/security';
 import { firebaseAuth } from '../lib/firebase';
 import { subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
+import {
+  subscribeToUsers,
+  updateUserRole,
+  updateUserStatus,
+  deleteProperty,
+  subscribeToSystemUpdates,
+  createSystemUpdate,
+  updateSystemUpdate,
+  deleteSystemUpdate,
+} from '../lib/adminService';
 
 /* ── Guatemalan Departments list ── */
 const GT_DEPARTMENTS = [
@@ -72,18 +83,20 @@ function WhatsAppIcon({ size = 16, className = '' }) {
   );
 }
 
-/* ── Avatar Component (supports custom gallery photo or color preset) ── */
+/* ── Avatar Component (supports custom gallery photo, Google photo or color preset) ── */
 function UserAvatar({ user, size = 80, className = '' }) {
-  if (user?.avatarImage) {
+  const photo = user?.avatarImage || user?.avatar || user?.photoURL;
+  if (photo) {
     return (
       <div
         className={`overflow-hidden rounded-full shadow-lg border-2 border-white ring-2 ring-forest/30 transition-all ${className}`}
         style={{ width: size, height: size }}
       >
         <img
-          src={user.avatarImage}
+          src={photo}
           alt={user?.name || 'Usuario'}
           className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
         />
       </div>
     );
@@ -115,8 +128,8 @@ function SectionCard({ children, className = '', danger = false }) {
 export default function ProfilePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const activeTab = searchParams.get('tab') || 'favoritos';
-  const { user, logout, updateProfile, changePassword, requestVerification, purgeDpiData } = useAuth();
+  const activeTab = searchParams.get('tab') || 'perfil';
+  const { user, logout, updateProfile, changePassword, requestVerification, purgeDpiData, isAdmin } = useAuth();
   const { favorites, recentSearches } = useFavorites();
 
   const favProperties = demoProperties.filter((p) => favorites.includes(p.id));
@@ -168,6 +181,18 @@ export default function ProfilePage() {
   /* ── My Properties State ── */
   const [myProperties, setMyProperties] = useState([]);
 
+  /* ── Admin State ── */
+  const [allUsers, setAllUsers] = useState([]);
+  const [allProperties, setAllProperties] = useState([]);
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [systemUpdates, setSystemUpdates] = useState([]);
+  const [newUpdateTitle, setNewUpdateTitle] = useState('');
+  const [newUpdateContent, setNewUpdateContent] = useState('');
+  const [newUpdateCategory, setNewUpdateCategory] = useState('novedad');
+  const [newUpdatePriority, setNewUpdatePriority] = useState('normal');
+  const [isPostingUpdate, setIsPostingUpdate] = useState(false);
+  const [adminNotice, setAdminNotice] = useState('');
+
   // Load edit form with current user data
   useEffect(() => {
     if (user) {
@@ -175,7 +200,7 @@ export default function ProfilePage() {
       setEditPhone(user.phone || '');
       setEditBio(user.bio || '');
       setEditAvatarId(user.avatarId || 'forest-initial');
-      setEditAvatarImage(user.avatarImage || null);
+      setEditAvatarImage(user?.avatarImage || user?.avatar || user?.photoURL || null);
       if (user.dpiData) {
         setDpiForm((prev) => ({
           ...prev,
@@ -189,7 +214,7 @@ export default function ProfilePage() {
 
   // Keep owner properties backed by the shared Firestore collection.
   useEffect(() => {
-    const ownerId = firebaseAuth?.currentUser?.uid;
+    const ownerId = user?.id || firebaseAuth?.currentUser?.uid;
     if (!ownerId) {
       setMyProperties([]);
       return undefined;
@@ -202,11 +227,28 @@ export default function ProfilePage() {
 
   /* ── Visits State & Persistence ── */
   const [visits, setVisits] = useState([]);
+  const [visitSubTab, setVisitSubTab] = useState('todas'); // 'todas' | 'recibidas' | 'solicitadas'
 
   const loadVisits = () => {
     try {
       const stored = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-      if (stored.length === 0) {
+      const hasSeeded = localStorage.getItem('ruwajay_visits_seeded');
+      const now = Date.now();
+
+      // Rule: If an appointment has been pending for more than 7 days (1 week) without being accepted,
+      // mark it as expired ('vencida') so the tenant must schedule a new appointment.
+      const cleaned = stored.map((v) => {
+        if (v.status === 'pendiente') {
+          const created = new Date(v.createdAt || Date.now()).getTime();
+          const diffDays = (now - created) / (1000 * 60 * 60 * 24);
+          if (diffDays >= 7) {
+            return { ...v, status: 'vencida', expiredAt: new Date().toISOString() };
+          }
+        }
+        return v;
+      });
+
+      if (cleaned.length === 0 && !hasSeeded) {
         const initial = [
           {
             id: 'visit-seed-1',
@@ -215,13 +257,13 @@ export default function ProfilePage() {
             propertyImage: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
             propertyPrice: 4500,
             propertyZone: 'Zona 10, Ciudad de Guatemala',
-            ownerId: 'owner-1',
-            ownerName: 'María Elena López',
-            ownerPhone: '+502 5482 9104',
-            tenantId: user?.id || 'demo-user',
-            tenantName: user?.name || 'Inquilino interesado',
-            tenantPhone: user?.phone || '+502 5555 1234',
-            date: '2026-09-22',
+            ownerId: user?.id || 'owner-1',
+            ownerName: user?.name || 'María Elena López',
+            ownerPhone: user?.phone || '+502 5482 9104',
+            tenantId: 'tenant-demo',
+            tenantName: 'Carlos Mendizábal',
+            tenantPhone: '+502 5555 1234',
+            date: '2026-09-29',
             time: '10:00',
             notes: 'Me interesa conocer las áreas verdes y el estado de la garita de seguridad.',
             status: 'pendiente',
@@ -229,9 +271,11 @@ export default function ProfilePage() {
           },
         ];
         localStorage.setItem('ruwajay_visits', JSON.stringify(initial));
+        localStorage.setItem('ruwajay_visits_seeded', 'true');
         setVisits(initial);
       } else {
-        setVisits(stored);
+        localStorage.setItem('ruwajay_visits', JSON.stringify(cleaned));
+        setVisits(cleaned);
       }
     } catch {
       setVisits([]);
@@ -257,6 +301,33 @@ export default function ProfilePage() {
       setVisits(updated);
     } catch { /* ignore */ }
   };
+
+  const currentUserId = user?.id || firebaseAuth?.currentUser?.uid;
+  const currentUserPhone = (user?.phone || '').replace(/\D/g, '');
+
+  const receivedVisits = useMemo(() => {
+    return visits.filter((v) => {
+      if (currentUserId && v.ownerId === currentUserId) return true;
+      if (currentUserPhone && v.ownerPhone && v.ownerPhone.replace(/\D/g, '') === currentUserPhone) return true;
+      if (isOwner && v.tenantId !== currentUserId) return true;
+      return false;
+    });
+  }, [visits, currentUserId, currentUserPhone, isOwner]);
+
+  const requestedVisits = useMemo(() => {
+    return visits.filter((v) => {
+      if (currentUserId && v.tenantId === currentUserId) return true;
+      if (currentUserPhone && v.tenantPhone && v.tenantPhone.replace(/\D/g, '') === currentUserPhone) return true;
+      if (!isOwner) return true;
+      return false;
+    });
+  }, [visits, currentUserId, currentUserPhone, isOwner]);
+
+  const displayedVisits = useMemo(() => {
+    if (visitSubTab === 'recibidas') return receivedVisits;
+    if (visitSubTab === 'solicitadas') return requestedVisits;
+    return visits;
+  }, [visits, visitSubTab, receivedVisits, requestedVisits]);
 
   /* ── Saved Searches State ── */
   const [savedSearches, setSavedSearches] = useState([]);
@@ -402,24 +473,46 @@ export default function ProfilePage() {
     setVerifyDone(true);
   };
 
-  const handleTogglePropertyStatus = async (propertyId, currentStatus) => {
-    const newStatus = currentStatus === 'disponible' ? 'alquilada' : 'disponible';
+  const handleSetPropertyStatus = async (propertyId, newStatus) => {
     try {
       await updatePropertyStatus(propertyId, newStatus);
     } catch (error) {
-      window.alert(error?.message || 'No se pudo actualizar el estado de la propiedad.');
+      console.warn('Firestore updatePropertyStatus fallback:', error);
     }
+    try {
+      const localProps = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+      const updated = localProps.map((p) => (p.id === propertyId ? { ...p, status: newStatus } : p));
+      localStorage.setItem('ruwajay_custom_properties', JSON.stringify(updated));
+    } catch { /* ignore */ }
+    setMyProperties((prev) =>
+      prev.map((p) => (p.id === propertyId ? { ...p, status: newStatus } : p))
+    );
   };
 
   const isOwner = user?.role === 'owner';
   const isVerified = user?.verified || verifyDone;
 
+  /* ── Admin: subscribe to all users, properties, and system updates ── */
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsubUsers = subscribeToUsers(setAllUsers);
+    const unsubProps = subscribeToProperties(setAllProperties);
+    const unsubUpdates = subscribeToSystemUpdates(setSystemUpdates, true);
+    return () => {
+      unsubUsers();
+      unsubProps();
+      unsubUpdates();
+    };
+  }, [isAdmin]);
+
   /* ── Tabs config ── */
   const tabs = [
+    { key: 'perfil', label: 'Mi Perfil', icon: User },
     { key: 'favoritos', label: 'Favoritos', count: favorites.length, icon: Heart },
     { key: 'busquedas', label: 'Búsquedas', count: savedSearches.length > 0 ? savedSearches.length : undefined, icon: Bookmark },
     { key: 'visitas', label: 'Citas y Visitas', count: visits.length, icon: Calendar },
     ...(isOwner ? [{ key: 'propiedades', label: 'Mis Propiedades', count: myProperties.length, icon: Building2 }] : []),
+    ...(isAdmin ? [{ key: 'admin', label: 'Administración', icon: Shield }] : []),
     { key: 'configuracion', label: 'Ajustes', icon: Settings },
   ];
 
@@ -489,8 +582,9 @@ export default function ProfilePage() {
                 <Edit3 size={16} /> Editar perfil
               </button>
               <button
-                onClick={() => { logout(); navigate('/login'); }}
-                className="flex min-h-11 items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-xs font-bold text-terracota transition-all hover:bg-red-100"
+                type="button"
+                onClick={async () => { await logout(); navigate('/login', { replace: true }); }}
+                className="flex min-h-11 items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-xs font-bold text-terracota transition-all hover:bg-red-100 cursor-pointer"
               >
                 <LogOut size={16} /> Cerrar sesión
               </button>
@@ -548,7 +642,7 @@ export default function ProfilePage() {
                     {/* Avatar Preview */}
                     <div className="relative shrink-0 w-20 h-20 rounded-full overflow-hidden border-2 border-forest shadow-md bg-crema flex items-center justify-center">
                       {editAvatarImage ? (
-                        <img src={editAvatarImage} alt="Vista previa" className="w-full h-full object-cover" />
+                        <img src={editAvatarImage} alt="Vista previa" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <div
                           className="w-full h-full flex items-center justify-center text-white text-2xl font-black"
@@ -701,6 +795,180 @@ export default function ProfilePage() {
         </div>
 
         {/* ═══════ Tab Contents ═══════ */}
+
+        {/* ── Mi Perfil (Datos y Resumen) ── */}
+        {activeTab === 'perfil' && (
+          <div className="space-y-6">
+            {/* Tarjeta de Datos Personales */}
+            <SectionCard>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="flex items-center gap-2 text-lg font-extrabold text-cafe">
+                    <User size={20} className="text-forest" /> Datos de mi Cuenta
+                  </h3>
+                  <p className="text-xs text-text-muted mt-0.5">Información principal de contacto y credenciales</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingProfile(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2.5 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs cursor-pointer w-fit"
+                >
+                  <Edit3 size={15} /> Editar datos
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Nombre Completo</span>
+                  <p className="text-sm font-black text-cafe break-words">{user?.name || 'Sin nombre'}</p>
+                </div>
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Correo Electrónico</span>
+                  <p className="text-sm font-black text-cafe break-all">{user?.email || 'Sin correo'}</p>
+                </div>
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Teléfono</span>
+                  <p className="text-sm font-black text-cafe">{user?.phone || 'No registrado'}</p>
+                </div>
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Tipo de Usuario</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-forest/10 px-2.5 py-1 text-xs font-black text-forest">
+                    {user?.role === 'admin' ? '🛡️ Administrador' : user?.role === 'owner' ? '🏡 Propietario' : '👤 Inquilino'}
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4 sm:col-span-2">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Biografía / Presentación</span>
+                  <p className="text-xs font-semibold text-cafe italic">
+                    {user?.bio ? `"${user.bio}"` : 'Sin biografía añadida. Añade una descripción para mayor confianza.'}
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+
+            {/* Resumen de Actividad */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <Link
+                to="/perfil?tab=favoritos"
+                className="group rounded-2xl border border-border bg-white p-4 text-center transition-all hover:border-forest/50 hover:shadow-sm"
+              >
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-500 group-hover:scale-110 transition-transform">
+                  <Heart size={20} />
+                </div>
+                <p className="text-2xl font-black text-cafe">{favorites.length}</p>
+                <p className="text-[11px] font-bold text-text-muted">Favoritos guardados</p>
+              </Link>
+
+              <Link
+                to="/perfil?tab=visitas"
+                className="group rounded-2xl border border-border bg-white p-4 text-center transition-all hover:border-forest/50 hover:shadow-sm"
+              >
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-forest/10 text-forest group-hover:scale-110 transition-transform">
+                  <Calendar size={20} />
+                </div>
+                <p className="text-2xl font-black text-cafe">{visits.length}</p>
+                <p className="text-[11px] font-bold text-text-muted">Citas y Visitas</p>
+              </Link>
+
+              <Link
+                to="/perfil?tab=busquedas"
+                className="group rounded-2xl border border-border bg-white p-4 text-center transition-all hover:border-forest/50 hover:shadow-sm"
+              >
+                <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 group-hover:scale-110 transition-transform">
+                  <Bookmark size={20} />
+                </div>
+                <p className="text-2xl font-black text-cafe">{savedSearches.length}</p>
+                <p className="text-[11px] font-bold text-text-muted">Búsquedas y Alertas</p>
+              </Link>
+
+              {isOwner ? (
+                <Link
+                  to="/perfil?tab=propiedades"
+                  className="group rounded-2xl border border-border bg-white p-4 text-center transition-all hover:border-forest/50 hover:shadow-sm"
+                >
+                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-terracota/10 text-terracota group-hover:scale-110 transition-transform">
+                    <Building2 size={20} />
+                  </div>
+                  <p className="text-2xl font-black text-cafe">{myProperties.length}</p>
+                  <p className="text-[11px] font-bold text-text-muted">Mis Propiedades</p>
+                </Link>
+              ) : (
+                <Link
+                  to="/chat"
+                  className="group rounded-2xl border border-border bg-white p-4 text-center transition-all hover:border-forest/50 hover:shadow-sm"
+                >
+                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-jade/10 text-forest group-hover:scale-110 transition-transform">
+                    <Mail size={20} />
+                  </div>
+                  <p className="text-2xl font-black text-cafe">Chat</p>
+                  <p className="text-[11px] font-bold text-text-muted">Mensajes directos</p>
+                </Link>
+              )}
+            </div>
+
+            {/* Validación e Identidad DPI */}
+            <SectionCard>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe">
+                  <ShieldCheck size={20} className="text-dorado" /> Validación de Identidad con DPI
+                </h3>
+                {isVerified && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-dorado/20 px-2.5 py-0.5 text-[10px] font-black text-dorado">
+                    <BadgeCheck size={13} /> Certificado Oficial
+                  </span>
+                )}
+              </div>
+
+              {isVerified ? (
+                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-dorado/30 bg-gradient-to-br from-dorado/10 via-[#FAF5EE] to-dorado/5 p-4 sm:p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/20 text-dorado">
+                    <BadgeCheck size={28} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-cafe">Tu cuenta cuenta con insignia de DPI Validado</p>
+                    <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                      Tu documento oficial de identificación de Guatemala ha sido registrado correctamente para garantizar la máxima seguridad en transacciones.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowDpiDetailsModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-forest px-3.5 py-2 text-xs font-black text-white hover:bg-forest-dark transition-colors cursor-pointer"
+                      >
+                        <FileCheck size={14} /> Ver credencial oficial
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDpiModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors cursor-pointer"
+                      >
+                        <Edit3 size={13} /> Modificar datos de DPI
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-[#E8D9C8]/80 bg-[#FDFBF7] p-4 sm:p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/10 text-dorado">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-cafe">Aumenta tu confianza validando tu DPI</p>
+                    <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                      Registra tu CUI de 13 dígitos y datos oficiales para obtener la insignia dorada de verificación.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDpiModal(true)}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-dorado to-[#C5850F] px-4 py-2.5 text-xs font-black text-white shadow-xs hover:opacity-95 transition-opacity cursor-pointer"
+                    >
+                      <Sparkles size={14} /> Iniciar verificación con DPI
+                    </button>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+        )}
 
         {/* ── Favoritos ── */}
         {activeTab === 'favoritos' && (
@@ -884,7 +1152,7 @@ export default function ProfilePage() {
                       Citas y Visitas Presenciales
                     </h2>
                     <p className="text-xs text-text-muted font-medium">
-                      Gestiona tus solicitudes de visita a viviendas y coordina directamente por WhatsApp
+                      Control de visitas, estados de vivienda y coordinación directa por WhatsApp
                     </p>
                   </div>
                 </div>
@@ -893,18 +1161,79 @@ export default function ProfilePage() {
                   to="/explorar"
                   className="btn-primary inline-flex items-center justify-center gap-2 !rounded-xl !py-2.5 !px-4 text-xs shadow-sm"
                 >
-                  <Home size={14} /> Agendar nueva visita
+                  <Home size={14} /> Explorar y agendar cita
                 </Link>
+              </div>
+
+              {/* Policy Banner: 7-day rule & property state management */}
+              <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-200/70 p-3.5 flex items-start gap-3 text-xs text-amber-900">
+                <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-extrabold text-amber-950">
+                    Reglas del sistema de citas y disponibilidad
+                  </p>
+                  <p className="text-amber-900/90 leading-relaxed text-[11px]">
+                    • <strong>Expiración en 7 días:</strong> Las solicitudes de visita no aceptadas dentro de 1 semana caducan automáticamente para mantener agendas actualizadas y el interesado deberá solicitar una nueva cita.<br />
+                    • <strong>Protección contra empalmes:</strong> Los horarios ya apartados se bloquean automáticamente. Como arrendador puedes marcar tu casa como <em>«En Cita»</em> o <em>«Ocupada»</em> para evitar citas duplicadas.
+                  </p>
+                </div>
+              </div>
+
+              {/* Subtabs Filter */}
+              <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border-light pt-4">
+                <button
+                  type="button"
+                  onClick={() => setVisitSubTab('todas')}
+                  className={`rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
+                    visitSubTab === 'todas'
+                      ? 'bg-forest text-white shadow-xs'
+                      : 'bg-crema/60 text-cafe hover:bg-forest/10'
+                  }`}
+                >
+                  Todas las citas ({visits.length})
+                </button>
+                {(isOwner || receivedVisits.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => setVisitSubTab('recibidas')}
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
+                      visitSubTab === 'recibidas'
+                        ? 'bg-forest text-white shadow-xs'
+                        : 'bg-crema/60 text-cafe hover:bg-forest/10'
+                    }`}
+                  >
+                    📥 Citas Recibidas en mis Inmuebles ({receivedVisits.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setVisitSubTab('solicitadas')}
+                  className={`rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
+                    visitSubTab === 'solicitadas'
+                      ? 'bg-forest text-white shadow-xs'
+                      : 'bg-crema/60 text-cafe hover:bg-forest/10'
+                  }`}
+                >
+                  📤 Mis Solicitudes como Inquilino ({requestedVisits.length})
+                </button>
               </div>
             </div>
 
             {/* List of Visits */}
-            {visits.length === 0 ? (
+            {displayedVisits.length === 0 ? (
               <div className="rounded-3xl border border-border bg-white p-8 py-16 text-center shadow-card">
                 <Calendar size={48} className="text-text-muted/30 mx-auto mb-3" />
-                <h3 className="font-extrabold text-cafe text-lg mb-1">No tienes visitas agendadas</h3>
+                <h3 className="font-extrabold text-cafe text-lg mb-1">
+                  {visitSubTab === 'recibidas'
+                    ? 'No has recibido solicitudes de cita en tus propiedades'
+                    : visitSubTab === 'solicitadas'
+                    ? 'No tienes solicitudes de visita enviadas'
+                    : 'No tienes citas agendadas'}
+                </h3>
                 <p className="text-xs text-text-muted mb-5 max-w-sm mx-auto">
-                  Cuando encuentres una casa o apartamento que te guste, puedes solicitar una cita para conocerlo en persona.
+                  {visitSubTab === 'recibidas'
+                    ? 'Cuando las personas vean tus anuncios de vivienda en RuwaJay, podrán solicitar citas para conocerlas en persona.'
+                    : 'Explora casas o apartamentos disponibles y agenda una cita presencial en el horario que mejor te convenga.'}
                 </p>
                 <Link
                   to="/explorar"
@@ -915,35 +1244,62 @@ export default function ProfilePage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {visits.map((v) => {
+                {displayedVisits.map((v) => {
                   const isPending = v.status === 'pendiente';
                   const isAccepted = v.status === 'confirmada';
                   const isRejected = v.status === 'rechazada';
                   const isCancelled = v.status === 'cancelada';
+                  const isExpired = v.status === 'vencida';
+
+                  // Expiration calculations
+                  const createdTime = new Date(v.createdAt || Date.now()).getTime();
+                  const daysPassed = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
+                  const daysLeft = Math.max(0, Math.ceil(7 - daysPassed));
+
+                  // Determine if current user is owner of the visited property
+                  const isOwnerOfThisVisit =
+                    (currentUserId && v.ownerId === currentUserId) ||
+                    (currentUserPhone && v.ownerPhone && v.ownerPhone.replace(/\D/g, '') === currentUserPhone) ||
+                    (isOwner && v.tenantId !== currentUserId);
 
                   // Determine target phone for WhatsApp
-                  const targetPhone = (isOwner && v.tenantPhone) ? v.tenantPhone : (v.ownerPhone || '50255551234');
+                  const targetPhone = isOwnerOfThisVisit ? (v.tenantPhone || '50255551234') : (v.ownerPhone || '50255551234');
                   const cleanPhone = targetPhone.replace(/\D/g, '');
-                  const waGreeting = isOwner
-                    ? `¡Hola ${v.tenantName || 'inquilino'}! Te escribo respecto a tu solicitud de visita a "${v.propertyTitle}" en RuwaJay para el día ${v.date} a las ${v.time}. ¿Coordinamos la hora exacta?`
-                    : `¡Hola ${v.ownerName || 'propietario'}! Te escribo por la visita a "${v.propertyTitle}" agendada en RuwaJay para el día ${v.date} a las ${v.time}. ¿Podemos coordinar los detalles?`;
+                  const waGreeting = isOwnerOfThisVisit
+                    ? `¡Hola ${v.tenantName || 'inquilino'}! Te escribo respecto a tu solicitud de visita a "${v.propertyTitle}" en RuwaJay para el día ${v.date} a las ${v.time}. ¿Coordinamos los detalles?`
+                    : `¡Hola ${v.ownerName || 'propietario'}! Te escribo por la visita a "${v.propertyTitle}" agendada en RuwaJay para el día ${v.date} a las ${v.time}. ¿Podemos coordinar la hora exacta?`;
                   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waGreeting)}`;
 
                   return (
                     <div
                       key={v.id}
-                      className="rounded-3xl border border-border-light bg-white p-4 sm:p-6 shadow-card hover:border-forest/20 transition-all flex flex-col md:flex-row gap-5"
+                      className={`rounded-3xl border bg-white p-4 sm:p-6 shadow-card transition-all flex flex-col md:flex-row gap-5 ${
+                        isExpired
+                          ? 'border-red-200/80 bg-red-50/20'
+                          : isAccepted
+                          ? 'border-emerald-200/80'
+                          : 'border-border-light hover:border-forest/20'
+                      }`}
                     >
                       {/* Property Thumbnail */}
-                      <div className="relative w-full md:w-48 h-36 md:h-auto rounded-2xl overflow-hidden bg-stone-100 flex-shrink-0">
+                      <div className="relative w-full md:w-52 h-40 md:h-auto rounded-2xl overflow-hidden bg-stone-100 flex-shrink-0">
                         <img
                           src={v.propertyImage || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80'}
                           alt={v.propertyTitle}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute top-2 left-2 rounded-lg bg-black/65 px-2 py-0.5 text-[10px] font-black text-white backdrop-blur-xs">
-                          Q{v.propertyPrice}/mes
+                        <div className="absolute top-2 left-2 rounded-lg bg-black/70 px-2 py-0.5 text-[10px] font-black text-white backdrop-blur-xs">
+                          Q{Number(v.propertyPrice || 0).toLocaleString()}/mes
                         </div>
+                        {isOwnerOfThisVisit ? (
+                          <div className="absolute bottom-2 left-2 rounded-md bg-forest/90 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                            Tu vivienda
+                          </div>
+                        ) : (
+                          <div className="absolute bottom-2 left-2 rounded-md bg-cafe/80 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                            Tu solicitud
+                          </div>
+                        )}
                       </div>
 
                       {/* Content Details */}
@@ -954,20 +1310,30 @@ export default function ProfilePage() {
                               <Link to={`/propiedad/${v.propertyId}`}>{v.propertyTitle}</Link>
                             </h3>
 
-                            {/* Status Badge */}
+                            {/* Status Badges */}
                             {isPending && (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">
-                                <Clock size={13} /> Pendiente de confirmación
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">
+                                  <Clock size={13} /> Pendiente de confirmación
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-0.5 text-[10px] font-bold text-stone-600">
+                                  ⏳ Expira en {daysLeft === 1 ? '1 día' : `${daysLeft} días`}
+                                </span>
+                              </div>
                             )}
                             {isAccepted && (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800">
                                 <CheckCircle2 size={13} /> Visita Confirmada
                               </span>
                             )}
+                            {isExpired && (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-800">
+                                <AlertTriangle size={13} /> Cita Vencida (7 días)
+                              </span>
+                            )}
                             {isRejected && (
-                              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-black text-red-700">
-                                <AlertTriangle size={13} /> No disponible
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1 text-xs font-black text-stone-700">
+                                <X size={13} /> No disponible / Rechazada
                               </span>
                             )}
                             {isCancelled && (
@@ -977,6 +1343,7 @@ export default function ProfilePage() {
                             )}
                           </div>
 
+                          {/* Date and Location */}
                           <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs font-semibold text-text-secondary mb-3">
                             <span className="flex items-center gap-1">
                               <MapPin size={14} className="text-terracota" /> {v.propertyZone || 'Guatemala'}
@@ -989,32 +1356,96 @@ export default function ProfilePage() {
                             </span>
                           </div>
 
+                          {/* Notes */}
                           {v.notes && (
                             <p className="rounded-xl bg-[#FAF5EE] p-2.5 text-xs text-text-secondary italic mb-3">
                               "{v.notes}"
                             </p>
                           )}
 
+                          {/* Expired Callout */}
+                          {isExpired && (
+                            <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-800 flex items-start gap-2">
+                              <AlertCircle size={15} className="text-red-600 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="font-extrabold text-red-900">Esta cita expiró automáticamente tras 1 semana sin confirmación.</p>
+                                <p className="text-[11px] text-red-700 mt-0.5">
+                                  Para no mantener bloqueada la agenda, esta cita ya no es válida. Puedes solicitar una nueva cita en la ficha de la vivienda.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Contact details */}
                           <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                            <span className="font-bold">{isOwner ? 'Interesado:' : 'Propietario:'}</span>
-                            <span className="text-cafe font-extrabold">{isOwner ? v.tenantName : v.ownerName}</span>
+                            <span className="font-bold">{isOwnerOfThisVisit ? 'Solicitante interesado:' : 'Propietario / Anfitrión:'}</span>
+                            <span className="text-cafe font-extrabold">{isOwnerOfThisVisit ? v.tenantName : v.ownerName}</span>
                             <span>•</span>
-                            <span>{isOwner ? (v.tenantPhone || 'Sin teléfono') : v.ownerPhone}</span>
+                            <span>{isOwnerOfThisVisit ? (v.tenantPhone || 'Sin teléfono') : v.ownerPhone}</span>
                           </div>
+
+                          {/* Owner Live Property Control Toolbar for this visit */}
+                          {isOwnerOfThisVisit && (isAccepted || isPending) && (
+                            <div className="mt-3 rounded-2xl bg-[#FAF7F2] border border-[#E9E1D6] p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-xs font-extrabold text-cafe flex items-center gap-1.5">
+                                  <Building2 size={13} className="text-forest" /> Estado de la vivienda para esta cita:
+                                </span>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetPropertyStatus(v.propertyId, 'en_cita')}
+                                    className="rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-1 text-[11px] font-bold transition-colors"
+                                    title="Indica que la propiedad está siendo visitada ahora"
+                                  >
+                                    🟠 Marcar En Cita
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetPropertyStatus(v.propertyId, 'alquilada')}
+                                    className="rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-900 px-2.5 py-1 text-[11px] font-bold transition-colors"
+                                    title="Indica que ya se alquiló para deshabilitar solicitudes"
+                                  >
+                                    🟣 Marcar Ocupada
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetPropertyStatus(v.propertyId, 'disponible')}
+                                    className="rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-2.5 py-1 text-[11px] font-bold transition-colors"
+                                    title="Restablece la vivienda a disponible para más visitas"
+                                  >
+                                    🟢 Disponible
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Action Buttons */}
                         <div className="mt-4 pt-4 border-t border-border-light flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             {/* WhatsApp Direct */}
-                            <a
-                              href={waUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
-                            >
-                              <WhatsAppIcon size={15} /> Contactar por WhatsApp
-                            </a>
+                            {!isExpired && (
+                              <a
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                              >
+                                <WhatsAppIcon size={15} /> Contactar por WhatsApp
+                              </a>
+                            )}
+
+                            {/* Chat button: only available on confirmed visits */}
+                            {isAccepted && (
+                              <Link
+                                to={`/chat?property=${v.propertyId}`}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                              >
+                                <MessageCircle size={14} /> Chatear
+                              </Link>
+                            )}
 
                             <Link
                               to={`/propiedad/${v.propertyId}`}
@@ -1022,11 +1453,21 @@ export default function ProfilePage() {
                             >
                               Ver ficha
                             </Link>
+
+                            {/* Re-request button for expired or rejected visits */}
+                            {(isExpired || isRejected) && (
+                              <Link
+                                to={`/propiedad/${v.propertyId}`}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                              >
+                                <RotateCcw size={14} /> Pedir de nuevo una cita
+                              </Link>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2">
                             {/* Owner Acceptance Actions */}
-                            {isOwner && isPending && (
+                            {isOwnerOfThisVisit && isPending && (
                               <>
                                 <button
                                   type="button"
@@ -1045,7 +1486,7 @@ export default function ProfilePage() {
                               </>
                             )}
 
-                            {!isCancelled && !isRejected && (
+                            {!isCancelled && !isRejected && !isExpired && (
                               <button
                                 type="button"
                                 onClick={() => handleUpdateVisitStatus(v.id, 'cancelada')}
@@ -1055,7 +1496,7 @@ export default function ProfilePage() {
                               </button>
                             )}
 
-                            {(isCancelled || isRejected) && (
+                            {(isCancelled || isRejected || isExpired) && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteVisit(v.id)}
@@ -1084,8 +1525,8 @@ export default function ProfilePage() {
               {[
                 { label: 'Total publicadas', value: myProperties.length, icon: Building2, color: 'text-forest bg-forest/10' },
                 { label: 'Disponibles', value: myProperties.filter((p) => p.status === 'disponible').length, icon: Home, color: 'text-jade bg-jade/10' },
-                { label: 'Alquiladas', value: myProperties.filter((p) => p.status === 'alquilada').length, icon: Check, color: 'text-dorado bg-dorado/10' },
-                { label: 'Interesados', value: myProperties.reduce((sum, p) => sum + (p.views || Math.floor(Math.random() * 20 + 5)), 0), icon: Users, color: 'text-terracota bg-terracota/10' },
+                { label: 'En Cita / Visita', value: myProperties.filter((p) => p.status === 'en_cita').length, icon: Clock3, color: 'text-amber-600 bg-amber-500/10' },
+                { label: 'Ocupadas / Alquiladas', value: myProperties.filter((p) => p.status === 'alquilada' || p.status === 'ocupada').length, icon: Check, color: 'text-dorado bg-dorado/10' },
               ].map((stat) => {
                 const Icon = stat.icon;
                 return (
@@ -1107,7 +1548,7 @@ export default function ProfilePage() {
                   <SectionCard key={property.id}>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                       {/* Property image */}
-                      <div className="h-24 w-full shrink-0 overflow-hidden rounded-2xl bg-crema sm:h-20 sm:w-28">
+                      <div className="h-24 w-full shrink-0 overflow-hidden rounded-2xl bg-crema sm:h-20 sm:w-28 relative">
                         {property.images?.[0] ? (
                           <img src={property.images[0]} alt={property.title} className="h-full w-full object-cover" />
                         ) : (
@@ -1115,6 +1556,9 @@ export default function ProfilePage() {
                             <Home size={28} />
                           </div>
                         )}
+                        <span className="absolute bottom-1 right-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-black text-white backdrop-blur-xs">
+                          Q{Number(property.price || 0).toLocaleString()}
+                        </span>
                       </div>
                       {/* Info */}
                       <div className="min-w-0 flex-1">
@@ -1122,28 +1566,43 @@ export default function ProfilePage() {
                         <p className="text-xs text-text-muted mt-0.5">{property.zone || property.municipality || 'Guatemala'}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
                           <span className="text-sm font-black text-forest">Q{Number(property.price || 0).toLocaleString()}/mes</span>
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
                             property.status === 'disponible'
-                              ? 'bg-jade/15 text-forest'
-                              : 'bg-[#E8D9C8] text-cafe'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : property.status === 'en_cita'
+                              ? 'bg-amber-100 text-amber-800'
+                              : property.status === 'alquilada' || property.status === 'ocupada'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-stone-100 text-stone-700'
                           }`}>
-                            {property.status === 'disponible' ? '● Disponible' : '● Alquilada'}
+                            {property.status === 'disponible' && '● Disponible'}
+                            {property.status === 'en_cita' && '● En Cita / Visita activa'}
+                            {(property.status === 'alquilada' || property.status === 'ocupada') && '● Ocupada / Alquilada'}
+                            {property.status === 'pausada' && '● Pausada'}
                           </span>
                         </div>
                       </div>
-                      {/* Actions */}
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          onClick={() => handleTogglePropertyStatus(property.id, property.status)}
-                          className={`flex min-h-10 items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-                            property.status === 'disponible'
-                              ? 'bg-forest/10 text-forest hover:bg-forest/20'
-                              : 'bg-dorado/10 text-dorado hover:bg-dorado/20'
-                          }`}
+                      {/* Actions: Live status selector and Link */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1 bg-[#FAF7F2] p-1 rounded-xl border border-border-light">
+                          <label className="text-[10px] font-bold text-text-muted px-1 hidden sm:inline">Estado:</label>
+                          <select
+                            value={property.status || 'disponible'}
+                            onChange={(e) => handleSetPropertyStatus(property.id, e.target.value)}
+                            className="rounded-lg border-0 bg-white px-2.5 py-1.5 text-xs font-black text-cafe shadow-xs focus:ring-2 focus:ring-forest cursor-pointer"
+                          >
+                            <option value="disponible">🟢 Disponible</option>
+                            <option value="en_cita">🟠 En Cita</option>
+                            <option value="alquilada">🟣 Ocupada / Alquilada</option>
+                            <option value="pausada">⚪ Pausada</option>
+                          </select>
+                        </div>
+                        <Link
+                          to={`/propiedad/${property.id}`}
+                          className="inline-flex items-center gap-1 rounded-xl bg-forest/10 hover:bg-forest/20 text-forest px-3 py-2 text-xs font-bold transition-colors"
                         >
-                          {property.status === 'disponible' ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                          {property.status === 'disponible' ? 'Marcar Alquilada' : 'Marcar Disponible'}
-                        </button>
+                          <Eye size={13} /> Ver ficha
+                        </Link>
                       </div>
                     </div>
                   </SectionCard>
@@ -1176,6 +1635,413 @@ export default function ProfilePage() {
                 </Link>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Panel de Administración ── */}
+        {activeTab === 'admin' && isAdmin && (
+          <div className="space-y-6">
+            {/* Feedback alert message */}
+            {adminNotice && (
+              <div className="flex items-center justify-between rounded-2xl bg-forest/10 border border-forest/30 p-4 text-forest font-bold text-sm">
+                <span>{adminNotice}</span>
+                <button onClick={() => setAdminNotice('')} className="text-forest hover:opacity-75">
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Banner Maestro */}
+            <div className="rounded-3xl border border-forest/20 bg-gradient-to-r from-forest via-[#1E3A2F] to-[#152B23] p-6 text-white shadow-card">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gold/20 text-gold text-lg">🛡️</span>
+                    <h2 className="text-xl font-extrabold tracking-tight">Panel Maestro de Administración RuwaJay</h2>
+                  </div>
+                  <p className="text-xs text-white/80 max-w-xl">
+                    Administra usuarios, emite comunicados y novedades en tiempo real a la web y a la app móvil, y modera el catálogo de propiedades de Guatemala.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gold">Tu Rol</p>
+                  <p className="text-sm font-extrabold text-white">Super Administrador</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Métricas Generales */}
+            <SectionCard>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Usuarios Registrados', value: allUsers.length, icon: Users, color: 'text-forest bg-forest/10' },
+                  { label: 'Propiedades Totales', value: allProperties.length, icon: Building2, color: 'text-terracota bg-terracota/10' },
+                  { label: 'Propietarios Activos', value: allUsers.filter((u) => u.role === 'owner').length, icon: Home, color: 'text-dorado bg-dorado/10' },
+                  { label: 'Comunicados Activos', value: systemUpdates.filter((u) => u.active !== false).length, icon: Megaphone, color: 'text-jade bg-jade/10' },
+                ].map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-border bg-white p-4 text-center">
+                    <div className={`mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl ${stat.color}`}>
+                      <stat.icon size={20} />
+                    </div>
+                    <p className="text-2xl font-black text-cafe">{stat.value}</p>
+                    <p className="text-[11px] font-bold text-text-muted">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            {/* ── SECCIÓN: Publicar y Gestionar Actualizaciones del Sistema ── */}
+            <SectionCard>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest/10 text-forest">
+                    <Megaphone size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-cafe">Comunicados y Actualizaciones del Sistema</h3>
+                    <p className="text-xs text-text-muted">Publica avisos globales que aparecerán en la web y en la app móvil</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-forest/10 px-3 py-1 text-xs font-black text-forest">
+                  {systemUpdates.length} publicados
+                </span>
+              </div>
+
+              {/* Formulario de nueva actualización */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newUpdateTitle.trim() || !newUpdateContent.trim()) {
+                    setAdminNotice('Por favor escribe un título y contenido para el comunicado.');
+                    return;
+                  }
+                  setIsPostingUpdate(true);
+                  try {
+                    await createSystemUpdate({
+                      title: newUpdateTitle,
+                      content: newUpdateContent,
+                      category: newUpdateCategory,
+                      priority: newUpdatePriority,
+                      active: true,
+                      createdBy: user?.name || 'Administrador RuwaJay',
+                    });
+                    setNewUpdateTitle('');
+                    setNewUpdateContent('');
+                    setAdminNotice('¡Comunicado publicado con éxito! Ahora es visible en Web y Móvil.');
+                  } catch (err) {
+                    setAdminNotice(err.message || 'Error al publicar comunicado.');
+                  } finally {
+                    setIsPostingUpdate(false);
+                  }
+                }}
+                className="mb-6 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] p-4 sm:p-5 space-y-4"
+              >
+                <div className="flex items-center gap-2 text-xs font-bold text-cafe uppercase tracking-wider">
+                  <Sparkles size={14} className="text-dorado" /> Nuevo Comunicado para toda la comunidad
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-text-muted mb-1">Título del comunicado</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Mantenimiento programado / Nueva función..."
+                      value={newUpdateTitle}
+                      onChange={(e) => setNewUpdateTitle(e.target.value)}
+                      className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm text-cafe outline-none focus:border-forest"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-text-muted mb-1">Categoría</label>
+                      <select
+                        value={newUpdateCategory}
+                        onChange={(e) => setNewUpdateCategory(e.target.value)}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe outline-none cursor-pointer"
+                      >
+                        <option value="novedad">🚀 Novedad</option>
+                        <option value="mantenimiento">🛠️ Mantenimiento</option>
+                        <option value="alerta">⚠️ Alerta</option>
+                        <option value="mejora">✨ Mejora</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-text-muted mb-1">Prioridad</label>
+                      <select
+                        value={newUpdatePriority}
+                        onChange={(e) => setNewUpdatePriority(e.target.value)}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe outline-none cursor-pointer"
+                      >
+                        <option value="normal">🟢 Normal</option>
+                        <option value="destacada">🌟 Destacada</option>
+                        <option value="urgente">🚨 Urgente</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-text-muted mb-1">Contenido del comunicado</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Escribe el mensaje detallado que verán todos los usuarios..."
+                    value={newUpdateContent}
+                    onChange={(e) => setNewUpdateContent(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-white p-3 text-sm text-cafe outline-none focus:border-forest"
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={isPostingUpdate}
+                    className="flex items-center gap-2 rounded-xl bg-forest px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-forest/90 transition-all disabled:opacity-50"
+                  >
+                    <Send size={14} />
+                    {isPostingUpdate ? 'Publicando...' : 'Publicar Comunicado'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Lista de comunicados emitidos */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-text-muted">
+                  Historial de Actualizaciones Emitidas
+                </h4>
+                {systemUpdates.length === 0 ? (
+                  <p className="text-center text-sm text-text-muted py-6">No hay comunicados publicados aún.</p>
+                ) : (
+                  <div className="max-h-[360px] overflow-y-auto space-y-2.5 pr-1">
+                    {systemUpdates.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl border p-4 transition-all ${
+                          item.active !== false
+                            ? 'border-border bg-white shadow-sm'
+                            : 'border-dashed border-gray-200 bg-gray-50 opacity-60'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`rounded-lg px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                                item.category === 'alerta'
+                                  ? 'bg-red-100 text-red-700'
+                                  : item.category === 'mantenimiento'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : item.category === 'mejora'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-forest/10 text-forest'
+                              }`}
+                            >
+                              {item.category || 'novedad'}
+                            </span>
+                            {item.priority === 'urgente' && (
+                              <span className="rounded-lg bg-red-600 px-2 py-0.5 text-[10px] font-black text-white uppercase">
+                                Urgente
+                              </span>
+                            )}
+                            <h4 className="text-sm font-extrabold text-cafe">{item.title}</h4>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={async () => {
+                                const nextState = item.active === false;
+                                try {
+                                  await updateSystemUpdate(item.id, { active: nextState });
+                                  setAdminNotice(`Comunicado marcado como ${nextState ? 'Activo' : 'Inactivo'}.`);
+                                } catch (err) {
+                                  setAdminNotice(err.message);
+                                }
+                              }}
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                                item.active !== false
+                                  ? 'bg-jade/10 text-jade hover:bg-jade/20'
+                                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              {item.active !== false ? '● Activo' : '○ Oculto'}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (window.confirm('¿Deseas eliminar este comunicado?')) {
+                                  try {
+                                    await deleteSystemUpdate(item.id);
+                                    setAdminNotice('Comunicado eliminado.');
+                                  } catch (err) {
+                                    setAdminNotice(err.message);
+                                  }
+                                }
+                              }}
+                              className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                              title="Eliminar comunicado"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-text-secondary leading-relaxed mb-2">{item.content}</p>
+
+                        <div className="flex items-center justify-between text-[11px] text-text-muted">
+                          <span>Por: <strong>{item.createdBy || 'Administrador'}</strong></span>
+                          <span>{item.createdAt ? new Date(item.createdAt).toLocaleDateString('es-GT', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
+            {/* Gestión de Usuarios */}
+            <SectionCard>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest/10 text-forest">
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-cafe">Gestión de Usuarios</h3>
+                    <p className="text-xs text-text-muted">Asigna roles de Administrador, Propietario o Inquilino y modera accesos</p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-text-muted">{allUsers.length} registrados</span>
+              </div>
+              <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5">
+                <Mail size={16} className="text-text-muted" />
+                <input
+                  type="text"
+                  placeholder="Buscar usuario por nombre o correo..."
+                  value={adminSearchQuery}
+                  onChange={(e) => setAdminSearchQuery(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm text-cafe outline-none"
+                />
+              </div>
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {allUsers
+                  .filter((u) => {
+                    if (!adminSearchQuery) return true;
+                    const q = adminSearchQuery.toLowerCase();
+                    return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+                  })
+                  .map((u) => (
+                    <div key={u.id} className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-border bg-crema/30 p-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-cafe truncate">{u.name || 'Sin nombre'}</p>
+                          {u.role === 'admin' && (
+                            <span className="rounded-md bg-forest text-white px-1.5 py-0.5 text-[9px] font-black uppercase">
+                              Admin
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-text-muted truncate">{u.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select
+                          value={u.role || 'seeker'}
+                          onChange={async (e) => {
+                            try {
+                              await updateUserRole(u.id, e.target.value);
+                              setAdminNotice(`Rol de ${u.email} actualizado a ${e.target.value}.`);
+                            } catch (err) {
+                              window.alert(err.message);
+                            }
+                          }}
+                          className="rounded-lg border border-border bg-white px-2 py-1 text-xs font-bold text-cafe outline-none cursor-pointer"
+                        >
+                          <option value="seeker">👤 Inquilino</option>
+                          <option value="owner">🏡 Propietario</option>
+                          <option value="admin">🛡️ Administrador</option>
+                        </select>
+                        <button
+                          onClick={async () => {
+                            const newStatus = (u.accountStatus || 'active') === 'active' ? 'suspended' : 'active';
+                            try {
+                              await updateUserStatus(u.id, newStatus);
+                              setAdminNotice(`Estado de cuenta actualizado a ${newStatus}.`);
+                            } catch (err) {
+                              window.alert(err.message);
+                            }
+                          }}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                            (u.accountStatus || 'active') === 'active'
+                              ? 'bg-jade/10 text-jade hover:bg-jade/20'
+                              : 'bg-red-50 text-red-600 hover:bg-red-100'
+                          }`}
+                        >
+                          {(u.accountStatus || 'active') === 'active' ? '● Activo' : '● Suspendido'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </SectionCard>
+
+            {/* Moderación de Propiedades */}
+            <SectionCard>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-terracota/10 text-terracota">
+                  <Building2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-cafe">Moderación de Propiedades</h3>
+                  <p className="text-xs text-text-muted">Supervisa y actualiza el estado de los inmuebles publicados en toda Guatemala</p>
+                </div>
+              </div>
+              <div className="max-h-[400px] overflow-y-auto space-y-2">
+                {allProperties.length === 0 ? (
+                  <p className="text-center text-sm text-text-muted py-8">No hay propiedades publicadas aún.</p>
+                ) : allProperties.map((prop) => (
+                  <div key={prop.id} className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-border bg-crema/30 p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-cafe truncate">{prop.title || 'Propiedad'}</p>
+                      <p className="text-xs text-text-muted truncate">
+                        {prop.address?.approximate || prop.address?.zone || 'Guatemala'} • Q {prop.price}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={prop.status || 'disponible'}
+                        onChange={async (e) => {
+                          try {
+                            await updatePropertyStatus(prop.id, e.target.value);
+                            setAdminNotice(`Estado del inmueble cambiado a ${e.target.value}.`);
+                          } catch (err) {
+                            window.alert(err.message);
+                          }
+                        }}
+                        className="rounded-lg border border-border bg-white px-2 py-1 text-xs font-bold text-cafe outline-none cursor-pointer"
+                      >
+                        <option value="disponible">Disponible</option>
+                        <option value="alquilada">Alquilada</option>
+                        <option value="pausada">Pausada</option>
+                      </select>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('¿Eliminar esta propiedad permanentemente?')) {
+                            try {
+                              await deleteProperty(prop.id);
+                              setAdminNotice('Propiedad eliminada por moderación.');
+                            } catch (err) {
+                              window.alert(err.message);
+                            }
+                          }
+                        }}
+                        className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                        title="Eliminar propiedad"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
           </div>
         )}
 
@@ -1526,8 +2392,9 @@ export default function ProfilePage() {
               </h3>
               <p className="text-xs text-text-muted mb-4">Al cerrar sesión deberás ingresar tus credenciales nuevamente para acceder a tu cuenta.</p>
               <button
-                onClick={() => { logout(); navigate('/login'); }}
-                className="flex min-h-11 items-center gap-2 rounded-xl bg-[#E00B41]/10 px-5 py-2.5 text-sm font-bold text-[#E00B41] transition-all hover:bg-[#E00B41] hover:text-white"
+                type="button"
+                onClick={async () => { await logout(); navigate('/login', { replace: true }); }}
+                className="flex min-h-11 items-center gap-2 rounded-xl bg-[#E00B41]/10 px-5 py-2.5 text-sm font-bold text-[#E00B41] transition-all hover:bg-[#E00B41] hover:text-white cursor-pointer"
               >
                 <LogOut size={16} /> Cerrar sesión
               </button>

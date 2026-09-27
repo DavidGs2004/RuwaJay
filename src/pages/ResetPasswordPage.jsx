@@ -19,7 +19,7 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!oobCode) {
+    if (!oobCode || !firebaseAuth) {
       setStatusMessage({
         type: 'error',
         text: 'Enlace inválido o incompleto. Solicita uno nuevo.',
@@ -46,6 +46,11 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setStatusMessage({ type: '', text: '' });
+
+    if (!firebaseAuth) {
+      setStatusMessage({ type: 'error', text: 'Servicio de autenticación no configurado.' });
+      return;
+    }
 
     if (newPassword.length < 6) {
       setStatusMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres.' });

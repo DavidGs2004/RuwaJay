@@ -1,5 +1,5 @@
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -21,3 +21,4 @@ const app = firebaseWebEnabled
 export const firestore = app ? getFirestore(app) : null;
 export const storage = app ? getStorage(app) : null;
 export const firebaseAuth = app ? getAuth(app) : null;
+export const googleProvider = app ? new GoogleAuthProvider() : null;

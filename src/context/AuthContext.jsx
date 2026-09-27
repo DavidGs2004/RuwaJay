@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef, useCallback } f
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -12,18 +13,19 @@ import {
   confirmPasswordReset
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
-import { firebaseAuth, firestore, firebaseWebEnabled } from '../lib/firebase';
+import { firebaseAuth, firestore, firebaseWebEnabled, googleProvider } from '../lib/firebase';
 
 const AuthContext = createContext(null);
 
 export { AVATAR_OPTIONS } from '../data/avatars';
 
-// Configuración de tiempos
-// Modifica este valor para definir los minutos de inactividad antes de mostrar el modal.
-// Para pruebas rápidas de 10 segundos puedes usar: 10 * 1000
-const IDLE_TIME_BEFORE_WARNING_MS = 10 * 1000; 
+// Configuración de tiempos y almacenamiento
+const IDLE_TIME_BEFORE_WARNING_MS = 15 * 60 * 1000; // 15 minutos de inactividad
 const WARNING_COUNTDOWN_SECONDS = 60; 
 const INACTIVITY_STORAGE_KEY = 'ruwajay_last_activity';
+const TOKEN_STORAGE_KEY = 'ruwajay_token';
+const USER_STORAGE_KEY = 'ruwajay_user';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -46,10 +48,20 @@ export function AuthProvider({ children }) {
   // Load saved profile extras (avatar, bio, verification) from localStorage
   const loadProfileExtras = (baseUser) => {
     if (!baseUser) return baseUser;
+    const photo = baseUser.avatarImage || baseUser.avatar || baseUser.photoURL || null;
     try {
       const extras = JSON.parse(localStorage.getItem(`ruwajay_profile_${baseUser.id}`) || '{}');
-      return { ...baseUser, ...extras };
-    } catch { return baseUser; }
+      return {
+        ...baseUser,
+        ...extras,
+        avatarImage: extras.avatarImage || photo,
+      };
+    } catch {
+      return {
+        ...baseUser,
+        avatarImage: photo,
+      };
+    }
   };
 
   const saveProfileExtras = (userId, extras) => {
@@ -59,12 +71,25 @@ export function AuthProvider({ children }) {
     } catch { /* ignore */ }
   };
 
-  // Función de logout completa
-  const logout = useCallback(() => {
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+  // Función de logout completa (API JWT + LocalStorage + Firebase)
+  const logout = useCallback(async () => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
     setShowWarningModal(false);
     localStorage.removeItem(INACTIVITY_STORAGE_KEY);
-    return signOut(firebaseAuth);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setUser(null);
+
+    if (firebaseWebEnabled && firebaseAuth) {
+      try {
+        await signOut(firebaseAuth);
+      } catch (err) {
+        console.warn('Error al cerrar sesión de Firebase:', err);
+      }
+    }
   }, []);
 
   // 1. Efecto aislado dedicado exclusivamente a la cuenta regresiva
@@ -146,6 +171,9 @@ export function AuthProvider({ children }) {
     };
 
     const handleStorageChange = (e) => {
+      if (e.key === TOKEN_STORAGE_KEY && !e.newValue) {
+        setUser(null);
+      }
       if (e.key === INACTIVITY_STORAGE_KEY && !isModalOpenRef.current) {
         resetTimers();
       }
@@ -161,103 +189,319 @@ export function AuthProvider({ children }) {
     };
   }, [user, recordActivity, resetTimers]);
 
-  // Sincronización de Firebase Auth y Firestore
+  // Sincronización de Sesión (API FastAPI Backend con respaldo opcional de Firebase)
   useEffect(() => {
-    if (!firebaseWebEnabled || !firebaseAuth) {
-      setIsInitializing(false);
-      return;
-    }
+    let isMounted = true;
 
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
-      if (firebaseUser) {
-        const userDocRef = doc(firestore, 'users', firebaseUser.uid);
-        const unsubDoc = onSnapshot(userDocRef, (snapshot) => {
-          if (snapshot.exists()) {
-            setUser(loadProfileExtras({ id: firebaseUser.uid, ...snapshot.data() }));
+    async function initializeSession() {
+      // 1. Verificar si hay un JWT activo de la API de RuwaJay
+      const localToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      const cachedUser = localStorage.getItem(USER_STORAGE_KEY);
+
+      if (localToken) {
+        try {
+          const res = await fetch(`${API_URL}/api/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${localToken}`
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (isMounted) {
+              const fullUser = loadProfileExtras(data.user);
+              setUser(fullUser);
+              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+              setIsInitializing(false);
+              return;
+            }
           } else {
-            setUser(loadProfileExtras({ id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || 'Usuario' }));
+            // El token caducó o es inválido
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            localStorage.removeItem(USER_STORAGE_KEY);
           }
-          setIsInitializing(false);
-        }, (error) => {
-          console.error("Error listening to profile updates:", error);
-          setIsInitializing(false);
+        } catch (err) {
+          console.warn("Backend no disponible de inmediato, restaurando sesión en caché:", err);
+          if (cachedUser && isMounted) {
+            try {
+              setUser(loadProfileExtras(JSON.parse(cachedUser)));
+              setIsInitializing(false);
+              return;
+            } catch { /* ignore */ }
+          }
+        }
+      }
+
+      // 2. Si Firebase está configurado, escuchar cambios de Firebase Auth
+      if (firebaseWebEnabled && firebaseAuth) {
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+          if (!isMounted) return;
+          if (firebaseUser) {
+            const userDocRef = doc(firestore, 'users', firebaseUser.uid);
+            const unsubDoc = onSnapshot(userDocRef, (snapshot) => {
+              if (snapshot.exists()) {
+                setUser(loadProfileExtras({ id: firebaseUser.uid, ...snapshot.data() }));
+              } else {
+                setUser(loadProfileExtras({ id: firebaseUser.uid, email: firebaseUser.email, name: firebaseUser.displayName || 'Usuario' }));
+              }
+              setIsInitializing(false);
+            }, (error) => {
+              console.error("Error listening to profile updates:", error);
+              setIsInitializing(false);
+            });
+            return () => unsubDoc();
+          } else {
+            if (!localStorage.getItem(TOKEN_STORAGE_KEY)) {
+              setUser(null);
+            }
+            setIsInitializing(false);
+          }
         });
 
-        return () => unsubDoc();
+        return () => unsubscribe();
       } else {
-        setUser(null);
-        setIsInitializing(false);
+        if (isMounted) {
+          setIsInitializing(false);
+        }
       }
-    });
+    }
 
-    return () => unsubscribe();
+    initializeSession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (email, password) => {
-    if (!firebaseWebEnabled || !firebaseAuth || !firestore) {
-      throw new Error('Firebase Web no está configurado. Revisa las variables VITE_FIREBASE_API_KEY y VITE_FIREBASE_APP_ID.');
-    }
-
     setIsLoading(true);
     try {
-      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      const userDoc = await getDoc(doc(firestore, 'users', credential.user.uid));
-      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...(userDoc.exists() ? userDoc.data() : {}) });
+      // 1. Conexión directa a la API de RuwaJay (SQLite local, 100% gratuita)
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+        const enrichedUser = loadProfileExtras(data.user);
+        setUser(enrichedUser);
+        setIsPostAuthLoading(true);
+        window.setTimeout(() => setIsPostAuthLoading(false), 2000);
+        return enrichedUser;
+      }
+
+      const errData = await res.json().catch(() => ({}));
+
+      // 2. Si Firebase está activo, intentar Firebase como respaldo
+      if (firebaseWebEnabled && firebaseAuth && firestore) {
+        try {
+          const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+          const userDoc = await getDoc(doc(firestore, 'users', credential.user.uid));
+          const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...(userDoc.exists() ? userDoc.data() : {}) });
+          setUser(enrichedUser);
+          setIsPostAuthLoading(true);
+          window.setTimeout(() => setIsPostAuthLoading(false), 2000);
+          return enrichedUser;
+        } catch { /* continuar con el mensaje de error de la API */ }
+      }
+
+      throw new Error(errData.detail || 'Correo o contraseña incorrectos.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async (googlePayload = {}) => {
+    setIsLoading(true);
+    try {
+      let payload = {
+        credential: googlePayload.credential || null,
+        email: googlePayload.email || null,
+        name: googlePayload.name || null,
+        photoURL: googlePayload.photoURL || null,
+        role: googlePayload.role || 'seeker',
+      };
+
+      // Si Firebase está disponible y no se proveyó credencial ni email directo, intentar popup de Firebase
+      if (!payload.credential && !payload.email && firebaseWebEnabled && firebaseAuth && googleProvider) {
+        try {
+          const result = await signInWithPopup(firebaseAuth, googleProvider);
+          const fbUser = result.user;
+          payload = {
+            email: fbUser.email,
+            name: fbUser.displayName || 'Usuario Google',
+            photoURL: fbUser.photoURL || null,
+            role: googlePayload.role || 'seeker',
+          };
+        } catch (popupErr) {
+          if (popupErr.code === 'auth/popup-closed-by-user') {
+            throw popupErr;
+          }
+          console.warn("Firebase popup no disponible, procediendo con API:", popupErr);
+        }
+      }
+
+      // Si no hay datos de usuario de Google aún, señalar que se requiere entrada
+      if (!payload.credential && !payload.email) {
+        throw new Error('REQUIRES_GOOGLE_INPUT');
+      }
+
+      // Sincronización oficial con el endpoint /api/auth/google de la API de RuwaJay
+      const res = await fetch(`${API_URL}/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Error al sincronizar con Google en la API.');
+      }
+
+      const data = await res.json();
+      localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+
+      const photoUrl = data.user?.avatar || payload.photoURL || null;
+
+      const enrichedUser = loadProfileExtras({
+        ...data.user,
+        avatarImage: photoUrl,
+      });
+
+      if (photoUrl && enrichedUser?.id) {
+        saveProfileExtras(enrichedUser.id, { avatarImage: photoUrl });
+      }
+
       setUser(enrichedUser);
       setIsPostAuthLoading(true);
-      window.setTimeout(() => setIsPostAuthLoading(false), 3000);
+      window.setTimeout(() => setIsPostAuthLoading(false), 2000);
       return enrichedUser;
-    } finally { setIsLoading(false); }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const register = async (name, email, password, role, phone) => {
     setIsLoading(true);
     try {
-      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-      const profile = {
-        name: name.trim(),
-        email: email.trim(),
-        role: role || 'seeker',
-        phone: phone || null,
-        createdAt: serverTimestamp(),
-      };
+      // 1. Registro directo en la API de RuwaJay (SQLite)
+      const res = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          role: role || 'seeker',
+          phone: phone ? phone.trim() : null,
+        }),
+      });
 
-      await setDoc(doc(firestore, 'users', credential.user.uid), profile);
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data.user));
+        const enrichedUser = loadProfileExtras(data.user);
+        setUser(enrichedUser);
+        setIsPostAuthLoading(true);
+        window.setTimeout(() => setIsPostAuthLoading(false), 2000);
+        return enrichedUser;
+      }
 
-      const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...profile });
-      setUser(enrichedUser);
-      setIsPostAuthLoading(true);
-      window.setTimeout(() => setIsPostAuthLoading(false), 3000);
-      return enrichedUser;
-    } finally { setIsLoading(false); }
+      const errData = await res.json().catch(() => ({}));
+
+      // Si Firebase está activo, registrar también en Firebase
+      if (firebaseWebEnabled && firebaseAuth && firestore) {
+        try {
+          const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+          const profile = {
+            name: name.trim(),
+            email: email.trim(),
+            role: role || 'seeker',
+            phone: phone || null,
+            createdAt: serverTimestamp(),
+          };
+          await setDoc(doc(firestore, 'users', credential.user.uid), profile);
+          const enrichedUser = loadProfileExtras({ id: credential.user.uid, ...profile });
+          setUser(enrichedUser);
+          setIsPostAuthLoading(true);
+          window.setTimeout(() => setIsPostAuthLoading(false), 2000);
+          return enrichedUser;
+        } catch { /* mantener error devuelto por la API */ }
+      }
+
+      throw new Error(errData.detail || 'Error al crear la cuenta en la API.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const requestPasswordReset = async (email) => {
-    if (!firebaseWebEnabled || !firebaseAuth) {
-      throw new Error('Firebase Web no está configurado.');
-    }
-    
-    firebaseAuth.languageCode = 'es';
-
+    // Llamar a la API de RuwaJay para generar y enviar el código de recuperación
     try {
-      return await sendPasswordResetEmail(firebaseAuth, email);
-    } catch (error) {
-      console.error("Error al enviar correo de restablecimiento:", error);
-      throw error;
+      const res = await fetch(`${API_URL}/api/auth/password/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al solicitar el código de recuperación.');
+    } catch (e) {
+      if (firebaseWebEnabled && firebaseAuth) {
+        firebaseAuth.languageCode = 'es';
+        return await sendPasswordResetEmail(firebaseAuth, email);
+      }
+      throw e;
     }
+  };
+
+  const verifyResetCode = async (email, code) => {
+    const res = await fetch(`${API_URL}/api/auth/password/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), code: code.trim() }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Código de seguridad inválido o expirado.');
+    }
+    return await res.json();
+  };
+
+  const resetPassword = async (resetToken, newPassword) => {
+    const res = await fetch(`${API_URL}/api/auth/password/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reset_token: resetToken, password: newPassword }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Error al restablecer la contraseña.');
+    }
+    return await res.json();
   };
 
   const updateProfile = async (updates) => {
     if (!user) return;
 
-    const firestoreUpdates = {};
-    if ('name' in updates) firestoreUpdates.name = updates.name;
-    if ('phone' in updates) firestoreUpdates.phone = updates.phone;
+    if (firebaseWebEnabled && firestore) {
+      const firestoreUpdates = {};
+      if ('name' in updates) firestoreUpdates.name = updates.name;
+      if ('phone' in updates) firestoreUpdates.phone = updates.phone;
+      if ('role' in updates) firestoreUpdates.role = updates.role;
 
-    if (Object.keys(firestoreUpdates).length > 0) {
-      try {
-        await setDoc(doc(firestore, 'users', user.id), firestoreUpdates, { merge: true });
-      } catch (e) { console.error("Error updating firestore profile:", e); }
+      if (Object.keys(firestoreUpdates).length > 0) {
+        try {
+          await setDoc(doc(firestore, 'users', user.id), firestoreUpdates, { merge: true });
+        } catch (e) { console.error("Error updating firestore profile:", e); }
+      }
     }
 
     setUser((previous) => {
@@ -271,18 +515,46 @@ export function AuthProvider({ children }) {
       if ('dpiData' in updates) extras.dpiData = updates.dpiData;
       if ('name' in updates) extras.name = updates.name;
       if ('phone' in updates) extras.phone = updates.phone;
+      if ('role' in updates) extras.role = updates.role;
+
+      try {
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(next));
+      } catch { /* ignore */ }
+
       if (Object.keys(extras).length > 0) saveProfileExtras(previous.id, extras);
       return next;
     });
   };
 
   const changePassword = async (currentPassword, newPassword) => {
-    const firebaseUser = firebaseAuth.currentUser;
-    if (!firebaseUser) throw new Error('No hay sesión activa.');
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (token) {
+      const res = await fetch(`${API_URL}/api/auth/password/change`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al cambiar la contraseña.');
+      }
+      return await res.json();
+    }
 
-    const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
-    await reauthenticateWithCredential(firebaseUser, credential);
-    return updatePassword(firebaseUser, newPassword);
+    if (firebaseWebEnabled && firebaseAuth?.currentUser) {
+      const firebaseUser = firebaseAuth.currentUser;
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
+      await reauthenticateWithCredential(firebaseUser, credential);
+      return updatePassword(firebaseUser, newPassword);
+    }
+
+    throw new Error('No hay sesión activa.');
   };
 
   const requestVerification = (dpiData = {}) => {
@@ -312,13 +584,17 @@ export function AuthProvider({ children }) {
       isInitializing, 
       isPostAuthLoading, 
       login, 
+      loginWithGoogle, 
       register, 
       logout, 
       updateProfile, 
       changePassword, 
       requestVerification, 
       purgeDpiData, 
-      requestPasswordReset 
+      requestPasswordReset,
+      verifyResetCode,
+      resetPassword,
+      isAdmin: user?.role === 'admin',
     }}>
       {children}
 
@@ -396,6 +672,25 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth debe usarse dentro de AuthProvider');
+  if (!context) {
+    return {
+      user: null,
+      isLoading: false,
+      isInitializing: false,
+      isPostAuthLoading: false,
+      login: async () => {},
+      loginWithGoogle: async () => {},
+      register: async () => {},
+      logout: async () => {},
+      updateProfile: async () => {},
+      changePassword: async () => {},
+      requestVerification: () => Promise.resolve({ success: false }),
+      purgeDpiData: () => {},
+      requestPasswordReset: async () => {},
+      verifyResetCode: async () => {},
+      resetPassword: async () => {},
+      isAdmin: false,
+    };
+  }
   return context;
 }

@@ -17,24 +17,44 @@ export function FavoritesProvider({ children }) {
     return saved ? JSON.parse(saved) : [];
   });
 
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+
   useEffect(() => {
-    if (!user || !firestore) {
+    if (!user) {
       setFavorites([]);
       return;
     }
 
-    // Listener en tiempo real para sincronización instantánea entre Web y App
-    const unsubscribe = onSnapshot(
-      collection(firestore, 'users', user.id, 'favorites'),
-      (snapshot) => {
-        setFavorites(snapshot.docs.map((favorite) => favorite.id));
-      },
-      (e) => {
-        console.error("Error listening to favorites from firestore:", e);
-      }
-    );
+    // 1. Si Firestore está disponible, escuchar en tiempo real
+    if (firestore) {
+      const unsubscribe = onSnapshot(
+        collection(firestore, 'users', user.id, 'favorites'),
+        (snapshot) => {
+          setFavorites(snapshot.docs.map((favorite) => favorite.id));
+        },
+        (e) => {
+          console.error("Error listening to favorites from firestore:", e);
+        }
+      );
+      return () => unsubscribe();
+    }
 
-    return () => unsubscribe();
+    // 2. Si se usa la API Backend de RuwaJay (FastAPI / SQLite)
+    const token = localStorage.getItem('ruwajay_token');
+    if (token) {
+      fetch(`${API_URL}/api/favorites`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.favorites) {
+          setFavorites(data.favorites);
+        }
+      })
+      .catch((err) => {
+        console.warn("No se pudieron cargar favoritos de la API:", err);
+      });
+    }
   }, [user?.id]);
 
   useEffect(() => {
@@ -46,19 +66,39 @@ export function FavoritesProvider({ children }) {
   }, [recentSearches]);
 
   const toggleFavorite = useCallback(async (propertyId) => {
-    if (!user || !firestore) return;
+    if (!user) return;
 
-    const removing = favorites.includes(propertyId);
+    const propIdStr = String(propertyId);
+    const removing = favorites.includes(propIdStr);
 
-    try {
-      const favoriteRef = doc(firestore, 'users', user.id, 'favorites', String(propertyId));
-      if (removing) {
-        await deleteDoc(favoriteRef);
-      } else {
-        await setDoc(favoriteRef, { propertyId: String(propertyId), createdAt: Date.now() });
+    // Actualización inmediata en UI
+    setFavorites((prev) => removing ? prev.filter((id) => id !== propIdStr) : [...prev, propIdStr]);
+
+    // 1. Sincronizar con API Backend si hay sesión activa
+    const token = localStorage.getItem('ruwajay_token');
+    if (token) {
+      try {
+        await fetch(`${API_URL}/api/favorites/${propIdStr}`, {
+          method: removing ? 'DELETE' : 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+      } catch (err) {
+        console.error("Error toggling favorite in API:", err);
       }
-    } catch (e) {
-      console.error("Error toggling favorite in firestore:", e);
+    }
+
+    // 2. Sincronizar con Firestore si está configurado
+    if (firestore) {
+      try {
+        const favoriteRef = doc(firestore, 'users', user.id, 'favorites', propIdStr);
+        if (removing) {
+          await deleteDoc(favoriteRef);
+        } else {
+          await setDoc(favoriteRef, { propertyId: propIdStr, createdAt: Date.now() });
+        }
+      } catch (e) {
+        console.error("Error toggling favorite in firestore:", e);
+      }
     }
   }, [user, favorites]);
 

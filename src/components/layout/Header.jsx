@@ -3,11 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu, X, User, PlusCircle, Search, MapPin, Home, Building,
   Compass, Mountain, Palmtree, Landmark, Settings, Heart, LogOut, ChevronDown,
-  MessageSquare, Calculator
+  MessageSquare, Calculator, Building2, Shield, Megaphone, Smartphone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { AVATAR_OPTIONS } from '../../data/avatars';
+import SystemUpdatesModal from '../ui/SystemUpdatesModal';
+import MobileAppConnectModal from '../ui/MobileAppConnectModal';
 
 /* ── Category tabs ── */
 const categories = [
@@ -38,10 +40,19 @@ const propertyTypes = [
 ];
 
 export default function Header() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const { totalUnreadCount } = useChat();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showUpdatesModal, setShowUpdatesModal] = useState(false);
+  const [showMobileAppModal, setShowMobileAppModal] = useState(false);
+
+  const handleLogout = async () => {
+    setUserMenuOpen(false);
+    setMobileOpen(false);
+    await logout();
+    navigate('/login', { replace: true });
+  };
   const [activeField, setActiveField] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -240,6 +251,16 @@ export default function Header() {
 
             {/* Right: Actions */}
             <div className="ml-auto hidden shrink-0 items-center gap-3 md:flex">
+              <button
+                type="button"
+                onClick={() => setShowUpdatesModal(true)}
+                className="flex items-center gap-1.5 text-[14px] font-bold text-[#222222] hover:bg-[#F7F7F7] px-3.5 py-2.5 rounded-full transition-colors whitespace-nowrap cursor-pointer"
+                title="Comunicados y Actualizaciones del Sistema"
+              >
+                <Megaphone size={16} className="text-forest" />
+                <span>Novedades</span>
+              </button>
+
               <Link
                 to="/chat"
                 className="relative flex items-center gap-1.5 text-[14px] font-bold text-[#222222] hover:bg-[#F7F7F7] px-3.5 py-2.5 rounded-full transition-colors whitespace-nowrap"
@@ -261,6 +282,17 @@ export default function Header() {
                 Anuncia tu casa
               </Link>
 
+              <button
+                type="button"
+                onClick={() => setShowMobileAppModal(true)}
+                className="hidden xl:flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-forest/20 bg-forest/5 hover:bg-forest/10 text-forest text-[13px] font-extrabold transition-all cursor-pointer"
+                title="Conectar o abrir en la App Móvil Android"
+              >
+                <Smartphone size={15} />
+                <span>App Móvil</span>
+                <span className="h-2 w-2 rounded-full bg-jade animate-pulse" />
+              </button>
+
               {user ? (
                 <div className="relative" ref={userMenuRef}>
                   <button
@@ -272,8 +304,13 @@ export default function Header() {
                   >
                     <Menu size={16} className="text-[#222222]" />
                     <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-black shadow-xs" style={{ backgroundColor: (AVATAR_OPTIONS.find(a => a.id === user.avatarId) || AVATAR_OPTIONS[0]).color }}>
-                      {user.avatarImage ? (
-                        <img src={user.avatarImage} alt="" className="w-full h-full object-cover" />
+                      {(user.avatarImage || user.avatar || user.photoURL) ? (
+                        <img
+                          src={user.avatarImage || user.avatar || user.photoURL}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
                       ) : user.name ? (
                         user.name.charAt(0).toUpperCase()
                       ) : (
@@ -285,14 +322,43 @@ export default function Header() {
                   {userMenuOpen && (
                     <div className="absolute right-0 top-[calc(100%+8px)] z-[90] w-64 overflow-hidden rounded-2xl border border-[#E5E5E5] bg-white shadow-[0_10px_40px_rgba(0,0,0,0.15)]" style={{ animation: 'slide-up 0.2s cubic-bezier(0.22, 1, 0.36, 1)' }}>
                       {/* User info header */}
-                      <div className="border-b border-[#EBEBEB] px-4 py-3.5">
-                        <p className="text-sm font-extrabold text-[#222222] truncate">{user.name}</p>
-                        <p className="text-xs text-[#717171] truncate">{user.email}</p>
+                      <div className="border-b border-[#EBEBEB] px-4 py-3.5 bg-[#FAF8F5]">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-white text-sm font-black shadow-xs" style={{ backgroundColor: (AVATAR_OPTIONS.find(a => a.id === user.avatarId) || AVATAR_OPTIONS[0]).color }}>
+                            {(user.avatarImage || user.avatar || user.photoURL) ? (
+                              <img
+                                src={user.avatarImage || user.avatar || user.photoURL}
+                                alt={user.name || ''}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : user.name ? (
+                              user.name.charAt(0).toUpperCase()
+                            ) : (
+                              <User size={18} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-extrabold text-[#222222] truncate">{user.name}</p>
+                            <p className="text-xs text-[#717171] truncate">{user.email}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                          <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[10px] font-black text-forest">
+                            {user.role === 'admin' ? '🛡️ Admin' : user.role === 'owner' ? '🏡 Propietario' : '👤 Inquilino'}
+                          </span>
+                          {user.verified && (
+                            <span className="rounded-full bg-dorado/20 px-2 py-0.5 text-[10px] font-black text-dorado">
+                              ✓ Verificado
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {/* Menu items */}
                       <div className="py-1.5">
                         <Link
-                          to="/perfil"
+                          to="/perfil?tab=perfil"
+                          onClick={() => setUserMenuOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7]"
                         >
                           <User size={17} className="text-[#717171]" />
@@ -315,11 +381,32 @@ export default function Header() {
                         </Link>
                         <Link
                           to="/perfil?tab=favoritos"
+                          onClick={() => setUserMenuOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7]"
                         >
                           <Heart size={17} className="text-[#717171]" />
                           Favoritos
                         </Link>
+                        {user.role === 'owner' && (
+                          <Link
+                            to="/perfil?tab=propiedades"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7]"
+                          >
+                            <Building2 size={17} className="text-[#717171]" />
+                            Mis Propiedades
+                          </Link>
+                        )}
+                        {isAdmin && (
+                          <Link
+                            to="/perfil?tab=admin"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7]"
+                          >
+                            <Shield size={17} className="text-forest" />
+                            Administración
+                          </Link>
+                        )}
                         <Link
                           to="/explorar?calculator=true"
                           onClick={() => setUserMenuOpen(false)}
@@ -328,8 +415,25 @@ export default function Header() {
                           <Calculator size={17} className="text-forest" />
                           Calculadora 30/70
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => { setUserMenuOpen(false); setShowUpdatesModal(true); }}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] text-left cursor-pointer"
+                        >
+                          <Megaphone size={17} className="text-forest" />
+                          Novedades del Sistema
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setUserMenuOpen(false); setShowMobileAppModal(true); }}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] text-left cursor-pointer"
+                        >
+                          <Smartphone size={17} className="text-forest" />
+                          Conectar con App Móvil
+                        </button>
                         <Link
                           to="/perfil?tab=configuracion"
+                          onClick={() => setUserMenuOpen(false)}
                           className="flex items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7]"
                         >
                           <Settings size={17} className="text-[#717171]" />
@@ -340,8 +444,8 @@ export default function Header() {
                       <div className="border-t border-[#EBEBEB] py-1.5">
                         <button
                           type="button"
-                          onClick={() => { logout(); navigate('/login'); setUserMenuOpen(false); }}
-                          className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#E00B41] transition-colors hover:bg-red-50"
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#E00B41] transition-colors hover:bg-red-50 cursor-pointer"
                         >
                           <LogOut size={17} />
                           Cerrar sesión
@@ -806,22 +910,59 @@ export default function Header() {
               <Link to="/explorar?calculator=true" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema">
                 <Calculator size={18} className="text-forest" /> Calculadora 30/70
               </Link>
+              <button
+                type="button"
+                onClick={() => { setMobileOpen(false); setShowMobileAppModal(true); }}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-forest transition-colors hover:bg-forest/10 cursor-pointer"
+              >
+                <Smartphone size={18} className="text-forest" /> Abrir en App Móvil
+              </button>
 
               {user ? (
                 <>
-                  <Link to="/perfil" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema">
+                  <Link
+                    to="/perfil?tab=perfil"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema"
+                  >
                     <User size={18} className="text-text-muted" /> Mi perfil
                   </Link>
-                  <Link to="/perfil?tab=favoritos" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema">
+                  <Link
+                    to="/perfil?tab=favoritos"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema"
+                  >
                     <Heart size={18} className="text-text-muted" /> Favoritos
                   </Link>
-                  <Link to="/perfil?tab=configuracion" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema">
+                  {user.role === 'owner' && (
+                    <Link
+                      to="/perfil?tab=propiedades"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema"
+                    >
+                      <Building2 size={18} className="text-text-muted" /> Mis Propiedades
+                    </Link>
+                  )}
+                  {isAdmin && (
+                    <Link
+                      to="/perfil?tab=admin"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema"
+                    >
+                      <Shield size={18} className="text-forest" /> Administración
+                    </Link>
+                  )}
+                  <Link
+                    to="/perfil?tab=configuracion"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-cafe transition-colors hover:bg-crema"
+                  >
                     <Settings size={18} className="text-text-muted" /> Configuración
                   </Link>
                   <button
                     type="button"
-                    onClick={() => { logout(); navigate('/login'); setMobileOpen(false); }}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-[#E00B41] transition-colors hover:bg-red-50"
+                    onClick={handleLogout}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-[#E00B41] transition-colors hover:bg-red-50 cursor-pointer"
                   >
                     <LogOut size={18} /> Cerrar sesión
                   </button>
@@ -844,6 +985,19 @@ export default function Header() {
           </div>
         </div>
       )}
+
+      {/* Modal de Novedades y Actualizaciones del Sistema */}
+      <SystemUpdatesModal
+        isOpen={showUpdatesModal}
+        onClose={() => setShowUpdatesModal(false)}
+      />
+
+      {/* Modal de Vinculación y Descarga de App Móvil */}
+      <MobileAppConnectModal
+        isOpen={showMobileAppModal}
+        onClose={() => setShowMobileAppModal(false)}
+        targetPath={location.pathname}
+      />
     </>
   );
 }

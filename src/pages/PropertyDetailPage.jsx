@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Bed, Bath, Car, Ruler, MapPin, Heart, Share2, Shield, Calendar, CheckCircle,
   MessageCircle, ChevronLeft, ChevronRight, X, Star, AlertTriangle,
-  Calculator, ArrowLeftRight, FileText, Scale
+  Calculator, ArrowLeftRight, FileText, Scale, Lock, Smartphone
 } from 'lucide-react';
 import { demoProperties, demoOwners, formatPrice, formatDistance, calculateDistance } from '../data/properties';
 import { useFavorites } from '../context/FavoritesContext';
@@ -15,6 +15,7 @@ import PropertyReviews from '../components/property/PropertyReviews';
 import PropertyLightbox from '../components/property/PropertyLightbox';
 import LeaseContractModal from '../components/property/LeaseContractModal';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
+import MobileAppConnectModal from '../components/ui/MobileAppConnectModal';
 import { subscribeToProperties } from '../lib/propertyService';
 
 function WhatsAppIcon({ size = 18, className = '' }) {
@@ -44,10 +45,23 @@ export default function PropertyDetailPage() {
 
   const property = firebaseProperties.find((p) => p.id === id)
     || demoProperties.find((p) => p.id === id)
+    || (() => {
+      try {
+        const local = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+        return local.find((p) => p.id === id);
+      } catch { return null; }
+    })()
     || demoProperties[0];
-  const owner = demoOwners.find((o) => o.id === property.ownerId) || demoOwners[0];
-  const fav = isFavorite(property.id);
-  const inCompare = isInCompare(property.id);
+  const owner = demoOwners.find((o) => o.id === property?.ownerId) || {
+    id: property?.ownerId || 'owner-custom',
+    name: property?.ownerName || 'Propietario RuwaJay',
+    phone: property?.ownerPhone || '+502 5482 9104',
+    rating: 4.8,
+    responseTime: '~15 min',
+    verified: Boolean(property?.verified),
+  };
+  const fav = isFavorite(property?.id);
+  const inCompare = isInCompare(property?.id);
 
   const [activeTab, setActiveTab] = useState('todas');
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -63,10 +77,47 @@ export default function PropertyDetailPage() {
   const [showVisitModal, setShowVisitModal] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
   const [showAffordabilityModal, setShowAffordabilityModal] = useState(false);
+  const [showMobileModal, setShowMobileModal] = useState(false);
   const [visitDate, setVisitDate] = useState('');
   const [visitTime, setVisitTime] = useState('10:00');
   const [visitNotes, setVisitNotes] = useState('');
   const [visitSubmitted, setVisitSubmitted] = useState(false);
+  const [visitConflictError, setVisitConflictError] = useState('');
+
+  // Read existing visits to prevent overlapping appointments at the same time
+  const existingVisits = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+    } catch {
+      return [];
+    }
+  }, [showVisitModal, visitDate]);
+
+  // Check if there's a confirmed visit for this property by the current user
+  const hasConfirmedVisit = useMemo(() => {
+    if (!user?.id) return false;
+    return existingVisits.some(
+      (v) =>
+        v.propertyId === property?.id &&
+        v.status === 'confirmada' &&
+        (v.tenantId === user.id || v.ownerId === user.id)
+    );
+  }, [existingVisits, property?.id, user?.id]);
+
+  // Times already booked for this property on the selected visitDate
+  const bookedTimesOnSelectedDate = useMemo(() => {
+    if (!visitDate) return [];
+    return existingVisits
+      .filter(
+        (v) =>
+          v.propertyId === property.id &&
+          v.date === visitDate &&
+          v.status !== 'rechazada' &&
+          v.status !== 'cancelada' &&
+          v.status !== 'vencida'
+      )
+      .map((v) => v.time);
+  }, [existingVisits, property.id, visitDate]);
 
   useEffect(() => {
     if (!showLightbox && !showVisitModal) return undefined;
@@ -88,11 +139,16 @@ export default function PropertyDetailPage() {
   }, [showLightbox, showVisitModal]);
 
   const getCategoryImages = () => {
-    if (activeTab === 'todas') return Object.values(property.images).flat();
-    return property.images[activeTab] || [];
+    if (!property?.images) return [property?.thumbnail || '/Casas/cat-familiar.jpg'];
+    if (Array.isArray(property.images)) return property.images.filter(Boolean);
+    if (typeof property.images === 'object') {
+      if (activeTab === 'todas') return Object.values(property.images).flat().filter(Boolean);
+      return property.images[activeTab] || Object.values(property.images).flat().filter(Boolean);
+    }
+    return [property?.thumbnail || '/Casas/cat-familiar.jpg'];
   };
 
-  const currentImages = getCategoryImages().length > 0 ? getCategoryImages() : [property.thumbnail];
+  const currentImages = getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || '/Casas/cat-familiar.jpg'];
 
   const distance = position && property.coordinates?.lat && property.coordinates?.lng
     ? calculateDistance(position.lat, position.lng, property.coordinates.lat, property.coordinates.lng)
@@ -109,7 +165,24 @@ export default function PropertyDetailPage() {
 
   const handleScheduleVisit = (e) => {
     e.preventDefault();
-    if (!visitDate) return;
+    setVisitConflictError('');
+
+    if (!visitDate) {
+      setVisitConflictError('Por favor selecciona una fecha para tu visita.');
+      return;
+    }
+
+    // Check if property is occupied / rented
+    if (property.status === 'ocupada' || property.status === 'alquilada') {
+      setVisitConflictError('Esta propiedad actualmente se encuentra ocupada / alquilada y no admite nuevas visitas.');
+      return;
+    }
+
+    // Check for scheduling conflicts (same property, same date, same hour)
+    if (bookedTimesOnSelectedDate.includes(visitTime)) {
+      setVisitConflictError(`El horario de las ${visitTime} hrs para el día ${visitDate} ya está reservado por otra persona para esta vivienda. Por favor selecciona otro horario para no cruzarte con otra visita.`);
+      return;
+    }
 
     // Create persistent visit record in localStorage (ruwajay_visits)
     const newVisit = {
@@ -198,6 +271,22 @@ export default function PropertyDetailPage() {
             >
               <Share2 size={18} />
             </button>
+            {/* Abrir en App Móvil */}
+            <button
+              onClick={() => {
+                const deepLink = `ruwajay://propiedad/${property.id}`;
+                if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+                  window.location.href = deepLink;
+                }
+                setShowMobileModal(true);
+              }}
+              className="flex h-11 items-center gap-1.5 px-3 rounded-xl border border-forest/20 bg-forest/5 text-forest hover:bg-forest/10 shadow-xs transition-all text-xs font-bold cursor-pointer"
+              title="Abrir esta propiedad en la aplicación móvil RuwaJay"
+            >
+              <Smartphone size={16} />
+              <span className="hidden sm:inline">App Móvil</span>
+            </button>
+
             <button
               onClick={() => toggleFavorite(property.id)}
               className={`flex h-11 w-11 items-center justify-center rounded-xl border shadow-xs transition-all ${
@@ -238,7 +327,7 @@ export default function PropertyDetailPage() {
         <div className="flex flex-wrap items-center gap-4 mt-3">
           <span className="flex min-w-0 items-start gap-1.5 text-sm font-medium text-text-secondary">
             <MapPin size={16} className="mt-0.5 shrink-0 text-terracota" strokeWidth={2.5} />
-            <span className="min-w-0 break-words">{property.address.approximate}</span>
+            <span className="min-w-0 break-words">{property.address?.approximate || property.approximateAddress || property.zone || 'Guatemala'}</span>
           </span>
           {distance !== null && (
             <span className="text-sm font-bold text-azul-ruta">
@@ -466,31 +555,42 @@ export default function PropertyDetailPage() {
                 {/* Owner Card */}
                 <div className="flex items-center gap-3.5 mb-7 p-4 rounded-2xl bg-crema/50 border border-border-light">
                   <div className="w-13 h-13 rounded-full bg-gradient-to-br from-forest to-jade text-white font-extrabold text-lg flex items-center justify-center shadow-sm">
-                    {owner.name.charAt(0)}
+                    {(owner?.name || 'P').charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-extrabold text-cafe text-sm flex items-center gap-1.5 truncate">
-                      {owner.name}
-                      {owner.verified && <CheckCircle size={14} className="text-jade flex-shrink-0" />}
+                      {owner?.name || 'Propietario RuwaJay'}
+                      {owner?.verified && <CheckCircle size={14} className="text-jade flex-shrink-0" />}
                     </h4>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
                       <span className="flex items-center gap-0.5 text-dorado font-extrabold">
-                        <Star size={12} fill="currentColor" /> {owner.rating}
+                        <Star size={12} fill="currentColor" /> {owner?.rating || 4.8}
                       </span>
-                      <span>• Resp. {owner.responseTime}</span>
+                      <span>• Resp. {owner?.responseTime || '~15 min'}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* CTA Buttons */}
                 <div className="space-y-3">
-                  <button
-                    onClick={() => setShowVisitModal(true)}
-                    className="btn-primary w-full !rounded-2xl !py-4"
-                  >
-                    <Calendar size={18} />
-                    Solicitar una visita
-                  </button>
+                  {property.status === 'alquilada' || property.status === 'ocupada' ? (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-center">
+                      <span className="text-xs font-black text-amber-900 block mb-0.5">
+                        ● Vivienda Ocupada / Alquilada
+                      </span>
+                      <p className="text-[11px] text-amber-800/80">
+                        Esta vivienda no admite nuevas visitas presenciales por el momento.
+                      </p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowVisitModal(true)}
+                      className="btn-primary w-full !rounded-2xl !py-4"
+                    >
+                      <Calendar size={18} />
+                      {property.status === 'en_cita' ? 'Solicitar una visita (En cita activa)' : 'Solicitar una visita'}
+                    </button>
+                  )}
 
                   {/* Direct WhatsApp Button */}
                   <a
@@ -503,13 +603,32 @@ export default function PropertyDetailPage() {
                     Contactar por WhatsApp
                   </a>
 
-                  <Link
-                    to={`/chat?property=${property.id}`}
-                    className="btn-forest w-full !rounded-2xl !py-3.5 text-center"
-                  >
-                    <MessageCircle size={18} />
-                    Enviar mensaje interno
-                  </Link>
+                  {/* Chat: only available after owner confirms a visit */}
+                  {hasConfirmedVisit ? (
+                    <Link
+                      to={`/chat?property=${property.id}`}
+                      className="btn-forest w-full !rounded-2xl !py-3.5 text-center"
+                    >
+                      <MessageCircle size={18} />
+                      Chatear con el propietario
+                    </Link>
+                  ) : (
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        disabled
+                        className="flex w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-border bg-crema/50 py-3.5 text-sm font-extrabold text-text-muted cursor-not-allowed opacity-75"
+                      >
+                        <Lock size={16} />
+                        Chat bloqueado
+                      </button>
+                      <div className="mt-1.5 rounded-xl bg-[#FAF5EE] border border-border-light p-2.5 text-center">
+                        <p className="text-[11px] text-text-secondary leading-relaxed">
+                          💬 El chat se desbloqueará cuando el propietario <strong className="text-cafe">acepte tu solicitud de visita</strong>. Primero agenda una cita y espera confirmación.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[11px] text-text-muted text-center mt-5 leading-normal px-2">
@@ -723,7 +842,23 @@ export default function PropertyDetailPage() {
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleScheduleVisit} className="space-y-5">
+                <form onSubmit={handleScheduleVisit} className="space-y-4">
+                  {/* Status Notice */}
+                  {property.status === 'en_cita' && (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 font-semibold flex items-center gap-2">
+                      <Clock size={16} className="shrink-0 text-blue-600" />
+                      <span>Esta vivienda tiene citas en curso. Los horarios marcados como reservados no están disponibles.</span>
+                    </div>
+                  )}
+
+                  {/* Conflict Error Alert */}
+                  {visitConflictError && (
+                    <div className="flex items-start gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-3.5 text-xs font-bold text-red-700 animate-[shake_0.3s_ease-in-out]">
+                      <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                      <span>{visitConflictError}</span>
+                    </div>
+                  )}
+
                   <div>
                     <RuwaDatePicker
                       label="Fecha de la visita"
@@ -731,24 +866,48 @@ export default function PropertyDetailPage() {
                       placeholder="Selecciona la fecha para tu visita"
                       minDate={new Date().toISOString().split('T')[0]}
                       value={visitDate}
-                      onChange={(val) => setVisitDate(val)}
+                      onChange={(val) => {
+                        setVisitDate(val);
+                        setVisitConflictError('');
+                      }}
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-extrabold text-cafe mb-2">Hora preferida</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-extrabold text-cafe">Hora preferida</label>
+                      {visitDate && bookedTimesOnSelectedDate.length > 0 && (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          {bookedTimesOnSelectedDate.length} horario(s) ya reservado(s)
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={visitTime}
-                      onChange={(e) => setVisitTime(e.target.value)}
+                      onChange={(e) => {
+                        setVisitTime(e.target.value);
+                        setVisitConflictError('');
+                      }}
                       className="w-full px-4 py-3 rounded-xl border border-border-light text-sm font-medium text-cafe focus:border-forest focus:ring-2 focus:ring-forest/10 outline-none transition-all"
                     >
-                      <option value="09:00">09:00 AM</option>
-                      <option value="10:00">10:00 AM</option>
-                      <option value="11:00">11:00 AM</option>
-                      <option value="14:00">02:00 PM</option>
-                      <option value="15:00">03:00 PM</option>
-                      <option value="16:00">04:00 PM</option>
+                      {[
+                        { val: '09:00', label: '09:00 AM' },
+                        { val: '10:00', label: '10:00 AM' },
+                        { val: '11:00', label: '11:00 AM' },
+                        { val: '14:00', label: '02:00 PM' },
+                        { val: '15:00', label: '03:00 PM' },
+                        { val: '16:00', label: '04:00 PM' },
+                      ].map((slot) => {
+                        const isBooked = bookedTimesOnSelectedDate.includes(slot.val);
+                        return (
+                          <option key={slot.val} value={slot.val} disabled={isBooked}>
+                            {slot.label} {isBooked ? '❌ (Ocupado por otra cita)' : '✅ (Disponible)'}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
+
                   <div>
                     <label className="block text-xs font-extrabold text-cafe mb-2">Nota adicional para el propietario</label>
                     <textarea
@@ -759,8 +918,17 @@ export default function PropertyDetailPage() {
                       className="w-full px-4 py-3 rounded-xl border border-border-light text-sm font-medium text-cafe focus:border-forest focus:ring-2 focus:ring-forest/10 outline-none transition-all resize-none"
                     />
                   </div>
-                  <button type="submit" className="btn-primary w-full !rounded-xl !py-3.5">
-                    Confirmar solicitud
+
+                  <button
+                    type="submit"
+                    disabled={bookedTimesOnSelectedDate.includes(visitTime)}
+                    className={`btn-primary w-full !rounded-xl !py-3.5 ${
+                      bookedTimesOnSelectedDate.includes(visitTime) ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {bookedTimesOnSelectedDate.includes(visitTime)
+                      ? 'Horario no disponible'
+                      : 'Confirmar solicitud de visita'}
                   </button>
                 </form>
               )}
@@ -768,6 +936,13 @@ export default function PropertyDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de vinculación con la aplicación móvil */}
+      <MobileAppConnectModal
+        isOpen={showMobileModal}
+        onClose={() => setShowMobileModal(false)}
+        targetPath={`propiedad/${property.id}`}
+      />
     </main>
   );
 }

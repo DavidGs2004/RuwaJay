@@ -15,13 +15,18 @@ data class Property(
     val amenities: List<String>,
     val rules: List<String>,
     val requirements: List<String>,
-    val deposit: Int? = null
+    val deposit: Int? = null,
+    val verified: Boolean = true,
+    val isNew: Boolean = false,
+    val furnished: Boolean = false,
+    val petsAllowed: Boolean = true
 )
 
 data class PropertyFeatures(
     val bedrooms: Int,
     val bathrooms: Int,
-    val area: Int
+    val area: Int,
+    val parking: Int = 1
 )
 
 data class Location(

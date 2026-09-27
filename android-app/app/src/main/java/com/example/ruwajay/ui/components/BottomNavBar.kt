@@ -1,5 +1,10 @@
 package com.example.ruwajay.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
@@ -13,15 +18,19 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.ruwajay.ui.navigation.Screen
-import com.example.ruwajay.ui.theme.BrandCafe
-import com.example.ruwajay.ui.theme.BrandCrema
 import com.example.ruwajay.ui.theme.BrandForest
-import com.example.ruwajay.ui.theme.BrandGoldMuted
+import com.example.ruwajay.ui.theme.BrandGradientAccent
+import com.example.ruwajay.ui.theme.BrandSurfaceElevated
+import com.example.ruwajay.ui.theme.BrandTextMuted
+import com.example.ruwajay.ui.theme.BrandTextPrimary
 
 data class NavItem(
     val label: String,
@@ -42,42 +51,53 @@ fun BottomNavBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    NavigationBar(
-        containerColor = BrandCafe,
-        tonalElevation = androidx.compose.ui.unit.Dp(0f)
-    ) {
-        items.forEach { item ->
-            val selected = currentRoute == item.screen.route
-            NavigationBarItem(
-                selected = selected,
-                onClick = {
-                    navController.navigate(item.screen.route) {
-                        popUpTo(Screen.Home.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.label
+    Column(modifier = Modifier.fillMaxWidth().background(BrandSurfaceElevated)) {
+        // Línea superior con gradiente de marca idéntica a la web MobileNav.jsx
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(BrandGradientAccent)
+        )
+
+        NavigationBar(
+            containerColor = BrandSurfaceElevated,
+            tonalElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items.forEach { item ->
+                val selected = currentRoute == item.screen.route
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = {
+                        navController.navigate(item.screen.route) {
+                            popUpTo(Screen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.label
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = item.label,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = BrandForest,
+                        selectedTextColor = BrandForest,
+                        unselectedIconColor = BrandTextMuted,
+                        unselectedTextColor = BrandTextMuted,
+                        indicatorColor = BrandForest.copy(alpha = 0.12f)
                     )
-                },
-                label = {
-                    Text(
-                        text = item.label,
-                        fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = BrandGoldMuted,
-                    selectedTextColor = BrandGoldMuted,
-                    unselectedIconColor = BrandCrema.copy(alpha = 0.6f),
-                    unselectedTextColor = BrandCrema.copy(alpha = 0.6f),
-                    indicatorColor = BrandForest
                 )
-            )
+            }
         }
     }
 }

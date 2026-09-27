@@ -7,7 +7,13 @@ export function CompareProvider({ children }) {
   const [comparedProperties, setComparedProperties] = useState(() => {
     try {
       const saved = sessionStorage.getItem('ruwajay_compared');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      // Filter out any malformed entries that lack essential fields
+      return parsed.filter(
+        (p) => p && typeof p === 'object' && p.id && p.title && (p.price !== undefined)
+      );
     } catch {
       return [];
     }

@@ -50,13 +50,52 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+for default_origin in ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"]:
+    if default_origin not in origins:
+        origins.append(default_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def sanitize_str(val: str | None) -> str | None:
+    if not val:
+        return val
+    return re.sub(r"<[^>]*>", "", val).strip()
+
+
+def validate_password(password: str):
+    checks = [
+        len(password) >= 8,
+        any(c.isupper() for c in password),
+        any(c.islower() for c in password),
+        any(c.isdigit() for c in password),
+        any(not c.isalnum() for c in password),
+    ]
+    if not all(checks):
+        raise HTTPException(422, "La contraseña debe tener 8 caracteres e incluir mayúscula, minúscula, número y símbolo.")
+
+
+def hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000)
+    return f"{salt.hex()}:{digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, expected = stored.split(":", 1)
+        actual = hash_password(password, bytes.fromhex(salt_hex)).split(":", 1)[1]
+        return hmac.compare_digest(actual, expected)
+    except ValueError:
+        return False
 
 
 def db():
@@ -104,12 +143,55 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS system_updates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'novedad',
+                priority TEXT NOT NULL DEFAULT 'normal',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1
+            );
         """)
         columns = {column["name"] for column in connection.execute("PRAGMA table_info(users)")}
         if "phone" not in columns:
             connection.execute("ALTER TABLE users ADD COLUMN phone TEXT")
         if "account_status" not in columns:
             connection.execute("ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active'")
+        if "avatar" not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN avatar TEXT")
+        if "auth_provider" not in columns:
+            connection.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local'")
+
+        # Ensure default administrator exists
+        admin_row = connection.execute("SELECT id FROM users WHERE email='admin@ruwajay.com'").fetchone()
+        if not admin_row:
+            admin_pw = hash_password("AdminRuwaJay2026!")
+            connection.execute(
+                "INSERT INTO users(name, email, password_hash, role, phone, account_status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                ("Administrador General RuwaJay", "admin@ruwajay.com", admin_pw, "admin", "+502 2222-0000", "active", datetime.now(timezone.utc).isoformat())
+            )
+        else:
+            connection.execute("UPDATE users SET role='admin', account_status='active' WHERE email='admin@ruwajay.com'")
+
+        # Also promote existing Alexander accounts to admin
+        connection.execute("UPDATE users SET role='admin' WHERE email IN ('alexander2004deleon@gmail.com', 'xleon04gd@gmail.com', 'alexanderdeleon0431@gmail.com')")
+        
+        # Insert initial system update if table is empty
+        update_count = connection.execute("SELECT COUNT(*) FROM system_updates").fetchone()[0]
+        if update_count == 0:
+            connection.execute(
+                "INSERT INTO system_updates(title, content, category, priority, created_by, created_at, active) VALUES(?, ?, ?, ?, ?, ?, 1)",
+                (
+                    "Bienvenido a RuwaJay v2.0 - Plataforma Inmobiliaria de Guatemala",
+                    "Sistema integral de alquileres con citas programadas, chat verificado entre inquilinos y propietarios, comparador inteligente de presupuestos y panel maestro de administración.",
+                    "novedad",
+                    "destacada",
+                    "Administrador RuwaJay",
+                    datetime.now(timezone.utc).isoformat()
+                )
+            )
 
 
 init_db()
@@ -126,6 +208,15 @@ class RegisterRequest(BaseModel):
     password: str
     role: str = "seeker"
     phone: str | None = Field(default=None, max_length=24)
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str | None = None
+    email: EmailStr | None = None
+    name: str | None = None
+    photoURL: str | None = None
+    role: str = "seeker"
+
 
 
 class EmailRequest(BaseModel):
@@ -172,36 +263,44 @@ class SimpleRateLimiter:
 rate_limiter = SimpleRateLimiter()
 
 
-def sanitize_str(val: str | None) -> str | None:
-    if not val:
-        return val
-    # Strip HTML tags and normalize whitespace
-    return re.sub(r"<[^>]*>", "", val).strip()
+class SystemUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=150)
+    content: str = Field(min_length=5, max_length=5000)
+    category: str = "novedad"
+    priority: str = "normal"
+    active: bool = True
 
 
-def validate_password(password: str):
-    checks = [len(password) >= 8, any(c.isupper() for c in password), any(c.islower() for c in password), any(c.isdigit() for c in password), any(not c.isalnum() for c in password)]
-    if not all(checks):
-        raise HTTPException(422, "La contraseña debe tener 8 caracteres e incluir mayúscula, minúscula, número y símbolo.")
+class SystemUpdatePatchRequest(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    category: str | None = None
+    priority: str | None = None
+    active: bool | None = None
 
 
-def hash_password(password: str, salt: bytes | None = None) -> str:
-    salt = salt or secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 310_000)
-    return f"{salt.hex()}:{digest.hex()}"
+class UserRoleUpdateRequest(BaseModel):
+    role: str
 
 
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt_hex, expected = stored.split(":", 1)
-        actual = hash_password(password, bytes.fromhex(salt_hex)).split(":", 1)[1]
-        return hmac.compare_digest(actual, expected)
-    except ValueError:
-        return False
+class UserStatusUpdateRequest(BaseModel):
+    status: str
+
 
 
 def public_user(row):
-    return {"id": str(row["id"]), "name": row["name"], "email": row["email"], "role": row["role"], "phone": row["phone"], "accountStatus": row["account_status"], "avatar": None, "createdAt": row["created_at"]}
+    keys = row.keys() if hasattr(row, "keys") else []
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "email": row["email"],
+        "role": row["role"],
+        "phone": row["phone"],
+        "accountStatus": row["account_status"],
+        "avatar": row["avatar"] if "avatar" in keys else None,
+        "authProvider": row["auth_provider"] if "auth_provider" in keys and row["auth_provider"] else "local",
+        "createdAt": row["created_at"],
+    }
 
 
 def session_for(row):
@@ -226,6 +325,13 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     if not row or row["account_status"] != "active":
         raise HTTPException(403, "Esta cuenta no está activa.")
     return row
+
+
+def require_admin(user=Depends(current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(403, "Se requieren permisos de administrador para realizar esta acción.")
+    return user
+
 
 
 def generate_reset_email_html(recipient: str, code: str) -> str:
@@ -427,6 +533,96 @@ def login(payload: LoginRequest, request: Request):
     return session_for(row)
 
 
+@app.get("/api/auth/google/info")
+def google_auth_info():
+    client_id = os.getenv("VITE_GOOGLE_CLIENT_ID", os.getenv("GOOGLE_CLIENT_ID", ""))
+    return {
+        "status": "ready",
+        "has_client_id": bool(client_id),
+        "client_id": client_id,
+        "free_service": True,
+        "payment_required": False,
+        "service": "RuwaJay Native Auth API"
+    }
+
+
+@app.post("/api/auth/google")
+def google_auth(payload: GoogleAuthRequest, request: Request):
+    email = None
+    name = sanitize_str(payload.name) or "Usuario Google"
+    avatar = sanitize_str(payload.photoURL)
+
+    # 1. Si viene un token credential de Google (Google Identity Services / One-Tap)
+    if payload.credential:
+        # Intentar validar con la API pública tokeninfo de Google (100% gratuita, sin clave ni tarjeta)
+        try:
+            import httpx
+            with httpx.Client(timeout=4.0) as client:
+                res = client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.credential}")
+                if res.status_code == 200:
+                    info = res.json()
+                    email = info.get("email")
+                    name = sanitize_str(info.get("name") or name)
+                    avatar = sanitize_str(info.get("picture") or avatar)
+        except Exception:
+            pass
+
+        # Respaldo: Decodificar base64 del JWT sin dependencias externas
+        if not email:
+            try:
+                import base64
+                parts = payload.credential.split(".")
+                if len(parts) >= 2:
+                    padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+                    claims = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                    email = claims.get("email")
+                    if claims.get("name"):
+                        name = sanitize_str(claims["name"])
+                    if claims.get("picture"):
+                        avatar = sanitize_str(claims["picture"])
+            except Exception:
+                pass
+
+    if not email and payload.email:
+        email = str(payload.email).lower()
+
+    if not email:
+        raise HTTPException(400, "No se proporcionó un correo electrónico válido para Google.")
+
+    email = email.lower().strip()
+
+    with db() as connection:
+        row = connection.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if not row:
+            dummy_pw = hash_password(secrets.token_urlsafe(24))
+            cursor = connection.execute(
+                """INSERT INTO users(name, email, password_hash, role, phone, account_status, avatar, auth_provider, created_at)
+                   VALUES(?, ?, ?, ?, ?, ?, ?, 'google', ?)""",
+                (name, email, dummy_pw, payload.role or "seeker", None, "active", avatar, datetime.now(timezone.utc).isoformat()),
+            )
+            row = connection.execute("SELECT * FROM users WHERE id=?", (cursor.lastrowid,)).fetchone()
+        else:
+            if row["account_status"] != "active":
+                raise HTTPException(403, "Esta cuenta se encuentra suspendida.")
+            
+            # Actualizar nombre y avatar si han cambiado
+            updates = []
+            params = []
+            if name and name != "Usuario Google" and name != row["name"]:
+                updates.append("name=?")
+                params.append(name)
+            if avatar and ("avatar" in row.keys() and avatar != row["avatar"]):
+                updates.append("avatar=?")
+                params.append(avatar)
+            if updates:
+                params.append(row["id"])
+                connection.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
+                row = connection.execute("SELECT * FROM users WHERE id=?", (row["id"],)).fetchone()
+
+    return session_for(row)
+
+
+
 @app.get("/api/auth/me")
 def me(user=Depends(current_user)):
     return {"user": public_user(user)}
@@ -586,6 +782,219 @@ def health_check():
 @app.get("/api/properties")
 def get_properties():
     return {"status": "success", "count": 8}
+
+
+# ── System Updates & Announcements (Public & Admin) ──
+
+@app.get("/api/system/updates")
+def get_public_system_updates():
+    """Public list of active platform announcements and updates."""
+    with db() as connection:
+        rows = connection.execute(
+            "SELECT * FROM system_updates WHERE active=1 ORDER BY id DESC"
+        ).fetchall()
+    return {
+        "updates": [
+            {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "content": r["content"],
+                "category": r["category"],
+                "priority": r["priority"],
+                "createdBy": r["created_by"],
+                "createdAt": r["created_at"],
+                "active": bool(r["active"]),
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.get("/api/admin/updates")
+def get_admin_system_updates(admin=Depends(require_admin)):
+    """Admin full list of announcements, both active and inactive."""
+    with db() as connection:
+        rows = connection.execute(
+            "SELECT * FROM system_updates ORDER BY id DESC"
+        ).fetchall()
+    return {
+        "updates": [
+            {
+                "id": str(r["id"]),
+                "title": r["title"],
+                "content": r["content"],
+                "category": r["category"],
+                "priority": r["priority"],
+                "createdBy": r["created_by"],
+                "createdAt": r["created_at"],
+                "active": bool(r["active"]),
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.post("/api/admin/updates", status_code=201)
+def create_system_update(payload: SystemUpdateRequest, admin=Depends(require_admin)):
+    """Create a new system update / announcement broadcast."""
+    clean_title = sanitize_str(payload.title)
+    clean_content = sanitize_str(payload.content)
+    if not clean_title or not clean_content:
+        raise HTTPException(422, "El título y contenido no pueden estar vacíos.")
+    
+    category = payload.category if payload.category in {"novedad", "mantenimiento", "alerta", "mejora"} else "novedad"
+    priority = payload.priority if payload.priority in {"destacada", "normal", "urgente"} else "normal"
+    created_at = datetime.now(timezone.utc).isoformat()
+    created_by = admin["name"]
+
+    with db() as connection:
+        cur = connection.execute(
+            """INSERT INTO system_updates (title, content, category, priority, created_by, created_at, active)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (clean_title, clean_content, category, priority, created_by, created_at, 1 if payload.active else 0)
+        )
+        row = connection.execute("SELECT * FROM system_updates WHERE id=?", (cur.lastrowid,)).fetchone()
+    
+    return {
+        "message": "Actualización publicada exitosamente.",
+        "update": {
+            "id": str(row["id"]),
+            "title": row["title"],
+            "content": row["content"],
+            "category": row["category"],
+            "priority": row["priority"],
+            "createdBy": row["created_by"],
+            "createdAt": row["created_at"],
+            "active": bool(row["active"]),
+        }
+    }
+
+
+@app.patch("/api/admin/updates/{update_id}")
+def update_system_update(update_id: int, payload: SystemUpdatePatchRequest, admin=Depends(require_admin)):
+    """Edit or toggle status of a system update."""
+    with db() as connection:
+        row = connection.execute("SELECT * FROM system_updates WHERE id=?", (update_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Actualización no encontrada.")
+        
+        updates = []
+        params = []
+        if payload.title is not None:
+            clean = sanitize_str(payload.title)
+            if not clean:
+                raise HTTPException(422, "El título no puede estar vacío.")
+            updates.append("title=?")
+            params.append(clean)
+        if payload.content is not None:
+            clean = sanitize_str(payload.content)
+            if not clean:
+                raise HTTPException(422, "El contenido no puede estar vacío.")
+            updates.append("content=?")
+            params.append(clean)
+        if payload.category is not None:
+            updates.append("category=?")
+            params.append(payload.category if payload.category in {"novedad", "mantenimiento", "alerta", "mejora"} else "novedad")
+        if payload.priority is not None:
+            updates.append("priority=?")
+            params.append(payload.priority if payload.priority in {"destacada", "normal", "urgente"} else "normal")
+        if payload.active is not None:
+            updates.append("active=?")
+            params.append(1 if payload.active else 0)
+        
+        if updates:
+            params.append(update_id)
+            connection.execute(f"UPDATE system_updates SET {', '.join(updates)} WHERE id=?", params)
+            row = connection.execute("SELECT * FROM system_updates WHERE id=?", (update_id,)).fetchone()
+
+    return {
+        "message": "Actualización modificada correctamente.",
+        "update": {
+            "id": str(row["id"]),
+            "title": row["title"],
+            "content": row["content"],
+            "category": row["category"],
+            "priority": row["priority"],
+            "createdBy": row["created_by"],
+            "createdAt": row["created_at"],
+            "active": bool(row["active"]),
+        }
+    }
+
+
+@app.delete("/api/admin/updates/{update_id}")
+def delete_system_update(update_id: int, admin=Depends(require_admin)):
+    """Delete a system update."""
+    with db() as connection:
+        row = connection.execute("SELECT * FROM system_updates WHERE id=?", (update_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Actualización no encontrada.")
+        connection.execute("DELETE FROM system_updates WHERE id=?", (update_id,))
+    return {"message": "Actualización eliminada correctamente.", "id": str(update_id)}
+
+
+# ── Admin User Management ──
+
+@app.get("/api/admin/users")
+def get_admin_users(admin=Depends(require_admin)):
+    """List all registered users for administration."""
+    with db() as connection:
+        rows = connection.execute("SELECT * FROM users ORDER BY id DESC").fetchall()
+    return {"users": [public_user(row) for row in rows]}
+
+
+@app.patch("/api/admin/users/{user_id}/role")
+def change_user_role(user_id: int, payload: UserRoleUpdateRequest, admin=Depends(require_admin)):
+    """Promote or demote user role (seeker, owner, admin)."""
+    if payload.role not in {"seeker", "owner", "admin"}:
+        raise HTTPException(422, "Rol inválido.")
+    with db() as connection:
+        target = connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if not target:
+            raise HTTPException(404, "Usuario no encontrado.")
+        connection.execute("UPDATE users SET role=? WHERE id=?", (payload.role, user_id))
+        updated = connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    return {"message": f"Rol cambiado a {payload.role}.", "user": public_user(updated)}
+
+
+@app.patch("/api/admin/users/{user_id}/status")
+def change_user_status(user_id: int, payload: UserStatusUpdateRequest, admin=Depends(require_admin)):
+    """Activate or suspend a user account."""
+    if payload.status not in {"active", "suspended"}:
+        raise HTTPException(422, "Estado de cuenta inválido.")
+    if user_id == admin["id"] and payload.status == "suspended":
+        raise HTTPException(400, "No puedes suspender tu propia cuenta de administrador.")
+    with db() as connection:
+        target = connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if not target:
+            raise HTTPException(404, "Usuario no encontrado.")
+        connection.execute("UPDATE users SET account_status=? WHERE id=?", (payload.status, user_id))
+        updated = connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    return {"message": f"Estado cambiado a {payload.status}.", "user": public_user(updated)}
+
+
+@app.get("/api/admin/stats")
+def get_admin_stats(admin=Depends(require_admin)):
+    """Platform statistics for admin dashboard."""
+    with db() as connection:
+        total_users = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        owners = connection.execute("SELECT COUNT(*) FROM users WHERE role='owner'").fetchone()[0]
+        seekers = connection.execute("SELECT COUNT(*) FROM users WHERE role='seeker'").fetchone()[0]
+        admins = connection.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
+        suspended = connection.execute("SELECT COUNT(*) FROM users WHERE account_status='suspended'").fetchone()[0]
+        active_updates = connection.execute("SELECT COUNT(*) FROM system_updates WHERE active=1").fetchone()[0]
+        total_reviews = connection.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+
+    return {
+        "totalUsers": total_users,
+        "owners": owners,
+        "seekers": seekers,
+        "admins": admins,
+        "suspended": suspended,
+        "activeUpdates": active_updates,
+        "totalReviews": total_reviews,
+    }
+
 
 
 class ConnectionManager:

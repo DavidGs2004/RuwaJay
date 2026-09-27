@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,19 +58,32 @@ import com.example.ruwajay.ui.theme.BrandTextPrimary
 import com.example.ruwajay.ui.theme.BrandTextSecondary
 import com.example.ruwajay.ui.theme.BrandCafe
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import com.example.ruwajay.R
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.CircleShape
-
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Stars
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.example.ruwajay.R
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
@@ -81,13 +95,59 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
     var phone by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    
+    // Recuperación de contraseña dialog
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
+    var resetMessage by remember { mutableStateOf<String?>(null) }
+    var isResetLoading by remember { mutableStateOf(false) }
+
     val authRepository = remember { AuthRepository() }
+    val context = LocalContext.current
 
     fun handleResult(result: Result<Unit>) {
         isLoading = false
         message = result.exceptionOrNull()?.localizedMessage
             ?: if (isRegister) "Cuenta creada correctamente." else null
         if (result.isSuccess) onLoginSuccess()
+    }
+
+    // Google Sign-In setup
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken("716762704483-edmm9mfbjt6u4l834kdsn3okn6c8gqag.apps.googleusercontent.com")
+            .requestEmail()
+            .build()
+    }
+    val googleSignInClient = remember { GoogleSignIn.getClient(context, gso) }
+
+    val googleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account?.idToken
+            if (idToken != null) {
+                isLoading = true
+                message = null
+                authRepository.signInWithGoogle(idToken, ::handleResult)
+            } else {
+                isLoading = false
+                message = "No se pudo obtener la credencial de Google."
+            }
+        } catch (e: ApiException) {
+            isLoading = false
+            message = when (e.statusCode) {
+                10 -> "Configuración de Google en sincronización (Error 10). Puedes ingresar directamente con tu correo y contraseña abajo."
+                12500 -> "Error de conexión con Google Play Services (12500). Puedes ingresar con tu correo y contraseña."
+                12501 -> "Acceso con Google cancelado."
+                else -> "Error al conectar con Google (${e.statusCode}). Puedes ingresar con tu correo y contraseña."
+            }
+        } catch (e: Exception) {
+            isLoading = false
+            message = e.localizedMessage ?: "Error al autenticar con Google. Puedes ingresar con tu correo y contraseña."
+        }
     }
 
     Column(
@@ -123,7 +183,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
         Spacer(modifier = Modifier.height(32.dp))
 
         // Form card con animación
-        androidx.compose.material3.Surface(
+        Surface(
             shape = RoundedCornerShape(28.dp),
             color = Color.White,
             shadowElevation = 8.dp,
@@ -181,6 +241,51 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                     }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
+
+                // BOTÓN GOOGLE SIGN-IN
+                OutlinedButton(
+                    onClick = {
+                        googleLauncher.launch(googleSignInClient.signInIntent)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, BrandCremaDark),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White,
+                        contentColor = BrandTextPrimary
+                    ),
+                    enabled = !isLoading
+                ) {
+                    GoogleLogo(modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = if (isRegister) "Registrarse con Google" else "Continuar con Google",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = BrandTextPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // DIVISOR
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = BrandCremaDark)
+                    Text(
+                        text = "  o con tu correo  ",
+                        color = BrandTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = BrandCremaDark)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (isRegister) {
                     // Role selection
@@ -261,16 +366,9 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                 if (!isRegister) {
                     TextButton(
                         onClick = {
-                            if (email.isBlank()) {
-                                message = "Escribe tu correo para recuperar la contraseña."
-                            } else {
-                                isLoading = true
-                                authRepository.sendPasswordReset(email) { result ->
-                                    isLoading = false
-                                    message = result.exceptionOrNull()?.localizedMessage
-                                        ?: "Se ha enviado un enlace a tu correo para restablecer tu contraseña."
-                                }
-                            }
+                            resetEmail = email
+                            resetMessage = null
+                            showResetDialog = true
                         },
                         modifier = Modifier.align(Alignment.End),
                         enabled = !isLoading
@@ -336,6 +434,130 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
             )
         }
         Spacer(modifier = Modifier.height(40.dp))
+    }
+
+    // Modal de Recuperación de Contraseña
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isResetLoading) showResetDialog = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(20.dp),
+            title = {
+                Text("Recuperar Contraseña", fontWeight = FontWeight.ExtraBold, color = BrandCafe, fontSize = 20.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Ingresa tu correo registrado y te enviaremos un enlace oficial de Firebase para restablecer tu contraseña.",
+                        fontSize = 13.sp,
+                        color = BrandTextSecondary
+                    )
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = { resetEmail = it },
+                        label = { Text("Correo electrónico") },
+                        leadingIcon = { Icon(Icons.Default.Email, null, tint = BrandForest) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors(),
+                        singleLine = true
+                    )
+                    resetMessage?.let { msg ->
+                        Text(
+                            text = msg,
+                            color = if (msg.contains("enviado") || msg.contains("éxito")) BrandForest else BrandTerracota,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (resetEmail.isBlank()) {
+                            resetMessage = "Ingresa tu correo electrónico."
+                            return@Button
+                        }
+                        isResetLoading = true
+                        resetMessage = null
+                        authRepository.sendPasswordReset(resetEmail) { result ->
+                            isResetLoading = false
+                            if (result.isSuccess) {
+                                resetMessage = "¡Enlace enviado! Revisa tu bandeja de entrada o spam."
+                            } else {
+                                resetMessage = result.exceptionOrNull()?.localizedMessage ?: "No se pudo enviar el correo."
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isResetLoading
+                ) {
+                    if (isResetLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Enviar enlace")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showResetDialog = false },
+                    enabled = !isResetLoading
+                ) {
+                    Text("Cerrar", color = BrandTextSecondary)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun GoogleLogo(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // Cuadrante Azul (Derecha / Arriba)
+        drawArc(
+            color = Color(0xFF4285F4),
+            startAngle = -45f,
+            sweepAngle = 90f,
+            useCenter = true
+        )
+        // Cuadrante Verde (Abajo)
+        drawArc(
+            color = Color(0xFF34A853),
+            startAngle = 45f,
+            sweepAngle = 90f,
+            useCenter = true
+        )
+        // Cuadrante Amarillo (Izquierda)
+        drawArc(
+            color = Color(0xFFFBBC05),
+            startAngle = 135f,
+            sweepAngle = 90f,
+            useCenter = true
+        )
+        // Cuadrante Rojo (Arriba)
+        drawArc(
+            color = Color(0xFFEA4335),
+            startAngle = 225f,
+            sweepAngle = 90f,
+            useCenter = true
+        )
+        // Hueco interno
+        drawCircle(
+            color = Color.White,
+            radius = w * 0.32f
+        )
+        // Barra horizontal del 'G'
+        drawRect(
+            color = Color(0xFF4285F4),
+            topLeft = Offset(w * 0.44f, h * 0.38f),
+            size = Size(w * 0.56f, h * 0.24f)
+        )
     }
 }
 

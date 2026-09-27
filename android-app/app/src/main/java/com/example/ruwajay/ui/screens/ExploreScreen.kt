@@ -13,6 +13,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Map
@@ -356,6 +364,11 @@ fun LoadingState() {
 @Composable
 fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, onPropertyClick: (String) -> Unit) {
     val guatemalaCity = GeoPoint(14.6349, -90.5069)
+    var selectedPropertyId by remember { mutableStateOf<String?>(null) }
+    val selectedProperty = remember(selectedPropertyId, properties) {
+        properties.find { it.id == selectedPropertyId }
+    }
+
     val markers = properties.map { prop ->
         OsmMarker(
             id = prop.id,
@@ -365,12 +378,113 @@ fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, on
         )
     }
 
-    OsmMapView(
-        center = guatemalaCity,
-        zoom = 12.0,
-        markers = markers,
-        onMarkerClick = onPropertyClick
-    )
+    Box(modifier = Modifier.fillMaxSize()) {
+        OsmMapView(
+            center = guatemalaCity,
+            zoom = 12.0,
+            markers = markers,
+            onMarkerClick = { id ->
+                selectedPropertyId = id
+            }
+        )
+
+        AnimatedVisibility(
+            visible = selectedProperty != null,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = 90.dp)
+        ) {
+            selectedProperty?.let { prop ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPropertyClick(prop.id) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(BrandCremaDark)
+                        ) {
+                            if (prop.images.isNotEmpty()) {
+                                AsyncImage(
+                                    model = prop.images.first(),
+                                    contentDescription = prop.title,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Home,
+                                    contentDescription = null,
+                                    tint = BrandTextMuted,
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = prop.title,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = BrandCafe,
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Zona ${prop.location.zone}, ${prop.location.city}",
+                                color = BrandTextSecondary,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Q ${prop.price}/mes",
+                                    color = BrandForest,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 15.sp
+                                )
+                                Button(
+                                    onClick = { onPropertyClick(prop.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Text("Ver", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { selectedPropertyId = null },
+                            modifier = Modifier
+                                .size(24.dp)
+                                .align(Alignment.Top)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = BrandTextSecondary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

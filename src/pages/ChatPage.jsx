@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, MapPin, Calendar, CheckCheck,
   ArrowLeft, Search, User, Clock, Phone, Video, MoreVertical,
   ShieldAlert, Mic, Smile, Paperclip, X, Check, Eye, ChevronRight,
-  RotateCcw, Home
+  RotateCcw, Home, Lock
 } from 'lucide-react';
 import { demoProperties, demoOwners, formatPrice } from '../data/properties';
 import { useAuth } from '../context/AuthContext';
@@ -47,13 +47,34 @@ export default function ChatPage() {
   const fileInputRef = useRef(null);
 
   // If a property is passed via URL (?property=prop-1), switch or start chat with it
+  // BUT only if there's a confirmed visit for this property
   const urlPropertyId = searchParams.get('property');
+  const [chatBlocked, setChatBlocked] = useState(false);
+
   useEffect(() => {
-    if (urlPropertyId) {
-      startConversationWithProperty(urlPropertyId);
-      setMobileView('chat');
+    if (!urlPropertyId || !user?.id) return;
+
+    // Check if there's a confirmed visit for this property
+    try {
+      const visits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+      const hasConfirmed = visits.some(
+        (v) =>
+          v.propertyId === urlPropertyId &&
+          v.status === 'confirmada' &&
+          (v.tenantId === user.id || v.ownerId === user.id)
+      );
+
+      if (hasConfirmed) {
+        setChatBlocked(false);
+        startConversationWithProperty(urlPropertyId);
+        setMobileView('chat');
+      } else {
+        setChatBlocked(true);
+      }
+    } catch {
+      setChatBlocked(true);
     }
-  }, [urlPropertyId, startConversationWithProperty]);
+  }, [urlPropertyId, user?.id, startConversationWithProperty]);
 
   // Mark active conversation as read
   useEffect(() => {
@@ -156,6 +177,60 @@ export default function ChatPage() {
     '¿El inmueble cuenta con garita y agua constante?',
     '¿El precio mensual incluye mantenimiento?',
   ];
+
+  // If chat is blocked because no confirmed visit exists, show a friendly message
+  if (chatBlocked && urlPropertyId) {
+    const blockedProp = demoProperties.find((p) => p.id === urlPropertyId);
+    return (
+      <div className="flex h-[100dvh] w-full items-center justify-center bg-[#FAF5EE] p-6">
+        <div className="max-w-md w-full rounded-3xl border-2 border-border bg-white p-8 shadow-elevated text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-5">
+            <Lock size={32} />
+          </div>
+          <h2 className="text-xl font-black text-cafe mb-2">Chat aún no disponible</h2>
+          <p className="text-sm text-text-secondary leading-relaxed mb-4">
+            Para chatear con el propietario de{' '}
+            <strong className="text-cafe">"{blockedProp?.title || 'esta propiedad'}"</strong>,
+            primero debes solicitar una visita y esperar a que el propietario la acepte.
+          </p>
+          <div className="rounded-2xl bg-[#FAF5EE] border border-border-light p-4 mb-6 text-left">
+            <p className="text-xs font-black text-cafe mb-2">¿Cómo funciona?</p>
+            <ol className="space-y-2 text-xs text-text-secondary">
+              <li className="flex items-start gap-2">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-forest text-white flex items-center justify-center text-[10px] font-black mt-0.5">1</span>
+                <span>Visita la ficha de la vivienda y haz clic en <strong className="text-cafe">"Solicitar una visita"</strong>.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-forest text-white flex items-center justify-center text-[10px] font-black mt-0.5">2</span>
+                <span>El propietario recibirá tu solicitud y podrá <strong className="text-cafe">aceptar o rechazar</strong> la cita.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-forest text-white flex items-center justify-center text-[10px] font-black mt-0.5">3</span>
+                <span>Una vez aceptada, se desbloqueará el <strong className="text-cafe">chat en vivo</strong> para coordinar los detalles.</span>
+              </li>
+            </ol>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {blockedProp && (
+              <Link
+                to={`/propiedad/${blockedProp.id}`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-forest px-5 py-2.5 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs"
+              >
+                <Calendar size={14} /> Solicitar visita
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-crema px-5 py-2.5 text-xs font-bold text-cafe hover:bg-border/60 transition-all"
+            >
+              <ArrowLeft size={14} /> Volver
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[100dvh] w-full flex-col bg-[#F0EBE1]/40 overflow-hidden font-sans text-cafe">

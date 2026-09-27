@@ -105,7 +105,7 @@ export default function PropertyCard({ property, userPosition = null, compact = 
         <div className="flex items-center gap-1.5 mt-2.5">
           <MapPin size={13} className="text-terracota flex-shrink-0" strokeWidth={2.5} />
           <span className="text-[13px] text-text-secondary font-medium truncate">
-            {property.address.approximate}
+            {property.address?.approximate || 'Guatemala'}
           </span>
         </div>
 

@@ -10,29 +10,37 @@ service cloud.firestore {
       return signedIn() && resource.data.ownerId == request.auth.uid;
     }
 
+    function isAdmin() {
+      return signedIn() && (
+        (request.auth.token.keys().hasAny(['role']) && request.auth.token.role == 'admin') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
     match /properties/{propertyId} {
       allow read: if true;
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if ownsProperty();
+      allow update, delete: if ownsProperty() || isAdmin();
 
       match /reviews/{reviewId} {
         allow read: if true;
         allow create: if signedIn()
           && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if signedIn()
-          && resource.data.userId == request.auth.uid;
+        allow update, delete: if (signedIn() && resource.data.userId == request.auth.uid) || isAdmin();
       }
     }
 
     match /users/{userId} {
       allow read: if true;
-      allow write: if signedIn() && request.auth.uid == userId;
+      allow write: if (signedIn() && request.auth.uid == userId) || isAdmin();
 
       match /favorites/{propertyId} {
         allow read, write: if signedIn() && request.auth.uid == userId;
       }
     }
+
 
     match /conversations/{conversationId} {
       // Check if user is a participant for READ and UPDATE
@@ -44,5 +52,11 @@ service cloud.firestore {
         allow read, create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
       }
     }
+
+    match /system_updates/{updateId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
   }
 }
+
