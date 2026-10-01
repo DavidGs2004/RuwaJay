@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { demoProperties, formatDistance, calculateDistance } from '../data/properties';
 import { useGeolocation } from '../hooks/useGeolocation';
+import WazeNavigationView from '../components/map/WazeNavigationView';
 
 export default function RoutePage() {
   const [searchParams] = useSearchParams();
@@ -16,11 +17,10 @@ export default function RoutePage() {
   const property = demoProperties.find((p) => p.id === propertyId) || demoProperties[0];
 
   const [mode, setMode] = useState('driving'); // 'driving' | 'walking'
-  const [isNavigating, setIsNavigating] = useState(false);
 
   // User position fallback (Guatemala City center) if geo not granted
   const origin = position || { lat: 14.6349, lng: -90.5069 };
-  const destination = property.coordinates;
+  const destination = property.coordinates || property.location?.mapCoordinates || { lat: 14.595, lng: -90.485 };
 
   const rawDistKm = calculateDistance(origin.lat, origin.lng, destination.lat, destination.lng);
 
@@ -39,7 +39,7 @@ export default function RoutePage() {
     if (navigator.share) {
       navigator.share({
         title: `Ruta a ${property.title}`,
-        text: `Voy en camino a la visita de la propiedad en ${property.address.exact}.`,
+        text: `Voy en camino a la visita de la propiedad en ${property.address?.exact || property.title}.`,
         url: window.location.href,
       });
     } else {
@@ -69,14 +69,24 @@ export default function RoutePage() {
         <div className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-r from-forest to-jade p-5 text-white shadow-xl sm:mb-8 sm:p-6">
           <div className="relative z-10">
             <div className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm text-xs font-bold rounded-full mb-3">
-              🔓 Dirección exacta desbloqueada
+              🔓 Dirección exacta y ruta Waze en vivo
             </div>
             <h1 className="mb-1 break-words text-2xl font-extrabold sm:text-3xl">{property.title}</h1>
             <p className="mt-2 flex min-w-0 items-start gap-1.5 text-base font-bold text-white/90 sm:text-lg">
               <MapPin size={20} className="mt-0.5 shrink-0 text-terracota" />
-              <span className="min-w-0 break-words">{property.address.exact}</span>
+              <span className="min-w-0 break-words">{property.address?.exact || property.exactAddress || property.address?.approximate || 'Guatemala'}</span>
             </p>
           </div>
+        </div>
+
+        {/* ── NATIVE WAZE-STYLE INTERACTIVE MAP & ROUTE ── */}
+        <div className="mb-8 h-[460px] sm:h-[540px] w-full rounded-3xl overflow-hidden shadow-2xl border border-border-light relative z-0">
+          <WazeNavigationView
+            origin={origin}
+            destination={destination}
+            propertyTitle={property.title}
+            propertyAddress={property.address?.exact || property.address?.approximate}
+          />
         </div>
 
         {/* Route Info Cards */}
@@ -86,7 +96,7 @@ export default function RoutePage() {
             <div className="flex flex-col items-stretch gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="font-extrabold text-cafe text-lg flex items-center gap-2">
                 <Navigation size={20} className="text-azul-ruta" />
-                Resumen del recorrido
+                Resumen del recorrido Waze
               </h2>
               {/* Transport mode selector */}
               <div className="grid w-full grid-cols-2 rounded-xl bg-crema p-1 sm:w-auto">
@@ -113,30 +123,30 @@ export default function RoutePage() {
               <div className="rounded-2xl border border-azul-ruta/10 bg-azul-ruta/5 p-3 sm:p-4">
                 <Clock size={24} className="mx-auto text-azul-ruta mb-1" />
                 <span className="block text-xl font-extrabold text-cafe sm:text-2xl">{currentTimeText}</span>
-                <span className="text-xs text-text-muted font-semibold">Tiempo estimado</span>
+                <span className="text-xs text-text-muted font-semibold">Tiempo estimado (Tráfico vivo)</span>
               </div>
               <div className="rounded-2xl border border-azul-ruta/10 bg-azul-ruta/5 p-3 sm:p-4">
                 <MapPin size={24} className="mx-auto text-azul-ruta mb-1" />
                 <span className="block text-xl font-extrabold text-cafe sm:text-2xl">{currentDistText}</span>
-                <span className="text-xs text-text-muted font-semibold">Distancia total</span>
+                <span className="text-xs text-text-muted font-semibold">Distancia óptima</span>
               </div>
             </div>
 
             {/* Turn by turn mockup steps */}
             <div className="space-y-3 pt-2">
-              <h3 className="font-bold text-cafe text-sm uppercase tracking-wider">Indicaciones principales</h3>
+              <h3 className="font-bold text-cafe text-sm uppercase tracking-wider">Indicaciones de navegación Waze</h3>
               <div className="space-y-2">
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-crema/40 text-sm">
                   <div className="w-6 h-6 rounded-full bg-azul-ruta text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
-                  <p className="text-cafe font-medium">Inicia tu recorrido desde tu posición actual hacia la avenida principal.</p>
+                  <p className="text-cafe font-medium">Inicia tu recorrido desde tu posición actual hacia la vía principal.</p>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-crema/40 text-sm">
                   <div className="w-6 h-6 rounded-full bg-azul-ruta text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
-                  <p className="text-cafe font-medium">Sigue recto hasta la entrada de {property.address.zone || property.address.municipality}.</p>
+                  <p className="text-cafe font-medium">Sigue las indicaciones del semáforo de tráfico en el mapa Waze en vivo.</p>
                 </div>
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-crema/40 text-sm">
                   <div className="w-6 h-6 rounded-full bg-terracota text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
-                  <p className="text-cafe font-medium">Destino final: {property.address.exact}</p>
+                  <p className="text-cafe font-medium">Llegada a destino final: {property.address?.exact || property.title}</p>
                 </div>
               </div>
             </div>
@@ -145,7 +155,7 @@ export default function RoutePage() {
           {/* Navigation Action Sidebar */}
           <div className="space-y-4">
             <div className="bg-white rounded-3xl p-6 shadow-card space-y-3">
-              <h3 className="font-extrabold text-cafe text-base mb-2">Abrir en tu app preferida</h3>
+              <h3 className="font-extrabold text-cafe text-base mb-2">Acceso a navegación externa</h3>
               
               <a
                 href={wazeUrl}
@@ -154,7 +164,7 @@ export default function RoutePage() {
                 className="w-full py-3.5 bg-[#33CCFF] hover:bg-[#28b8e6] text-cafe font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
               >
                 <ExternalLink size={18} />
-                Abrir en Waze
+                Abrir en App Waze Original
               </a>
 
               <a

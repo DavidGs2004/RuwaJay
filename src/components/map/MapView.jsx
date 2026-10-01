@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -38,53 +38,63 @@ const createCustomIcon = (type, price, isSelected = false) => {
   });
 };
 
-const userLocationIcon = L.divIcon({
-  html: `
-    <div class="relative w-8 h-8 flex items-center justify-center">
-      <div class="absolute inset-0 rounded-full bg-azul-ruta opacity-30 animate-ping"></div>
-      <div class="w-5 h-5 rounded-full bg-azul-ruta border-2 border-white shadow-md"></div>
-    </div>
-  `,
-  className: 'user-marker',
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
-});
-
-// Map recenter controller
+// Controller to invalidate size and adjust map view
 function MapController({ center, zoom, focusCoordinates }) {
   const map = useMap();
 
   useEffect(() => {
-    if (focusCoordinates?.lat && focusCoordinates?.lng) {
-      map.flyTo(
-        [focusCoordinates.lat, focusCoordinates.lng],
-        focusCoordinates.zoom || 12,
-        { duration: 1.3 }
-      );
-    } else if (center) {
-      map.flyTo(center, zoom, { duration: 1.2 });
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [map]);
+
+  const targetLat = focusCoordinates?.lat ?? center?.[0];
+  const targetLng = focusCoordinates?.lng ?? center?.[1];
+  const targetZoom = focusCoordinates?.zoom ?? zoom;
+
+  useEffect(() => {
+    if (targetLat && targetLng) {
+      map.flyTo([targetLat, targetLng], targetZoom, { duration: 1.2 });
     }
-  }, [center, zoom, focusCoordinates, map]);
+  }, [targetLat, targetLng, targetZoom, map]);
 
   return null;
 }
 
-export default function MapView({ properties, userPosition, radarRadius, radarActive, focusCoordinates }) {
+export default function MapView({ properties = [], userPosition, radarRadius, radarActive, focusCoordinates }) {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const { isFavorite, toggleFavorite } = useFavorites();
 
+  const userLocationIcon = useMemo(() => {
+    return L.divIcon({
+      html: `
+        <div class="relative w-8 h-8 flex items-center justify-center">
+          <div class="absolute inset-0 rounded-full bg-azul-ruta opacity-30 animate-ping"></div>
+          <div class="w-5 h-5 rounded-full bg-azul-ruta border-2 border-white shadow-md"></div>
+        </div>
+      `,
+      className: 'user-marker',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+  }, []);
+
   // Default center: Guatemala City
-  const defaultCenter = userPosition
-    ? [userPosition.lat, userPosition.lng]
-    : [14.6349, -90.5069];
+  const defaultCenter = useMemo(() => {
+    if (userPosition?.lat && userPosition?.lng) {
+      return [userPosition.lat, userPosition.lng];
+    }
+    return [14.6349, -90.5069];
+  }, [userPosition?.lat, userPosition?.lng]);
 
   return (
-    <div className="relative h-full w-full min-w-0">
+    <div className="relative h-full w-full min-h-[320px] min-w-0">
       <MapContainer
         center={defaultCenter}
         zoom={userPosition ? 13 : 11}
         scrollWheelZoom={true}
-        className="w-full h-full z-0 rounded-2xl"
+        className="w-full h-full min-h-[320px] z-0 rounded-2xl"
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -98,7 +108,7 @@ export default function MapView({ properties, userPosition, radarRadius, radarAc
         />
 
         {/* User location marker & radar circle */}
-        {userPosition && (
+        {userPosition?.lat && userPosition?.lng && (
           <>
             <Marker position={[userPosition.lat, userPosition.lng]} icon={userLocationIcon}>
               <Popup>
@@ -126,20 +136,22 @@ export default function MapView({ properties, userPosition, radarRadius, radarAc
 
         {/* Property markers */}
         {properties.map((prop) => {
+          const propLat = Number(prop.coordinates?.lat ?? prop.location?.mapCoordinates?.lat ?? 14.6349);
+          const propLng = Number(prop.coordinates?.lng ?? prop.location?.mapCoordinates?.lng ?? -90.5069);
+          if (isNaN(propLat) || isNaN(propLng)) return null;
+
           const isSelected = selectedProperty?.id === prop.id;
-          const dist = userPosition
-            ? calculateDistance(
-                userPosition.lat,
-                userPosition.lng,
-                prop.coordinates.lat,
-                prop.coordinates.lng
-              )
+          const dist = userPosition?.lat && userPosition?.lng
+            ? calculateDistance(userPosition.lat, userPosition.lng, propLat, propLng)
             : null;
+
+          const thumbnail = prop.thumbnail || (Array.isArray(prop.images) && prop.images[0]) || '/Casas/hero-banner-new.jpg';
+          const approxAddress = prop.address?.approximate || prop.location?.approximateAddress || prop.location?.zone || 'Guatemala';
 
           return (
             <Marker
               key={prop.id}
-              position={[prop.coordinates.lat, prop.coordinates.lng]}
+              position={[propLat, propLng]}
               icon={createCustomIcon(prop.type, prop.price, isSelected)}
               eventHandlers={{
                 click: () => setSelectedProperty(prop),
@@ -149,7 +161,7 @@ export default function MapView({ properties, userPosition, radarRadius, radarAc
                 <div className="max-w-full p-0" style={{ width: 'min(16rem, calc(100vw - 4rem))' }}>
                   <div className="relative aspect-video rounded-t-xl overflow-hidden bg-crema">
                     <img
-                      src={prop.thumbnail}
+                      src={thumbnail}
                       alt={prop.title}
                       className="w-full h-full object-cover"
                     />
@@ -172,11 +184,11 @@ export default function MapView({ properties, userPosition, radarRadius, radarAc
                   </div>
                   <div className="p-3">
                     <h4 className="font-bold text-sm text-cafe line-clamp-1">{prop.title}</h4>
-                    <p className="mt-0.5 break-words text-xs text-text-muted">{prop.address.approximate}</p>
+                    <p className="mt-0.5 break-words text-xs text-text-muted">{approxAddress}</p>
                     
                     <div className="flex items-center gap-3 mt-2 text-xs text-text-secondary">
-                      <span className="flex items-center gap-1"><Bed size={12} /> {prop.bedrooms}</span>
-                      <span className="flex items-center gap-1"><Bath size={12} /> {prop.bathrooms}</span>
+                      <span className="flex items-center gap-1"><Bed size={12} /> {prop.bedrooms || prop.features?.bedrooms || 1}</span>
+                      <span className="flex items-center gap-1"><Bath size={12} /> {prop.bathrooms || prop.features?.bathrooms || 1}</span>
                       {dist !== null && (
                         <span className="ml-auto font-semibold text-azul-ruta">{formatDistance(dist)}</span>
                       )}

@@ -414,6 +414,10 @@ canvas {
 .leaflet-container {
   font-family: var(--font-sans) !important;
   border-radius: 20px;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 320px;
+  z-index: 0 !important;
 }
 .leaflet-popup-content-wrapper {
   border-radius: 20px !important;

@@ -6,7 +6,7 @@ import {
   Home, PlusCircle, ToggleLeft, ToggleRight, TrendingUp, Users, Calendar,
   FileText, AlertTriangle, Sparkles, ChevronDown, ChevronUp,
   Upload, Trash2, Shield, CheckCircle2, FileCheck, Bookmark, Calculator,
-  RotateCcw, ArrowRight, AlertCircle, Clock3, MessageCircle, Megaphone, Radio, Bell, Send
+  RotateCcw, ArrowRight, AlertCircle, Clock3, MessageCircle, Megaphone, Radio, Bell, Send, Navigation
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AVATAR_OPTIONS } from '../data/avatars';
@@ -1439,12 +1439,20 @@ export default function ProfilePage() {
 
                             {/* Chat button: only available on confirmed visits */}
                             {isAccepted && (
-                              <Link
-                                to={`/chat?property=${v.propertyId}`}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
-                              >
-                                <MessageCircle size={14} /> Chatear
-                              </Link>
+                              <>
+                                <Link
+                                  to={`/chat?property=${v.propertyId}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                                >
+                                  <MessageCircle size={14} /> Chatear
+                                </Link>
+                                <Link
+                                  to={`/ruta?property=${v.propertyId}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-azul-ruta hover:bg-azul-ruta/90 text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                                >
+                                  <Navigation size={14} /> Ver Ruta Waze
+                                </Link>
+                              </>
                             )}
 
                             <Link

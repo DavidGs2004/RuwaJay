@@ -24,17 +24,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +62,8 @@ import com.example.ruwajay.ui.theme.BrandGoldMuted
 import com.example.ruwajay.ui.theme.BrandJade
 import com.example.ruwajay.ui.theme.BrandTextPrimary
 import com.example.ruwajay.ui.theme.BrandTextSecondary
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 @Composable
 fun HomeScreen(
@@ -70,6 +71,21 @@ fun HomeScreen(
     onExploreClick: () -> Unit = {}
 ) {
     var searchText by remember { mutableStateOf("") }
+    val firebaseUser = FirebaseAuth.getInstance().currentUser
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    var favoriteIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    DisposableEffect(firebaseUser?.uid) {
+        if (firebaseUser == null) return@DisposableEffect onDispose {}
+        val listener = firestore.collection("users").document(firebaseUser.uid)
+            .collection("favorites")
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    favoriteIds = snapshot.documents.map { it.id }.toSet()
+                }
+            }
+        onDispose { listener.remove() }
+    }
 
     val popularZones = listOf(
         "Zona 10", "Zona 14", "Zona 15", "San Cristóbal", "Antigua", "Carretera a El Salvador"
@@ -443,9 +459,22 @@ fun HomeScreen(
         }
 
         items(featuredProperties) { property ->
+            val isFav = favoriteIds.contains(property.id)
             PropertyCard(
                 property = property,
                 onClick = { onPropertyClick(property.id) },
+                isFavorite = isFav,
+                onFavoriteToggle = { toggle ->
+                    firebaseUser?.let { user ->
+                        val favoriteRef = firestore.collection("users").document(user.uid)
+                            .collection("favorites").document(property.id)
+                        if (!toggle) {
+                            favoriteRef.delete()
+                        } else {
+                            favoriteRef.set(mapOf("propertyId" to property.id, "createdAt" to System.currentTimeMillis()))
+                        }
+                    }
+                },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }

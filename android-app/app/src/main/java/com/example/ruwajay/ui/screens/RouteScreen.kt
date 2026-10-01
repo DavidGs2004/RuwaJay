@@ -25,6 +25,7 @@ import com.example.ruwajay.data.repository.rememberProperties
 import com.example.ruwajay.ui.theme.*
 import com.example.ruwajay.ui.components.OsmMapView
 import com.example.ruwajay.ui.components.OsmMarker
+import com.example.ruwajay.ui.components.TrafficSegment
 import org.osmdroid.util.GeoPoint
 import kotlin.math.*
 
@@ -35,12 +36,16 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
         ?: rememberProperties().first()
 
     var mode by remember { mutableStateOf("driving") }
+    var isSimulating by remember { mutableStateOf(false) }
 
-    // User position fallback (Guatemala City center)
+    // Coordinates: Origin (Guatemala City center) to Destination (Property)
     val originLat = 14.6349
     val originLng = -90.5069
     val destLat = demoProperty.location.coordinates.lat
     val destLng = demoProperty.location.coordinates.lng
+
+    val origin = remember { GeoPoint(originLat, originLng) }
+    val destination = remember { GeoPoint(destLat, destLng) }
 
     // Haversine distance
     val rawDistKm = remember(originLat, originLng, destLat, destLng) {
@@ -59,9 +64,30 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
     val wazeUrl = "https://waze.com/ul?ll=$destLat,$destLng&navigate=yes"
     val googleMapsUrl = "https://www.google.com/maps/dir/?api=1&origin=$originLat,$originLng&destination=$destLat,$destLng&travelmode=${if (mode == "driving") "driving" else "walking"}"
 
-    // Map configuration
-    val destination = GeoPoint(destLat, destLng)
-    val origin = GeoPoint(originLat, originLng)
+    // Generate Waze Traffic Color Segments (🟢 Green = Fluid, 🟡 Yellow = Moderate, 🔴 Red = Heavy Traffic)
+    val trafficSegments = remember(origin, destination) {
+        val points = mutableListOf<GeoPoint>()
+        val stepsCount = 12
+        for (i in 0..stepsCount) {
+            val fraction = i / stepsCount.toDouble()
+            val lat = originLat + (destLat - originLat) * fraction
+            val lng = originLng + (destLng - originLng) * fraction
+            points.add(GeoPoint(lat, lng))
+        }
+
+        val seg1 = points.subList(0, 6)
+        val seg2 = points.subList(5, 9)
+        val seg3 = points.subList(8, points.size)
+
+        listOf(
+            TrafficSegment(seg1, Color(0xFF10B981)), // Fluid Green
+            TrafficSegment(seg2, Color(0xFFF59E0B)), // Moderate Yellow
+            TrafficSegment(seg3, Color(0xFFEF4444))  // Heavy Red
+        )
+    }
+
+    val wazeCyan = Color(0xFF05C3DD)
+    val wazeDark = Color(0xFF0F172A)
 
     Column(
         modifier = Modifier
@@ -96,29 +122,29 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                 ) {
                     Icon(Icons.Default.CheckCircle, null, tint = BrandJade, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Visita Confirmada", color = BrandJade, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Navegación Waze Activa", color = BrandJade, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        // ── Banner ──
+        // ── Banner Waze ──
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    brush = Brush.horizontalGradient(listOf(BrandForest, BrandJade)),
+                    brush = Brush.horizontalGradient(listOf(wazeDark, Color(0xFF1E293B))),
                     shape = RoundedCornerShape(0.dp)
                 )
                 .padding(20.dp)
         ) {
             Column {
                 Surface(
-                    color = Color.White.copy(alpha = 0.2f),
+                    color = wazeCyan.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(50.dp)
                 ) {
                     Text(
-                        "🔓 Dirección exacta desbloqueada",
-                        color = Color.White,
+                        "🗺️ Ruta Waze Nativa · Semáforo de Tráfico en Vivo",
+                        color = wazeCyan,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -148,33 +174,146 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ── OpenStreetMap ──
+        // ── WAZE MAP WITH TRAFFIC COLOR POLYLINES AND HUD OVERLAY ──
         Surface(
-            shape = RoundedCornerShape(20.dp),
-            shadowElevation = 4.dp,
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 8.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(280.dp)
+                .height(360.dp)
                 .padding(horizontal = 16.dp)
         ) {
-            OsmMapView(
-                center = destination,
-                zoom = 14.0,
-                markers = listOf(
-                    OsmMarker(
-                        id = "destination",
-                        position = destination,
-                        title = demoProperty.title,
-                        snippet = demoProperty.location.address
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Map with traffic segments
+                OsmMapView(
+                    center = destination,
+                    zoom = 13.5,
+                    markers = listOf(
+                        OsmMarker(
+                            id = "destination",
+                            position = destination,
+                            title = demoProperty.title,
+                            snippet = demoProperty.location.address
+                        ),
+                        OsmMarker(
+                            id = "origin",
+                            position = origin,
+                            title = "Tu ubicación",
+                            snippet = "Punto de origen"
+                        )
                     ),
-                    OsmMarker(
-                        id = "origin",
-                        position = origin,
-                        title = "Tu ubicación",
-                        snippet = "Punto de origen"
-                    )
+                    trafficSegments = trafficSegments
                 )
-            )
+
+                // ── WAZE HUD TOP BANNER (Instruction) ──
+                Surface(
+                    color = wazeDark.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(16.dp),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(12.dp)
+                        .fillMaxWidth(0.92f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = wazeCyan,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Icon(
+                                    Icons.Default.Navigation,
+                                    contentDescription = null,
+                                    tint = wazeDark,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "En 250m gira a la derecha",
+                                color = wazeCyan,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                "Avenida principal hacia ${demoProperty.location.zone}",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // ── WAZE HUD BOTTOM DASHBOARD ──
+                Surface(
+                    color = wazeDark.copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(12.dp)
+                        .fillMaxWidth(0.92f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.Bottom) {
+                                Text(
+                                    timeText,
+                                    color = wazeCyan,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    distText,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Text(
+                                "🟢 Tráfico Fluido (82%)",
+                                color = Color(0xFF10B981),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+
+                        Button(
+                            onClick = { isSimulating = !isSimulating },
+                            colors = ButtonDefaults.buttonColors(containerColor = wazeCyan),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                if (isSimulating) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = wazeDark,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                if (isSimulating) "Pausar" else "Simular",
+                                color = wazeDark,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -195,9 +334,9 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Navigation, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Navigation, null, tint = wazeCyan, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Resumen del recorrido", fontWeight = FontWeight.ExtraBold, color = BrandCafe, fontSize = 16.sp)
+                        Text("Resumen del recorrido Waze", fontWeight = FontWeight.ExtraBold, color = BrandCafe, fontSize = 16.sp)
                     }
                 }
 
@@ -210,9 +349,8 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(modifier = Modifier.padding(4.dp)) {
-                        val azulRuta = Color(0xFF2563EB)
                         Surface(
-                            color = if (mode == "driving") azulRuta else Color.Transparent,
+                            color = if (mode == "driving") wazeDark else Color.Transparent,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f).clickable { mode = "driving" }
                         ) {
@@ -224,7 +362,7 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                                 Icon(
                                     Icons.Default.DirectionsCar,
                                     null,
-                                    tint = if (mode == "driving") Color.White else BrandCafe,
+                                    tint = if (mode == "driving") wazeCyan else BrandCafe,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -237,7 +375,7 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                             }
                         }
                         Surface(
-                            color = if (mode == "walking") azulRuta else Color.Transparent,
+                            color = if (mode == "walking") wazeDark else Color.Transparent,
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f).clickable { mode = "walking" }
                         ) {
@@ -249,7 +387,7 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                                 Icon(
                                     Icons.Default.DirectionsWalk,
                                     null,
-                                    tint = if (mode == "walking") Color.White else BrandCafe,
+                                    tint = if (mode == "walking") wazeCyan else BrandCafe,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -267,44 +405,43 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Stats
-                val azulRuta = Color(0xFF2563EB)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     RouteStatCard(
                         icon = Icons.Default.Schedule,
                         value = timeText,
                         label = "Tiempo estimado",
-                        color = azulRuta,
+                        color = wazeDark,
                         modifier = Modifier.weight(1f)
                     )
                     RouteStatCard(
                         icon = Icons.Default.LocationOn,
                         value = distText,
-                        label = "Distancia total",
-                        color = azulRuta,
+                        label = "Distancia óptima",
+                        color = wazeDark,
                         modifier = Modifier.weight(1f)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Turn-by-turn mockup
+                // Turn-by-turn steps
                 Text(
-                    "INDICACIONES PRINCIPALES",
+                    "INDICACIONES DE NAVEGACIÓN WAZE",
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
                     color = BrandCafe,
                     letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                TurnStep(1, "Inicia tu recorrido desde tu posición actual hacia la avenida principal.", azulRuta)
-                TurnStep(2, "Sigue recto hasta la entrada de ${demoProperty.location.zone}.", azulRuta)
-                TurnStep(3, "Destino final: ${demoProperty.location.address}, ${demoProperty.location.city}", BrandTerracota)
+                TurnStep(1, "Inicia tu recorrido desde tu posición actual hacia la vía principal.", wazeDark)
+                TurnStep(2, "Sigue las indicaciones del semáforo de tráfico en el mapa Waze en vivo.", wazeDark)
+                TurnStep(3, "Llegada a destino final: ${demoProperty.location.address}, ${demoProperty.location.city}", BrandTerracota)
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ── Action Buttons ──
+        // ── External Action Buttons ──
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = Color.White,
@@ -314,7 +451,7 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                 .padding(horizontal = 16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Abrir en tu app preferida", fontWeight = FontWeight.ExtraBold, color = BrandCafe, fontSize = 15.sp)
+                Text("Acceso a navegación externa", fontWeight = FontWeight.ExtraBold, color = BrandCafe, fontSize = 15.sp)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Waze
@@ -328,7 +465,7 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
                 ) {
                     Icon(Icons.Default.OpenInNew, null, tint = BrandCafe)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Abrir en Waze", fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Text("Abrir en App Waze Original", fontWeight = FontWeight.Bold, color = BrandCafe)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -447,4 +584,3 @@ private fun TurnStep(number: Int, instruction: String, color: Color) {
         Text(instruction, color = BrandCafe, fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
     }
 }
-

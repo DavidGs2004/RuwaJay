@@ -23,13 +23,25 @@ import com.google.firebase.storage.FirebaseStorage
 fun rememberProperties(
     firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ): List<Property> {
-    var properties by remember { mutableStateOf(emptyList<Property>()) }
+    var properties by remember { mutableStateOf<List<Property>>(MockDataRepository.properties) }
 
     DisposableEffect(firestore) {
         val listener = firestore.collection("properties")
             .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
-                properties = snapshot.documents.mapNotNull(::propertyFromDocument)
+                if (error == null && snapshot != null) {
+                    val firestoreProps = snapshot.documents
+                        .sortedByDescending { documentTimestamp(it) }
+                        .mapNotNull { propertyFromDocument(it) }
+
+                    if (firestoreProps.isNotEmpty()) {
+                        val mockList = MockDataRepository.properties.filter { mock ->
+                            firestoreProps.none { it.id == mock.id }
+                        }
+                        properties = firestoreProps + mockList
+                    } else {
+                        properties = MockDataRepository.properties
+                    }
+                }
             }
 
         onDispose { listener.remove() }
@@ -127,43 +139,72 @@ private fun uploadPropertyImages(
     return Tasks.whenAllSuccess(uploadTasks)
 }
 
+private fun documentTimestamp(document: com.google.firebase.firestore.DocumentSnapshot): Long {
+    val ts = document.get("createdAt") as? com.google.firebase.Timestamp
+    return ts?.toDate()?.time ?: 0L
+}
+
 private fun propertyFromDocument(document: com.google.firebase.firestore.DocumentSnapshot): Property? {
     return try {
         val features = document.get("features") as? Map<*, *> ?: emptyMap<String, Any>()
         val location = document.get("location") as? Map<*, *> ?: emptyMap<String, Any>()
-        val coordinates = (location["mapCoordinates"] as? Map<*, *>)?.let {
-            Coordinates(
-                lat = it.number("lat"),
-                lng = it.number("lng")
-            )
+
+        val rawCoords = (location["mapCoordinates"] as? Map<*, *>)
+            ?: (location["coordinates"] as? Map<*, *>)
+            ?: (document.get("coordinates") as? Map<*, *>)
+            ?: (document.get("mapCoordinates") as? Map<*, *>)
+
+        val coordinates = rawCoords?.let { coordsMap ->
+            val latVal = coordsMap.number("lat").let { if (it != 0.0) it else coordsMap.number("latitude") }
+            val lngVal = coordsMap.number("lng").let { if (it != 0.0) it else coordsMap.number("longitude").let { if (it != 0.0) it else coordsMap.number("lon") } }
+            if (latVal != 0.0 && lngVal != 0.0) Coordinates(latVal, lngVal) else null
+        } ?: Coordinates(14.6349, -90.5069)
+
+        val rawImages = document.stringList("images").ifEmpty {
+            val singleImg = document.string("image").ifBlank { document.string("imageUrl") }
+            if (singleImg.isNotBlank()) listOf(singleImg) else emptyList()
         }
+        val images = if (rawImages.isNotEmpty()) rawImages else listOf(
+            "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80"
+        )
+
+        val title = document.stringOr("title", document.stringOr("titulo", document.stringOr("name", "Propiedad sin título")))
+        val price = document.number("price").let { if (it > 0) it else document.number("precio") }.toInt().let { if (it > 0) it else 3500 }
+        val bedrooms = features.number("bedrooms").let { if (it > 0) it else features.number("habitaciones") }.toInt().coerceAtLeast(1)
+        val bathrooms = features.number("bathrooms").let { if (it > 0) it else features.number("banos") }.toInt().coerceAtLeast(1)
+        val area = features.number("area").toInt()
+
+        val addressStr = location.stringOr("exactAddress", location.stringOr("address", location.stringOr("direccion", "Guatemala")))
+        val zoneStr = location.stringOr("zone", location.stringOr("zona", "Zona 10"))
+        val cityStr = location.stringOr("municipality", location.stringOr("city", location.stringOr("ciudad", "Ciudad de Guatemala")))
+        val deptStr = location.stringOr("department", location.stringOr("departamento", "Guatemala"))
 
         Property(
             id = document.id,
-            title = document.string("title"),
-            price = document.number("price").toInt(),
-            currency = document.stringOr("currency", "GTQ"),
+            title = title,
+            price = price,
+            currency = document.stringOr("currency", "Q"),
             type = document.stringOr("type", "casa"),
             status = document.stringOr("status", "disponible"),
-            description = document.stringOr("description", ""),
+            description = document.stringOr("description", document.stringOr("descripcion", "Hermosa propiedad disponible en alquiler.")),
             features = PropertyFeatures(
-                bedrooms = features.number("bedrooms").toInt(),
-                bathrooms = features.number("bathrooms").toInt(),
-                area = features.number("area").toInt()
+                bedrooms = bedrooms,
+                bathrooms = bathrooms,
+                area = area
             ),
             location = Location(
-                address = location.stringOr("exactAddress", location.stringOr("address", "Guatemala")),
-                zone = location.stringOr("zone", "Centro"),
-                city = location.stringOr("municipality", location.stringOr("city", "Ciudad de Guatemala")),
-                department = location.stringOr("department", "Guatemala"),
-                municipality = location.stringOr("municipality", "Guatemala"),
-                approximateAddress = location.stringOr("approximateAddress", ""),
-                exactAddress = location.stringOr("exactAddress", ""),
+                address = addressStr,
+                zone = zoneStr,
+                city = cityStr,
+                department = deptStr,
+                municipality = cityStr,
+                approximateAddress = location.stringOr("approximateAddress", addressStr),
+                exactAddress = addressStr,
                 mapCoordinates = coordinates
             ),
-            ownerId = document.stringOr("ownerId", ""),
-            images = document.stringList("images"),
-            amenities = document.stringList("amenities"),
+            ownerId = document.stringOr("ownerId", "owner-1"),
+            images = images,
+            amenities = document.stringList("amenities").ifEmpty { listOf("Parqueo", "Seguridad 24/7") },
             rules = document.stringList("rules"),
             requirements = document.stringList("requirements"),
             deposit = document.number("deposit").toInt().takeIf { it > 0 }

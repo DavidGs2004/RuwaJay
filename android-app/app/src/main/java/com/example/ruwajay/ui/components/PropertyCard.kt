@@ -46,7 +46,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.ruwajay.data.model.Property
 import com.example.ruwajay.ui.theme.BrandBorder
 import com.example.ruwajay.ui.theme.BrandBorderLight
@@ -90,7 +92,10 @@ fun PropertyCard(
                     .height(210.dp)
             ) {
                 AsyncImage(
-                    model = property.images.firstOrNull(),
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(property.images.firstOrNull())
+                        .crossfade(true)
+                        .build(),
                     contentDescription = property.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

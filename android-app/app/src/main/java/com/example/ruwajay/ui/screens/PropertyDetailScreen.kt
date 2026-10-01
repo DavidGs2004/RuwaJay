@@ -54,7 +54,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.data.repository.rememberProperties
 import com.example.ruwajay.data.repository.ChatRepository
@@ -100,9 +102,12 @@ fun PropertyDetailScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(BrandCrema).verticalScroll(rememberScrollState())) {
         // ── IMAGE CAROUSEL ──────────────────────────────────────
-        Box(modifier = Modifier.fillMaxWidth().height(280.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().height(280.dp).background(BrandCremaDark)) {
             AsyncImage(
-                model = property.images.firstOrNull(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(property.images.firstOrNull())
+                    .crossfade(true)
+                    .build(),
                 contentDescription = property.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -159,10 +164,13 @@ fun PropertyDetailScreen(
             ) {
                 items(property.images) { img ->
                     AsyncImage(
-                        model = img,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(img)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
+                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(BrandCremaDark)
                     )
                 }
             }
@@ -332,15 +340,15 @@ fun PropertyDetailScreen(
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
-            OutlinedButton(
+            Button(
                 onClick = onRouteClick,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandCafe)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2477C9))
             ) {
-                Icon(Icons.Default.Map, null)
+                Icon(Icons.Default.Navigation, null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Ver ruta a la propiedad", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("Ver Ruta Waze en Vivo", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
             }
             Spacer(modifier = Modifier.height(24.dp))
         }

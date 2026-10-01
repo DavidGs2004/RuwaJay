@@ -80,14 +80,18 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = { 
-                    Text("Chat Privado", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    Text("Chat Privado", fontWeight = FontWeight.Black, fontSize = 16.sp, color = BrandTextPrimary)
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar", tint = BrandTextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.White,
+                    titleContentColor = BrandTextPrimary,
+                    navigationIconContentColor = BrandTextPrimary
+                )
             )
         },
         bottomBar = {
@@ -101,6 +105,7 @@ fun ChatScreen(
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = Color.White,
+                            contentColor = BrandCafe,
                             border = androidx.compose.foundation.BorderStroke(1.dp, BrandCremaDark),
                             onClick = { draftText = question }
                         ) {
@@ -125,12 +130,13 @@ fun ChatScreen(
                             placeholder = { Text("Mensaje...", fontSize = 14.sp, color = BrandTextMuted) },
                             shape = RoundedCornerShape(20.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = BrandCafe,
-                                unfocusedTextColor = BrandCafe,
+                                focusedTextColor = BrandTextPrimary,
+                                unfocusedTextColor = BrandTextPrimary,
                                 focusedBorderColor = BrandForest,
                                 unfocusedBorderColor = BrandCremaDark,
                                 focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White
+                                unfocusedContainerColor = Color.White,
+                                cursorColor = BrandForest
                             ),
                             maxLines = 3
                         )
@@ -177,14 +183,15 @@ fun MessageBubble(message: Message) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
         Surface(
             color = if (isUser) Color(0xFFD9FDD3) else Color.White,
+            contentColor = BrandTextPrimary,
             shape = RoundedCornerShape(12.dp),
             shadowElevation = 1.dp
         ) {
             Column(Modifier.padding(10.dp)) {
                 if (!isUser) {
-                    Text(message.senderName, color = BrandForest, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    Text(message.senderName, color = BrandForestDark, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 }
-                Text(message.text, color = BrandCafe, fontSize = 14.sp)
+                Text(message.text, color = BrandTextPrimary, fontSize = 14.sp)
                 Text(message.timestamp, modifier = Modifier.align(Alignment.End), color = BrandTextMuted, fontSize = 9.sp)
             }
         }

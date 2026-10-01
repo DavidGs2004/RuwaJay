@@ -1,10 +1,12 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Bed, Bath, Car, Ruler, MapPin, Heart, Share2, Shield, Calendar, CheckCircle,
   MessageCircle, ChevronLeft, ChevronRight, X, Star, AlertTriangle,
-  Calculator, ArrowLeftRight, FileText, Scale, Lock, Smartphone
+  Calculator, ArrowLeftRight, FileText, Scale, Lock, Smartphone, Navigation
 } from 'lucide-react';
+
+const MapView = lazy(() => import('../components/map/MapView'));
 import { demoProperties, demoOwners, formatPrice, formatDistance, calculateDistance } from '../data/properties';
 import { useFavorites } from '../context/FavoritesContext';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -518,6 +520,43 @@ export default function PropertyDetailPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+
+              {/* Location & Map */}
+              <div className="rounded-2xl border border-border-light bg-white p-5 shadow-card sm:p-7">
+                <h3 className="font-extrabold text-cafe text-lg mb-3 flex items-center gap-2.5 tracking-tight">
+                  <div className="w-8 h-8 rounded-xl bg-forest/10 flex items-center justify-center">
+                    <MapPin size={18} className="text-forest" />
+                  </div>
+                  Ubicación de la Vivienda
+                </h3>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-text-secondary">
+                    {property.address?.exact || property.exactAddress || property.address?.approximate || property.location?.exactAddress || 'Guatemala'}
+                  </p>
+                  <Link
+                    to={`/ruta?property=${property.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-azul-ruta hover:bg-azul-ruta/90 text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                  >
+                    <Navigation size={15} /> Ver Ruta Waze en Vivo
+                  </Link>
+                </div>
+                <div className="h-64 sm:h-80 w-full rounded-2xl overflow-hidden shadow-sm border border-border-light relative z-0">
+                  <Suspense fallback={
+                    <div className="w-full h-full bg-crema flex items-center justify-center">
+                      <p className="text-sm font-semibold text-text-muted">Cargando mapa...</p>
+                    </div>
+                  }>
+                    <MapView
+                      properties={[property]}
+                      focusCoordinates={{
+                        lat: Number(property.coordinates?.lat ?? property.location?.mapCoordinates?.lat ?? 14.6349),
+                        lng: Number(property.coordinates?.lng ?? property.location?.mapCoordinates?.lng ?? -90.5069),
+                        zoom: 14
+                      }}
+                    />
+                  </Suspense>
+                </div>
               </div>
             </div>
 

@@ -1,8 +1,12 @@
 package com.example.ruwajay.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,43 +14,39 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.ui.draw.clip
-import coil.compose.AsyncImage
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.ruwajay.data.repository.rememberProperties
-import com.example.ruwajay.ui.components.PropertyCard
-import com.example.ruwajay.ui.components.RentCalculatorDialog
-import com.example.ruwajay.ui.components.PropertyCompareDialog
-import com.example.ruwajay.ui.theme.*
 import com.example.ruwajay.ui.components.OsmMapView
 import com.example.ruwajay.ui.components.OsmMarker
-import org.osmdroid.util.GeoPoint
+import com.example.ruwajay.ui.components.PropertyCard
+import com.example.ruwajay.ui.components.PropertyCompareDialog
+import com.example.ruwajay.ui.components.RentCalculatorDialog
+import com.example.ruwajay.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
+import org.osmdroid.util.GeoPoint
 
 @Composable
 fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
@@ -58,6 +58,22 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
     var comparedPropertyIds by remember { mutableStateOf(setOf<String>()) }
     var showCompareDialog by remember { mutableStateOf(false) }
     
+    val firebaseUser = FirebaseAuth.getInstance().currentUser
+    val firestore = remember { FirebaseFirestore.getInstance() }
+    var favoriteIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    DisposableEffect(firebaseUser?.uid) {
+        if (firebaseUser == null) return@DisposableEffect onDispose {}
+        val listener = firestore.collection("users").document(firebaseUser.uid)
+            .collection("favorites")
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) {
+                    favoriteIds = snapshot.documents.map { it.id }.toSet()
+                }
+            }
+        onDispose { listener.remove() }
+    }
+
     // Feedback de carga inicial
     var isInitialLoading by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
@@ -279,6 +295,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 items(filtered) { property ->
+                                    val isFav = favoriteIds.contains(property.id)
                                     PropertyCard(
                                         property = property,
                                         onClick = { onPropertyClick(property.id) },
@@ -288,6 +305,18 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                                                 if (comparedPropertyIds.size < 3) comparedPropertyIds = comparedPropertyIds + property.id
                                             } else {
                                                 comparedPropertyIds = comparedPropertyIds - property.id
+                                            }
+                                        },
+                                        isFavorite = isFav,
+                                        onFavoriteToggle = { toggle ->
+                                            firebaseUser?.let { user ->
+                                                val favoriteRef = firestore.collection("users").document(user.uid)
+                                                    .collection("favorites").document(property.id)
+                                                if (!toggle) {
+                                                    favoriteRef.delete()
+                                                } else {
+                                                    favoriteRef.set(mapOf("propertyId" to property.id, "createdAt" to System.currentTimeMillis()))
+                                                }
                                             }
                                         }
                                     )
