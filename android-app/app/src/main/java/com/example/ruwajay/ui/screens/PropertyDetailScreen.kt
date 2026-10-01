@@ -346,7 +346,7 @@ fun PropertyDetailScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2477C9))
             ) {
-                Icon(Icons.Default.Navigation, null, tint = Color.White)
+                Icon(Icons.Default.Map, null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Ver Ruta Waze en Vivo", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
             }
