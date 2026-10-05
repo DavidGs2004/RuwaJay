@@ -12,9 +12,21 @@ export default function PropertyCard({ property, userPosition = null, compact = 
   const cardRef = useRef(null);
   const fav = isFavorite(property.id);
   const inCompare = isInCompare(property.id);
+  const propertyStatus = String(property.status || 'disponible').toLowerCase();
+  const statusBadge = propertyStatus === 'ocupada' || propertyStatus === 'alquilada'
+    ? { label: 'Ocupada / Alquilada', className: 'bg-red-600 text-white' }
+    : propertyStatus === 'en_cita' || propertyStatus === 'apartada'
+      ? { label: 'Apartada / En cita', className: 'bg-amber-400 text-amber-950' }
+      : propertyStatus === 'pausada'
+        ? { label: 'No disponible', className: 'bg-gray-700 text-white' }
+        : { label: 'Desocupada · Disponible', className: 'bg-emerald-600 text-white' };
+
+  const rawSrc = property.thumbnail || property.thumbnails?.[0] || '/Casas/cat-familiar.jpg';
+  const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? '/Casas/cat-familiar.jpg' : rawSrc;
+  const [imgSrc, setImgSrc] = useState(cleanInitialSrc);
 
   const distance = userPosition
-    ? calculateDistance(userPosition.lat, userPosition.lng, property.coordinates.lat, property.coordinates.lng)
+    ? calculateDistance(userPosition.lat, userPosition.lng, property.coordinates?.lat, property.coordinates?.lng)
     : null;
 
   const handleMouseMove = (e) => {
@@ -50,10 +62,11 @@ export default function PropertyCard({ property, userPosition = null, compact = 
       <div className="relative overflow-hidden aspect-[4/3]">
         {/* Image with zoom on hover */}
         <img
-          src={property.thumbnail}
-          alt=""
+          src={imgSrc}
+          alt={property.title || 'Vivienda'}
           loading="lazy"
           decoding="async"
+          onError={() => setImgSrc('/Casas/cat-familiar.jpg')}
           className="h-full w-full bg-[#e0d3c3] object-cover transition-transform duration-700 ease-out group-hover:scale-110"
         />
 
@@ -62,6 +75,9 @@ export default function PropertyCard({ property, userPosition = null, compact = 
 
         {/* Top badges */}
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+          <span className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold shadow-sm backdrop-blur-sm ${statusBadge.className}`}>
+            {statusBadge.label}
+          </span>
           {property.isNew && (
             <span className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-naranja to-dorado text-white text-[11px] font-extrabold rounded-full shadow-sm backdrop-blur-sm">
               <Sparkles size={11} />

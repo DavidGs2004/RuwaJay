@@ -8,7 +8,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import android.content.ContentResolver
 import android.net.Uri
+import com.example.ruwajay.BuildConfig
 import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.example.ruwajay.data.model.Coordinates
 import com.example.ruwajay.data.model.Location
@@ -17,7 +19,9 @@ import com.example.ruwajay.data.model.PropertyFeatures
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 @Composable
 fun rememberProperties(
@@ -68,8 +72,7 @@ fun publishProperty(
     contentResolver: ContentResolver? = null,
     onResult: (Result<Unit>) -> Unit,
     firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
-    auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    storage: FirebaseStorage = FirebaseStorage.getInstance()
+    auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
     val user = auth.currentUser
     if (user == null) {
@@ -109,7 +112,7 @@ fun publishProperty(
     )
 
     val propertyReference = firestore.collection("properties").document()
-    uploadPropertyImages(imageUris, contentResolver, propertyReference.id, user.uid, storage)
+    uploadPropertyImages(imageUris, contentResolver, propertyReference.id, user.uid)
         .addOnSuccessListener { imageUrls ->
             propertyReference.set(property + ("images" to imageUrls))
                 .addOnSuccessListener { onResult(Result.success(Unit)) }
@@ -122,21 +125,59 @@ private fun uploadPropertyImages(
     imageUris: List<Uri>,
     contentResolver: ContentResolver?,
     propertyId: String,
-    userId: String,
-    storage: FirebaseStorage
+    userId: String
 ): Task<List<String>> {
     if (imageUris.isEmpty()) return Tasks.forResult(emptyList())
-
-    val uploadTasks: List<Task<String>> = imageUris.mapIndexed { index, uri ->
-        val stream = contentResolver?.openInputStream(uri)
-            ?: return@mapIndexed Tasks.forException<String>(Exception("No se pudo leer una imagen."))
-        val reference = storage.reference.child("properties/$propertyId/$userId/$index.jpg")
-        reference.putStream(stream)
-            .continueWithTask { reference.downloadUrl }
-            .continueWith { it.result.toString() }
+    if (contentResolver == null) return Tasks.forException(Exception("No se pudo acceder a las fotografías."))
+    if (BuildConfig.SUPABASE_URL.isBlank() || BuildConfig.SUPABASE_ANON_KEY.isBlank()) {
+        return Tasks.forException(Exception("Supabase Storage no está configurado en la aplicación."))
     }
 
-    return Tasks.whenAllSuccess(uploadTasks)
+    val completion = TaskCompletionSource<List<String>>()
+    Executors.newSingleThreadExecutor().execute {
+        try {
+            val baseUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
+            val bucket = BuildConfig.SUPABASE_PROPERTY_BUCKET.ifBlank { "property-images" }
+            val urls = imageUris.mapIndexed { index, uri ->
+                val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+                val extension = when (mimeType) {
+                    "image/png" -> "png"
+                    "image/webp" -> "webp"
+                    else -> "jpg"
+                }
+                val objectPath = "properties/$propertyId/$userId/${System.currentTimeMillis()}-$index.$extension"
+                val endpoint = URL("$baseUrl/storage/v1/object/$bucket/$objectPath")
+                val connection = (endpoint.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 20_000
+                    readTimeout = 60_000
+                    setRequestProperty("apikey", BuildConfig.SUPABASE_ANON_KEY)
+                    setRequestProperty("Content-Type", mimeType)
+                    setRequestProperty("x-upsert", "false")
+                }
+
+                contentResolver.openInputStream(uri)?.use { input ->
+                    connection.outputStream.use { output -> input.copyTo(output) }
+                } ?: throw Exception("No se pudo leer una de las fotografías.")
+
+                val status = connection.responseCode
+                if (status !in 200..299) {
+                    val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    connection.disconnect()
+                    throw Exception("Supabase rechazó una fotografía ($status). $detail")
+                }
+                connection.inputStream.close()
+                connection.disconnect()
+                "$baseUrl/storage/v1/object/public/$bucket/$objectPath"
+            }
+            completion.setResult(urls)
+        } catch (error: Exception) {
+            completion.setException(error)
+        }
+    }
+
+    return completion.task
 }
 
 private fun documentTimestamp(document: com.google.firebase.firestore.DocumentSnapshot): Long {

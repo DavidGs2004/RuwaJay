@@ -193,28 +193,35 @@ export function subscribeToSystemUpdates(onUpdate, isAdmin = false, onError = ()
   if (firebaseWebEnabled && firestore) {
     try {
       unsubFirestore = onSnapshot(
-        query(collection(firestore, 'system_updates'), orderBy('createdAt', 'desc')),
+        collection(firestore, 'system_updates'),
         (snapshot) => {
           if (!isSubscribed) return;
-          const fbUpdates = snapshot.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-            createdAt: d.data().createdAt?.toDate ? d.data().createdAt.toDate().toISOString() : d.data().createdAt,
-          }));
+          const fbUpdates = snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              ...data,
+              createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt || new Date().toISOString(),
+              updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+            };
+          }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
           const filtered = isAdmin ? fbUpdates : fbUpdates.filter((u) => u.active !== false);
-          if (filtered.length > 0) {
-            onUpdate(filtered);
-          }
+          onUpdate(filtered);
         },
         (err) => {
           console.warn('Firestore system_updates subscription:', err);
           onError(err);
+          onUpdate([]);
         }
       );
     } catch (e) {
       console.warn('Firestore onSnapshot system_updates error:', e);
+      onError(e);
+      onUpdate([]);
     }
+  } else {
+    onUpdate([]);
   }
 
   return () => {
@@ -288,7 +295,10 @@ export async function updateSystemUpdate(updateId, patchData) {
 
   if (firebaseWebEnabled && firestore) {
     try {
-      await updateDoc(doc(firestore, 'system_updates', String(updateId)), patchData);
+      await updateDoc(doc(firestore, 'system_updates', String(updateId)), {
+        ...patchData,
+        updatedAt: serverTimestamp(),
+      });
       return;
     } catch (err) {
       if (!updatedInApi) throw err;

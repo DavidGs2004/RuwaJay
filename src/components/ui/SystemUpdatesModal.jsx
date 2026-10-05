@@ -4,23 +4,40 @@ import { subscribeToSystemUpdates } from '../../lib/adminService';
 import { useAuth } from '../../context/AuthContext';
 import { Link } from 'react-router-dom';
 
-export default function SystemUpdatesModal({ isOpen, onClose }) {
+export default function SystemUpdatesModal({
+  isOpen,
+  onClose,
+  updates: propUpdates,
+  loading: propLoading,
+}) {
   const { isAdmin } = useAuth();
-  const [updates, setUpdates] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [internalUpdates, setInternalUpdates] = useState([]);
+  const [internalLoading, setInternalLoading] = useState(true);
+
+  const updates = propUpdates !== undefined ? propUpdates : internalUpdates;
+  const loading = propLoading !== undefined ? propLoading : internalLoading;
 
   useEffect(() => {
-    if (!isOpen) return;
-    setLoading(true);
+    if (!isOpen || propUpdates !== undefined) return;
+    setInternalLoading(true);
     const unsub = subscribeToSystemUpdates((list) => {
-      setUpdates(list.filter((u) => u.active !== false));
-      setLoading(false);
+      setInternalUpdates(list.filter((u) => u.active !== false));
+      setInternalLoading(false);
     }, false);
 
-    return () => unsub();
-  }, [isOpen]);
+    const safetyTimer = setTimeout(() => {
+      setInternalLoading(false);
+    }, 1200);
 
+    return () => {
+      clearTimeout(safetyTimer);
+      unsub();
+    };
+  }, [isOpen, propUpdates]);
+
+  // Si no se han hecho cambios o no hay actualizaciones activas, ocultar y no mostrar al usuario
   if (!isOpen) return null;
+  if (!loading && updates.length === 0) return null;
 
   const getCategoryBadge = (cat) => {
     switch (cat) {
@@ -36,7 +53,10 @@ export default function SystemUpdatesModal({ isOpen, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
       <div
         className="relative w-full max-w-lg rounded-3xl border border-[#E8D9C8] bg-white p-6 shadow-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}

@@ -32,6 +32,11 @@ export default class ErrorBoundary extends React.Component {
             <p className="text-xs text-text-muted mb-6 leading-relaxed">
               Ocurrió un inconveniente al cargar esta sección. Hemos protegido tu información para que puedas continuar navegando con tranquilidad.
             </p>
+            {this.state.error?.message && (
+              <p className="mb-5 rounded-xl bg-red-50 px-3 py-2 text-left text-[11px] font-semibold text-red-700 break-words">
+                Detalle técnico: {String(this.state.error.message)}
+              </p>
+            )}
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 type="button"

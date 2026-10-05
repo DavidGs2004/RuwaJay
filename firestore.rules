@@ -22,7 +22,8 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if ownsProperty() || isAdmin();
+      allow update: if ownsProperty() || isAdmin();
+      allow delete: if ownsProperty();
 
       match /reviews/{reviewId} {
         allow read: if true;
@@ -43,14 +44,53 @@ service cloud.firestore {
 
 
     match /conversations/{conversationId} {
-      // Check if user is a participant for READ and UPDATE
-      allow read, update: if signedIn() && request.auth.uid in resource.data.participants;
-      allow create: if signedIn(); // Participants array should be set on create
+      function conversationMember(data) {
+        return signedIn() && (
+          request.auth.uid in data.participants ||
+          (request.auth.token.email != null &&
+           ((data.ownerEmail is string && request.auth.token.email == data.ownerEmail) ||
+            (data.seekerEmail is string && request.auth.token.email == data.seekerEmail) ||
+            (data.participantEmails is list && request.auth.token.email in data.participantEmails)))
+        );
+      }
+
+      allow read: if conversationMember(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && (request.auth.uid in request.resource.data.participants ||
+          (request.auth.token.email != null &&
+           request.resource.data.participantEmails is list &&
+           request.auth.token.email in request.resource.data.participantEmails));
+      allow update: if conversationMember(resource.data)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.participantEmails == resource.data.participantEmails
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.resource.data.seekerEmail == resource.data.seekerEmail;
 
       match /messages/{messageId} {
-        // Message access depends on the parent conversation participants
-        allow read, create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow read, create: if conversationMember(
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data
+        );
       }
+    }
+
+    match /visits/{visitId} {
+      allow create: if signedIn()
+        && request.resource.data.tenantId == request.auth.uid;
+      allow read: if signedIn()
+        && (resource.data.tenantId == request.auth.uid
+          || resource.data.ownerId == request.auth.uid);
+      allow update: if signedIn()
+        && (resource.data.ownerId == request.auth.uid
+          || (resource.data.tenantId == request.auth.uid
+            && request.resource.data.status == 'cancelada'))
+        && request.resource.data.tenantId == resource.data.tenantId
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.propertyId == resource.data.propertyId;
+      allow delete: if signedIn()
+        && (resource.data.tenantId == request.auth.uid
+          || resource.data.ownerId == request.auth.uid);
     }
 
     match /system_updates/{updateId} {

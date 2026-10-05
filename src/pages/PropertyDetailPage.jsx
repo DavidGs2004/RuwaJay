@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   Bed, Bath, Car, Ruler, MapPin, Heart, Share2, Shield, Calendar, CheckCircle,
   MessageCircle, ChevronLeft, ChevronRight, X, Star, AlertTriangle,
-  Calculator, ArrowLeftRight, FileText, Scale, Lock, Smartphone, Navigation
+  Calculator, ArrowLeftRight, FileText, Scale, Lock, Smartphone, Navigation, Clock, Edit3, Home
 } from 'lucide-react';
 
 const MapView = lazy(() => import('../components/map/MapView'));
@@ -12,13 +12,14 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useCompare } from '../context/CompareContext';
 import { useAuth } from '../context/AuthContext';
-import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import PropertyReviews from '../components/property/PropertyReviews';
 import PropertyLightbox from '../components/property/PropertyLightbox';
 import LeaseContractModal from '../components/property/LeaseContractModal';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
 import MobileAppConnectModal from '../components/ui/MobileAppConnectModal';
 import { subscribeToProperties } from '../lib/propertyService';
+import { createVisit } from '../lib/visitService';
+import { firebaseAuth } from '../lib/firebase';
 
 function WhatsAppIcon({ size = 18, className = '' }) {
   return (
@@ -32,6 +33,15 @@ function WhatsAppIcon({ size = 18, className = '' }) {
       <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c4.54 0 8.24 3.7 8.24 8.24 0 2.2-.86 4.28-2.42 5.84a8.17 8.17 0 0 1-5.82 2.41h-.01c-1.49 0-2.95-.4-4.23-1.15l-.3-.18-3.14.82.84-3.06-.2-.31a8.19 8.19 0 0 1-1.26-4.37c0-4.54 3.7-8.24 8.25-8.24m4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.02-1.24-.75-.67-1.25-1.49-1.39-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.13.17 1.77 2.71 4.3 3.79.6.26 1.07.41 1.44.53.61.19 1.16.17 1.6.1.49-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.1-.21-.17-.46-.3z" />
     </svg>
   );
+}
+
+function readStoredVisits() {
+  try {
+    const storedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+    return Array.isArray(storedVisits) ? storedVisits : [];
+  } catch {
+    return [];
+  }
 }
 
 export default function PropertyDetailPage() {
@@ -54,16 +64,35 @@ export default function PropertyDetailPage() {
       } catch { return null; }
     })()
     || demoProperties[0];
-  const owner = demoOwners.find((o) => o.id === property?.ownerId) || {
-    id: property?.ownerId || 'owner-custom',
-    name: property?.ownerName || 'Propietario RuwaJay',
-    phone: property?.ownerPhone || '+502 5482 9104',
+  const isCurrentUserOwner = Boolean(
+    user && (
+      (property?.ownerId && (property.ownerId === user.id || property.ownerId === firebaseAuth?.currentUser?.uid)) ||
+      (property?.ownerEmail && user.email && property.ownerEmail.toLowerCase() === user.email.toLowerCase()) ||
+      (property?.ownerName && user.name && property.ownerName.trim().toLowerCase() === user.name.trim().toLowerCase())
+    )
+  );
+
+  const currentUserPhoto = user?.avatarImage || user?.photoURL || user?.avatar || null;
+
+  const rawOwner = demoOwners.find((o) => o.id === property?.ownerId);
+  const owner = rawOwner ? {
+    ...rawOwner,
+    photo: (isCurrentUserOwner && currentUserPhoto) || property?.ownerPhoto || property?.ownerAvatar || rawOwner.avatar || rawOwner.photo || null,
+  } : {
+    id: property?.ownerId || (isCurrentUserOwner ? user.id : 'owner-custom'),
+    name: property?.ownerName || (isCurrentUserOwner ? user.name : 'Propietario RuwaJay'),
+    phone: property?.ownerPhone || (isCurrentUserOwner ? user.phone : '') || '',
+    photo: (isCurrentUserOwner && currentUserPhoto) || property?.ownerPhoto || property?.ownerAvatar || null,
     rating: 4.8,
     responseTime: '~15 min',
-    verified: Boolean(property?.verified),
+    verified: Boolean(property?.verified || (isCurrentUserOwner && user?.verified)),
   };
   const fav = isFavorite(property?.id);
   const inCompare = isInCompare(property?.id);
+  const propertyStatus = String(property?.status || 'disponible').toLowerCase();
+  const isOccupied = propertyStatus === 'ocupada' || propertyStatus === 'alquilada';
+  const isReserved = propertyStatus === 'en_cita' || propertyStatus === 'apartada';
+  const isUnavailable = isOccupied || isReserved || propertyStatus === 'pausada';
 
   const [activeTab, setActiveTab] = useState('todas');
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -87,13 +116,18 @@ export default function PropertyDetailPage() {
   const [visitConflictError, setVisitConflictError] = useState('');
 
   // Read existing visits to prevent overlapping appointments at the same time
-  const existingVisits = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-    } catch {
-      return [];
-    }
-  }, [showVisitModal, visitDate]);
+  const [existingVisits, setExistingVisits] = useState(readStoredVisits);
+
+  useEffect(() => {
+    const refreshVisits = () => setExistingVisits(readStoredVisits());
+    refreshVisits();
+    window.addEventListener('storage', refreshVisits);
+    window.addEventListener('ruwajay:visits-changed', refreshVisits);
+    return () => {
+      window.removeEventListener('storage', refreshVisits);
+      window.removeEventListener('ruwajay:visits-changed', refreshVisits);
+    };
+  }, [showVisitModal]);
 
   // Check if there's a confirmed visit for this property by the current user
   const hasConfirmedVisit = useMemo(() => {
@@ -150,22 +184,24 @@ export default function PropertyDetailPage() {
     return [property?.thumbnail || '/Casas/cat-familiar.jpg'];
   };
 
-  const currentImages = getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || '/Casas/cat-familiar.jpg'];
+  const currentImages = (getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || '/Casas/cat-familiar.jpg'])
+    .map((img) => (typeof img === 'string' && img.startsWith('blob:') ? '/Casas/cat-familiar.jpg' : img));
 
   const distance = position && property.coordinates?.lat && property.coordinates?.lng
     ? calculateDistance(position.lat, position.lng, property.coordinates.lat, property.coordinates.lng)
     : null;
 
   // WhatsApp configuration with prefilled message
-  const ownerPhone = owner.phone || '+502 5482 9104';
+  const ownerPhone = String(owner.phone || property?.ownerPhone || '').trim();
   const cleanPhone = ownerPhone.replace(/\D/g, '');
+  const hasOwnerWhatsApp = cleanPhone.length >= 8;
   const propertyUrl = typeof window !== 'undefined' ? window.location.href : '';
   const whatsappMsg = encodeURIComponent(
     `¡Hola ${owner.name}! Vi tu propiedad "${property.title}" en RuwaJay (${property.currency || 'Q'}${property.price}/mes) y deseo consultar más información o coordinar una visita. Enlace: ${propertyUrl}`
   );
   const whatsappUrl = `https://wa.me/${cleanPhone}?text=${whatsappMsg}`;
 
-  const handleScheduleVisit = (e) => {
+  const handleScheduleVisit = async (e) => {
     e.preventDefault();
     setVisitConflictError('');
 
@@ -175,8 +211,10 @@ export default function PropertyDetailPage() {
     }
 
     // Check if property is occupied / rented
-    if (property.status === 'ocupada' || property.status === 'alquilada') {
-      setVisitConflictError('Esta propiedad actualmente se encuentra ocupada / alquilada y no admite nuevas visitas.');
+    if (isUnavailable) {
+      setVisitConflictError(isReserved
+        ? 'Esta propiedad ya está apartada o tiene una cita activa y no admite nuevas solicitudes.'
+        : 'Esta propiedad se encuentra ocupada, alquilada o no disponible y no admite nuevas visitas.');
       return;
     }
 
@@ -194,13 +232,16 @@ export default function PropertyDetailPage() {
       propertyImage: currentImages[0] || property.thumbnail || '',
       propertyPrice: property.price,
       propertyZone: property.address?.approximate || 'Guatemala',
-      ownerId: property.ownerId || owner.id,
-      ownerName: owner.name,
-      ownerPhone: ownerPhone,
-      tenantId: user?.id || 'guest',
+      ownerId: property.ownerId || owner.id || 'owner-custom',
+      ownerName: property.ownerName || owner.name || 'Propietario RuwaJay',
+      ownerEmail: property.ownerEmail || owner.email || '',
+      ownerPhone: property.ownerPhone || owner.phone || ownerPhone || '+502 5482 9104',
+      ownerPhoto: property.ownerPhoto || owner.photo || owner.avatar || '',
+      tenantId: firebaseAuth?.currentUser?.uid || user?.id || 'guest',
       tenantName: user?.name || 'Inquilino interesado',
       tenantPhone: user?.phone || '',
       tenantEmail: user?.email || '',
+      tenantPhoto: user?.avatarImage || user?.photoURL || user?.avatar || firebaseAuth?.currentUser?.photoURL || '',
       date: visitDate,
       time: visitTime,
       notes: visitNotes,
@@ -209,9 +250,12 @@ export default function PropertyDetailPage() {
     };
 
     try {
-      const existing = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-      localStorage.setItem('ruwajay_visits', JSON.stringify([newVisit, ...existing]));
-    } catch { /* ignore */ }
+      await createVisit(newVisit);
+      window.dispatchEvent(new Event('ruwajay:visits-changed'));
+    } catch {
+      setVisitConflictError('No se pudo enviar la solicitud. Verifica tu conexión e intenta nuevamente.');
+      return;
+    }
 
     setVisitSubmitted(true);
     setTimeout(() => {
@@ -336,6 +380,33 @@ export default function PropertyDetailPage() {
               A {formatDistance(distance)} de tu ubicación
             </span>
           )}
+        </div>
+        <div className={`mt-4 flex items-start gap-3 rounded-2xl border p-4 ${
+          isOccupied
+            ? 'border-red-300 bg-red-50 text-red-900'
+            : isReserved
+              ? 'border-amber-300 bg-amber-50 text-amber-900'
+              : propertyStatus === 'pausada'
+                ? 'border-gray-300 bg-gray-100 text-gray-800'
+                : 'border-emerald-300 bg-emerald-50 text-emerald-900'
+        }`}>
+          <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-black">
+              {isOccupied
+                ? 'Casa ocupada / actualmente alquilada'
+                : isReserved
+                  ? 'Casa apartada / con cita activa'
+                  : propertyStatus === 'pausada'
+                    ? 'Publicación temporalmente no disponible'
+                    : 'Casa desocupada y disponible'}
+            </p>
+            <p className="mt-0.5 text-xs font-semibold opacity-80">
+              {isUnavailable
+                ? 'No se pueden solicitar nuevas citas para esta vivienda en este momento.'
+                : 'Puedes solicitar una cita para conocer esta vivienda.'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -536,9 +607,9 @@ export default function PropertyDetailPage() {
                   </p>
                   <Link
                     to={`/ruta?property=${property.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-azul-ruta hover:bg-azul-ruta/90 text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-black shadow-sm transition-all"
                   >
-                    <Navigation size={15} /> Ver Ruta Waze en Vivo
+                    <Navigation size={15} /> Trazar Ruta a la Vivienda (RuwaRuta)
                   </Link>
                 </div>
                 <div className="h-64 sm:h-80 w-full rounded-2xl overflow-hidden shadow-sm border border-border-light relative z-0">
@@ -591,10 +662,48 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
 
+                {/* Owner Quick Controls */}
+                {isCurrentUserOwner && (
+                  <div className="mb-5 p-4 rounded-2xl bg-gradient-to-br from-forest/10 to-jade/5 border border-forest/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-forest text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Home size={18} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-forest block">Esta vivienda te pertenece</span>
+                        <span className="text-[11px] text-text-muted">Puedes modificar sus fotografías, precio y características</span>
+                      </div>
+                    </div>
+                    <Link
+                      to={`/publicar/${property.id}`}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-4 py-2.5 text-xs font-black transition-all shadow-xs shrink-0"
+                    >
+                      <Edit3 size={14} /> Editar vivienda
+                    </Link>
+                  </div>
+                )}
+
                 {/* Owner Card */}
                 <div className="flex items-center gap-3.5 mb-7 p-4 rounded-2xl bg-crema/50 border border-border-light">
-                  <div className="w-13 h-13 rounded-full bg-gradient-to-br from-forest to-jade text-white font-extrabold text-lg flex items-center justify-center shadow-sm">
-                    {(owner?.name || 'P').charAt(0)}
+                  <div className="relative w-13 h-13 shrink-0">
+                    {owner?.photo ? (
+                      <img
+                        src={owner.photo}
+                        alt={owner?.name || 'Propietario'}
+                        className="w-13 h-13 rounded-full object-cover shadow-sm border-2 border-forest/20"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling;
+                          if (fallback) fallback.classList.remove('hidden');
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className={`w-13 h-13 rounded-full bg-gradient-to-br from-forest to-jade text-white font-extrabold text-lg flex items-center justify-center shadow-sm ${owner?.photo ? 'hidden' : 'flex'}`}
+                    >
+                      {(owner?.name || 'P').charAt(0)}
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-extrabold text-cafe text-sm flex items-center gap-1.5 truncate">
@@ -611,14 +720,14 @@ export default function PropertyDetailPage() {
                 </div>
 
                 {/* CTA Buttons */}
-                <div className="space-y-3">
-                  {property.status === 'alquilada' || property.status === 'ocupada' ? (
+                {!isCurrentUserOwner && <div className="space-y-3">
+                  {isUnavailable ? (
                     <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-center">
                       <span className="text-xs font-black text-amber-900 block mb-0.5">
-                        ● Vivienda Ocupada / Alquilada
+                        {isOccupied ? '● Vivienda ocupada / alquilada' : isReserved ? '● Vivienda apartada / en cita' : '● Vivienda no disponible'}
                       </span>
                       <p className="text-[11px] text-amber-800/80">
-                        Esta vivienda no admite nuevas visitas presenciales por el momento.
+                        Esta vivienda no admite nuevas solicitudes de visita por el momento.
                       </p>
                     </div>
                   ) : (
@@ -632,15 +741,27 @@ export default function PropertyDetailPage() {
                   )}
 
                   {/* Direct WhatsApp Button */}
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-extrabold py-3.5 shadow-md shadow-[#25D366]/20 transition-all text-sm"
-                  >
-                    <WhatsAppIcon size={19} />
-                    Contactar por WhatsApp
-                  </a>
+                  {hasOwnerWhatsApp ? (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-extrabold py-3.5 shadow-md shadow-[#25D366]/20 transition-all text-sm"
+                    >
+                      <WhatsAppIcon size={19} />
+                      Contactar por WhatsApp
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      title="El propietario no registró un número de teléfono"
+                      className="flex w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-2xl bg-gray-200 py-3.5 text-sm font-extrabold text-gray-500 opacity-80"
+                    >
+                      <WhatsAppIcon size={19} />
+                      WhatsApp no disponible
+                    </button>
+                  )}
 
                   {/* Chat: only available after owner confirms a visit */}
                   {hasConfirmedVisit ? (
@@ -668,7 +789,7 @@ export default function PropertyDetailPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </div>}
 
                 <p className="text-[11px] text-text-muted text-center mt-5 leading-normal px-2">
                   🔒 La dirección exacta se desbloqueará una vez el propietario acepte tu solicitud de visita.
@@ -899,17 +1020,27 @@ export default function PropertyDetailPage() {
                   )}
 
                   <div>
-                    <RuwaDatePicker
-                      label="Fecha de la visita"
-                      required
-                      placeholder="Selecciona la fecha para tu visita"
-                      minDate={new Date().toISOString().split('T')[0]}
-                      value={visitDate}
-                      onChange={(val) => {
-                        setVisitDate(val);
-                        setVisitConflictError('');
-                      }}
-                    />
+                    <label htmlFor="visit-date" className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">
+                      Fecha de la visita <span className="text-terracota">*</span>
+                    </label>
+                    <div className="relative">
+                      <Calendar
+                        size={16}
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-forest"
+                      />
+                      <input
+                        id="visit-date"
+                        type="date"
+                        required
+                        min={new Date().toISOString().split('T')[0]}
+                        value={visitDate}
+                        onChange={(event) => {
+                          setVisitDate(event.target.value);
+                          setVisitConflictError('');
+                        }}
+                        className="w-full rounded-xl border border-border-light bg-[#FDFBF7] py-3 pl-11 pr-4 text-sm font-semibold text-cafe outline-none transition-all focus:border-forest focus:ring-2 focus:ring-forest/10"
+                      />
+                    </div>
                   </div>
 
                   <div>

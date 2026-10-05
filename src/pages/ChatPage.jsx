@@ -9,6 +9,7 @@ import {
 import { demoProperties, demoOwners, formatPrice } from '../data/properties';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
+import { firebaseAuth } from '../lib/firebase';
 
 function isUserMsg(msg, currentUserId) {
   if (!msg) return false;
@@ -18,10 +19,22 @@ function isUserMsg(msg, currentUserId) {
   return false;
 }
 
+function formatConversationTime(value) {
+  if (!value) return '';
+  let date = null;
+  if (typeof value?.toDate === 'function') date = value.toDate();
+  else if (typeof value?.seconds === 'number') date = new Date(value.seconds * 1000);
+  else if (value instanceof Date) date = value;
+  else if (typeof value === 'string' || typeof value === 'number') date = new Date(value);
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const currentUserPhoto = user?.avatarImage || user?.photoURL || user?.avatar || firebaseAuth?.currentUser?.photoURL || null;
   const {
     conversations,
     activeConversation,
@@ -49,19 +62,51 @@ export default function ChatPage() {
   // If a property is passed via URL (?property=prop-1), switch or start chat with it
   // BUT only if there's a confirmed visit for this property
   const urlPropertyId = searchParams.get('property');
+  const urlConversationId = searchParams.get('conversation');
   const [chatBlocked, setChatBlocked] = useState(false);
+  const [visitRevision, setVisitRevision] = useState(0);
 
   useEffect(() => {
+    const refreshVisitAccess = () => setVisitRevision((revision) => revision + 1);
+    window.addEventListener('storage', refreshVisitAccess);
+    window.addEventListener('ruwajay:visits-changed', refreshVisitAccess);
+    window.addEventListener('ruwajay:visits_changed', refreshVisitAccess);
+    window.addEventListener('ruwajay:chat-changed', refreshVisitAccess);
+    window.addEventListener('ruwajay:chat_changed', refreshVisitAccess);
+    return () => {
+      window.removeEventListener('storage', refreshVisitAccess);
+      window.removeEventListener('ruwajay:visits-changed', refreshVisitAccess);
+      window.removeEventListener('ruwajay:visits_changed', refreshVisitAccess);
+      window.removeEventListener('ruwajay:chat-changed', refreshVisitAccess);
+      window.removeEventListener('ruwajay:chat_changed', refreshVisitAccess);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!urlConversationId) return;
+    setChatBlocked(false);
+    setActiveConversationId(urlConversationId);
+    setMobileView('chat');
+  }, [urlConversationId, setActiveConversationId]);
+
+  useEffect(() => {
+    if (urlConversationId) return;
     if (!urlPropertyId || !user?.id) return;
 
     // Check if there's a confirmed visit for this property
     try {
-      const visits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+      const parsedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+      const visits = Array.isArray(parsedVisits) ? parsedVisits : [];
       const hasConfirmed = visits.some(
         (v) =>
           v.propertyId === urlPropertyId &&
-          v.status === 'confirmada' &&
-          (v.tenantId === user.id || v.ownerId === user.id)
+          (v.status === 'confirmada' || v.status === 'aceptada') &&
+          (
+            v.tenantId === user.id ||
+            v.ownerId === user.id ||
+            (firebaseAuth?.currentUser?.uid && (v.tenantId === firebaseAuth.currentUser.uid || v.ownerId === firebaseAuth.currentUser.uid)) ||
+            (user?.phone && (String(v.tenantPhone).replace(/\D/g, '') === String(user.phone).replace(/\D/g, '') || String(v.ownerPhone).replace(/\D/g, '') === String(user.phone).replace(/\D/g, '')))
+          )
       );
 
       if (hasConfirmed) {
@@ -74,7 +119,7 @@ export default function ChatPage() {
     } catch {
       setChatBlocked(true);
     }
-  }, [urlPropertyId, user?.id, startConversationWithProperty]);
+  }, [urlConversationId, urlPropertyId, user?.id, startConversationWithProperty, visitRevision]);
 
   // Mark active conversation as read
   useEffect(() => {
@@ -119,12 +164,47 @@ export default function ChatPage() {
 
   // Current Property & Owner details for active chat
   const activeProperty = useMemo(() => {
-    return demoProperties.find((p) => p.id === activeConversation?.propertyId) || demoProperties[0];
+    if (!activeConversation?.propertyId) return null;
+    try {
+      const localProps = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+      const found = Array.isArray(localProps) ? localProps.find((p) => p.id === activeConversation.propertyId) : null;
+      if (found) return found;
+    } catch { /* ignore */ }
+
+    return (
+      demoProperties.find((p) => p.id === activeConversation.propertyId) || {
+        id: activeConversation.propertyId,
+        title: activeConversation.propertyTitle || 'Vivienda RuwaJay',
+        price: activeConversation.propertyPrice || 0,
+        thumbnail: activeConversation.propertyImage || '/Casas/cat-familiar.jpg',
+      }
+    );
   }, [activeConversation]);
 
   const activeOwner = useMemo(() => {
-    return demoOwners.find((o) => o.id === activeConversation?.ownerId) || demoOwners[0];
-  }, [activeConversation]);
+    const rawOwner = demoOwners.find((o) => o.id === activeConversation?.ownerId);
+    if (rawOwner) return rawOwner;
+
+    if (activeProperty?.ownerName) {
+      return {
+        id: activeProperty.ownerId || activeConversation?.ownerId || 'owner-custom',
+        name: activeProperty.ownerName,
+        phone: activeProperty.ownerPhone || '+502 5482 9104',
+        photo: activeProperty.ownerPhoto || activeConversation?.participantAvatar || null,
+        avatar: activeProperty.ownerPhoto || activeConversation?.participantAvatar || null,
+        verified: Boolean(activeProperty.verified),
+      };
+    }
+
+    return {
+      id: activeConversation?.ownerId || 'owner-custom',
+      name: activeConversation?.participantName || 'Propietario',
+      phone: activeConversation?.participantPhone || '+502 5482 9104',
+      photo: activeConversation?.participantAvatar || null,
+      avatar: activeConversation?.participantAvatar || null,
+      verified: true,
+    };
+  }, [activeConversation, activeProperty]);
 
   // Filtered conversations in sidebar
   const filteredConversations = useMemo(() => {
@@ -142,19 +222,33 @@ export default function ChatPage() {
   }, [conversations, searchFilter, filterTab]);
 
   // Handle message submission
-  const handleSend = (textToSend = inputText) => {
+  const handleSend = async (textToSend = inputText) => {
     if (!textToSend.trim() && !selectedImage) return;
     if (!activeConversation?.id) return;
 
-    sendMessage(activeConversation.id, textToSend, selectedImage);
-    setInputText('');
-    setSelectedImage(null);
+    try {
+      await sendMessage(activeConversation.id, textToSend, selectedImage);
+      setInputText('');
+      setSelectedImage(null);
+    } catch (error) {
+      if (error?.message === 'CHAT_REQUIRES_FIREBASE_AUTH') {
+        window.alert('Para enviar mensajes en tiempo real debes cerrar esta sesión e iniciar nuevamente con Google. Así ambos usuarios recibirán el mismo historial.');
+        return;
+      }
+      window.alert('No se pudo enviar el mensaje. Revisa tu conexión e inténtalo otra vez.');
+    }
   };
 
   // Handle simulated Voice Note
-  const handleSendVoiceNote = () => {
+  const handleSendVoiceNote = async () => {
     if (!activeConversation?.id) return;
-    sendMessage(activeConversation.id, '', null, true);
+    try {
+      await sendMessage(activeConversation.id, '', null, true);
+    } catch (error) {
+      window.alert(error?.message === 'CHAT_REQUIRES_FIREBASE_AUTH'
+        ? 'Para usar el chat en tiempo real inicia nuevamente con Google.'
+        : 'No se pudo enviar la nota de voz.');
+    }
   };
 
   // Handle image upload from file picker
@@ -265,10 +359,21 @@ export default function ChatPage() {
 
         {/* User Presence & Quick Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-cafe bg-[#FAF8F5] px-3 py-1.5 rounded-xl border border-border">
-            <span className="h-2 w-2 rounded-full bg-jade animate-pulse" />
-            <span className="hidden min-[480px]:inline text-text-muted">Inquilino:</span>
-            <span className="font-extrabold text-cafe truncate max-w-[130px]">{user?.name || 'Tú'}</span>
+          <div className="flex items-center gap-2 text-xs font-bold text-cafe bg-[#FAF8F5] p-1 pr-3 rounded-2xl border border-border shadow-2xs">
+            {user?.avatarImage || user?.photoURL || user?.avatar ? (
+              <img
+                src={user.avatarImage || user.photoURL || user.avatar}
+                alt={user?.name || 'Tú'}
+                className="h-7 w-7 rounded-full object-cover border border-forest/20"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-forest text-[11px] font-black text-white">
+                {(user?.name || 'T').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className="h-2 w-2 rounded-full bg-jade animate-pulse shrink-0" />
+            <span className="font-extrabold text-cafe truncate max-w-[120px]">{user?.name || 'Tú'}</span>
           </div>
 
           <button
@@ -378,7 +483,22 @@ export default function ChatPage() {
                   >
                     {/* Avatar with online status */}
                     <div className="relative shrink-0">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-forest text-sm font-black text-white shadow-xs">
+                      {conv.participantAvatar ? (
+                        <img
+                          src={conv.participantAvatar}
+                          alt={conv.participantName}
+                          className="h-12 w-12 rounded-full object-cover shadow-xs border border-border"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling;
+                            if (fallback) fallback.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`flex h-12 w-12 items-center justify-center rounded-full bg-forest text-sm font-black text-white shadow-xs ${conv.participantAvatar ? 'hidden' : 'flex'}`}
+                      >
                         {conv.participantName.charAt(0)}
                       </div>
                       {conv.participantOnline && (
@@ -393,7 +513,7 @@ export default function ChatPage() {
                           {conv.participantName}
                         </h4>
                         <span className="shrink-0 text-[10px] font-semibold text-text-muted">
-                          {conv.lastMessageTimestamp}
+                          {formatConversationTime(conv.lastMessageTimestamp || conv.createdAt)}
                         </span>
                       </div>
 
@@ -453,7 +573,22 @@ export default function ChatPage() {
                   </button>
 
                   <div className="relative shrink-0">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-forest text-sm font-black text-white shadow-xs">
+                    {activeOwner?.photo || activeConversation.participantAvatar ? (
+                      <img
+                        src={activeOwner?.photo || activeConversation.participantAvatar}
+                        alt={activeConversation.participantName}
+                        className="h-10 w-10 rounded-full object-cover shadow-xs border border-border"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.nextElementSibling;
+                          if (fallback) fallback.classList.remove('hidden');
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full bg-forest text-sm font-black text-white shadow-xs ${activeOwner?.photo || activeConversation.participantAvatar ? 'hidden' : 'flex'}`}
+                    >
                       {activeConversation.participantName.charAt(0)}
                     </div>
                     {activeConversation.participantOnline && (
@@ -464,6 +599,9 @@ export default function ChatPage() {
                   <div className="min-w-0">
                     <h3 className="flex items-center gap-1.5 truncate text-sm font-black text-cafe">
                       <span className="truncate">{activeConversation.participantName}</span>
+                      <span className="rounded-full bg-forest/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-forest">
+                        {activeConversation.participantRole}
+                      </span>
                       {activeOwner.verified && (
                         <span className="inline-flex items-center rounded-full bg-jade/10 px-1.5 py-0.5 text-[10px] font-black text-forest">
                           ✓ Verificado
@@ -522,6 +660,27 @@ export default function ChatPage() {
                 </div>
               </div>
 
+              <div className="flex shrink-0 items-center justify-center gap-3 border-b border-border/60 bg-white/90 px-3 py-2">
+                {[
+                  { name: user?.name || 'Tú', role: activeConversation.currentUserRole, photo: currentUserPhoto },
+                  { name: activeConversation.participantName, role: activeConversation.participantRole, photo: activeConversation.participantAvatar },
+                ].map((person) => (
+                  <div key={`${person.role}-${person.name}`} className="flex min-w-0 items-center gap-2 rounded-full bg-crema/70 py-1 pl-1 pr-3">
+                    {person.photo ? (
+                      <img src={person.photo} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-forest text-[10px] font-black text-white">
+                        {person.name?.charAt(0) || 'U'}
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block max-w-28 truncate text-[10px] font-black text-cafe">{person.name}</span>
+                      <span className="block text-[8px] font-black uppercase tracking-wide text-forest">{person.role}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
               {/* Safety Warning Banner */}
               <div className="flex items-center justify-center gap-2 border-b border-amber-200/60 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-900 shrink-0">
                 <ShieldAlert size={14} className="shrink-0 text-terracota" />
@@ -563,7 +722,9 @@ export default function ChatPage() {
                       >
                         {/* Sender header name refined */}
                         <p className={`text-[9px] font-black uppercase tracking-widest mb-1.5 opacity-80 ${isUser ? 'text-white/80 text-right' : 'text-forest'}`}>
-                          {isUser ? 'Enviado por ti' : activeConversation.participantName}
+                          {isUser
+                            ? `${user?.name || 'Tú'} · ${activeConversation.currentUserRole}`
+                            : `${activeConversation.participantName} · ${activeConversation.participantRole}`}
                         </p>
 
                         {/* Image if attached */}

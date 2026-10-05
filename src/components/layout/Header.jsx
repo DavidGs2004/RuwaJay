@@ -10,6 +10,7 @@ import { useChat } from '../../context/ChatContext';
 import { AVATAR_OPTIONS } from '../../data/avatars';
 import SystemUpdatesModal from '../ui/SystemUpdatesModal';
 import MobileAppConnectModal from '../ui/MobileAppConnectModal';
+import { subscribeToSystemUpdates } from '../../lib/adminService';
 
 /* ── Category tabs ── */
 const categories = [
@@ -47,6 +48,12 @@ export default function Header() {
   const [showUpdatesModal, setShowUpdatesModal] = useState(false);
   const [showMobileAppModal, setShowMobileAppModal] = useState(false);
 
+  // Estados para actualización inteligente del sistema
+  const [systemUpdates, setSystemUpdates] = useState([]);
+  const [updatesLoading, setUpdatesLoading] = useState(true);
+  const [hasNewChanges, setHasNewChanges] = useState(false);
+  const [noUpdatesNotice, setNoUpdatesNotice] = useState(false);
+
   const handleLogout = async () => {
     setUserMenuOpen(false);
     setMobileOpen(false);
@@ -80,6 +87,76 @@ export default function Header() {
     setActiveField(null);
     setUserMenuOpen(false);
   }, [location]);
+
+  // Sincronización en tiempo real de actualizaciones del sistema:
+  // "que se actualice cada que se hagan cambios, si no se hacen cambios que se oculte y no le aparezca al usuario"
+  useEffect(() => {
+    let isMounted = true;
+    setUpdatesLoading(true);
+
+    const unsub = subscribeToSystemUpdates((list) => {
+      if (!isMounted) return;
+      const activeList = Array.isArray(list) ? list.filter((u) => u.active !== false) : [];
+      setSystemUpdates(activeList);
+      setUpdatesLoading(false);
+
+      // Si no hay cambios ni actualizaciones en el sistema:
+      // se oculta y no le aparece al usuario
+      if (activeList.length === 0) {
+        setShowUpdatesModal(false);
+        setHasNewChanges(false);
+        return;
+      }
+
+      // Si hay actualizaciones activas, calculamos la huella de los cambios:
+      const currentFingerprint = activeList
+        .map((u) => `${u.id}_${u.updatedAt || u.createdAt || ''}_${u.title || ''}`)
+        .join('|');
+
+      const seenFingerprint = localStorage.getItem('ruwajay_seen_system_updates_v1');
+
+      if (seenFingerprint !== currentFingerprint) {
+        // Se detectaron cambios nuevos o un nuevo comunicado publicado:
+        // Se actualiza y aparece automáticamente para notificar al usuario
+        setHasNewChanges(true);
+        setShowUpdatesModal(true);
+      } else {
+        // No hay cambios nuevos respecto a lo que el usuario ya leyó:
+        // Se mantiene oculto y no le aparece al usuario
+        setHasNewChanges(false);
+      }
+    }, false);
+
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) setUpdatesLoading(false);
+    }, 1200);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimer);
+      unsub();
+    };
+  }, []);
+
+  const handleCloseUpdatesModal = () => {
+    setShowUpdatesModal(false);
+    setHasNewChanges(false);
+    if (systemUpdates.length > 0) {
+      const currentFingerprint = systemUpdates
+        .map((u) => `${u.id}_${u.updatedAt || u.createdAt || ''}_${u.title || ''}`)
+        .join('|');
+      localStorage.setItem('ruwajay_seen_system_updates_v1', currentFingerprint);
+    }
+  };
+
+  const handleOpenUpdatesClick = () => {
+    if (systemUpdates.length > 0) {
+      setShowUpdatesModal(true);
+    } else {
+      setNoUpdatesNotice(true);
+      setTimeout(() => setNoUpdatesNotice(false), 3000);
+    }
+  };
 
   // Close user menu on outside click
   useEffect(() => {
@@ -179,7 +256,7 @@ export default function Header() {
 
         {/* ═══════════ ROW 1: Logo — Categories — User ═══════════ */}
         <div className="border-b border-[#EBEBEB]">
-          <div className="mx-auto flex h-[72px] max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex h-[72px] w-full max-w-[1600px] items-center gap-2 px-3 sm:gap-4 sm:px-6 lg:px-8">
 
             {/* Logo */}
             <Link to="/" className="group flex shrink-0 items-center gap-2 md:gap-3">
@@ -201,7 +278,7 @@ export default function Header() {
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#DDDDDD] bg-white px-3 text-left shadow-[0_2px_10px_rgba(0,0,0,0.10)] transition-shadow hover:shadow-md md:hidden"
+              className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#DDDDDD] bg-white px-3 text-left shadow-[0_2px_10px_rgba(0,0,0,0.10)] transition-shadow hover:shadow-md lg:hidden"
               aria-haspopup="dialog"
               aria-expanded={mobileOpen}
             >
@@ -215,7 +292,7 @@ export default function Header() {
             {/* Mobile Messages Shortcut with Unread Badge */}
             <Link
               to="/chat"
-              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#DDDDDD] bg-white text-[#222222] shadow-[0_2px_8px_rgba(0,0,0,0.08)] md:hidden"
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#DDDDDD] bg-white text-[#222222] shadow-[0_2px_8px_rgba(0,0,0,0.08)] lg:hidden"
               aria-label="Abrir mensajes"
             >
               <MessageSquare size={18} />
@@ -227,7 +304,7 @@ export default function Header() {
             </Link>
 
             {/* Center: Category tabs */}
-            <div className="hidden flex-1 items-center justify-center gap-10 lg:flex">
+            <div className="hidden min-w-0 flex-1 items-center justify-center gap-3 min-[1450px]:flex 2xl:gap-6">
               {categories.map(({ label, icon, type }) => (
                 <button
                   key={type}
@@ -237,28 +314,31 @@ export default function Header() {
                     setSelectedType(nextType);
                     navigate(`/explorar${nextType ? '?type=' + nextType : ''}`);
                   }}
-                  className={`flex items-center gap-2.5 pb-1 border-b-[3px] transition-all duration-200 cursor-pointer ${
+                  className={`flex shrink-0 items-center gap-1.5 border-b-[3px] pb-1 transition-all duration-200 cursor-pointer 2xl:gap-2 ${
                     activeCategory === type
                       ? 'border-[#222222] text-[#222222] font-bold'
                       : 'border-transparent text-[#717171] hover:text-[#222222] hover:border-[#DDDDDD]'
                   }`}
                 >
-                  <span className="text-2xl">{icon}</span>
-                  <span className="text-[15px]">{label}</span>
+                  <span className="text-xl 2xl:text-2xl">{icon}</span>
+                  <span className="text-[14px] 2xl:text-[15px]">{label}</span>
                 </button>
               ))}
             </div>
 
             {/* Right: Actions */}
-            <div className="ml-auto hidden shrink-0 items-center gap-3 md:flex">
+            <div className="ml-auto hidden shrink-0 items-center gap-1 lg:flex xl:gap-2">
               <button
                 type="button"
-                onClick={() => setShowUpdatesModal(true)}
-                className="flex items-center gap-1.5 text-[14px] font-bold text-[#222222] hover:bg-[#F7F7F7] px-3.5 py-2.5 rounded-full transition-colors whitespace-nowrap cursor-pointer"
+                onClick={handleOpenUpdatesClick}
+                className="relative flex items-center gap-1.5 text-[14px] font-bold text-[#222222] hover:bg-[#F7F7F7] px-3.5 py-2.5 rounded-full transition-colors whitespace-nowrap cursor-pointer"
                 title="Comunicados y Actualizaciones del Sistema"
               >
-                <Megaphone size={16} className="text-forest" />
+                <Megaphone size={16} className={hasNewChanges ? "text-[#D84420] animate-bounce" : "text-forest"} />
                 <span>Novedades</span>
+                {hasNewChanges && (
+                  <span className="flex h-2 w-2 rounded-full bg-[#D84420] animate-pulse" />
+                )}
               </button>
 
               <Link
@@ -417,11 +497,21 @@ export default function Header() {
                         </Link>
                         <button
                           type="button"
-                          onClick={() => { setUserMenuOpen(false); setShowUpdatesModal(true); }}
-                          className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] text-left cursor-pointer"
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            handleOpenUpdatesClick();
+                          }}
+                          className="flex w-full items-center justify-between px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] text-left cursor-pointer"
                         >
-                          <Megaphone size={17} className="text-forest" />
-                          Novedades del Sistema
+                          <div className="flex items-center gap-3">
+                            <Megaphone size={17} className={hasNewChanges ? "text-[#D84420]" : "text-forest"} />
+                            <span>Novedades del Sistema</span>
+                          </div>
+                          {hasNewChanges && (
+                            <span className="rounded-full bg-[#D84420] px-2 py-0.5 text-[10px] font-black text-white">
+                              Nuevo
+                            </span>
+                          )}
                         </button>
                         <button
                           type="button"
@@ -469,7 +559,7 @@ export default function Header() {
 
             {/* Mobile hamburger */}
             <button
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-forest transition-colors hover:bg-forest/10 md:hidden"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-forest transition-colors hover:bg-forest/10 lg:hidden"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Menú"
             >
@@ -479,7 +569,7 @@ export default function Header() {
         </div>
 
         {/* ═══════════ ROW 2: Expandable tabbed search bar ═══════════ */}
-        <div className={`hidden justify-center bg-white transition-all duration-300 md:flex ${scrolled ? 'py-2.5' : 'py-3'}`}>
+        <div className={`hidden justify-center bg-white transition-all duration-300 lg:flex ${scrolled ? 'py-2.5' : 'py-3'}`}>
           <div className="relative w-[calc(100%-2rem)] max-w-[850px]" ref={searchBarRef}>
             <form
               onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
@@ -986,10 +1076,19 @@ export default function Header() {
         </div>
       )}
 
+      {/* Toast cuando no hay actualizaciones activas y el usuario hace clic */}
+      {noUpdatesNotice && (
+        <div className="fixed top-20 right-6 z-50 flex items-center gap-2 rounded-2xl bg-[#0B5D3B] px-4 py-2.5 text-xs font-bold text-white shadow-xl animate-fade-in border border-[#D4962A]/40">
+          <span>✅ RuwaJay al día: No hay nuevos comunicados por el momento.</span>
+        </div>
+      )}
+
       {/* Modal de Novedades y Actualizaciones del Sistema */}
       <SystemUpdatesModal
         isOpen={showUpdatesModal}
-        onClose={() => setShowUpdatesModal(false)}
+        onClose={handleCloseUpdatesModal}
+        updates={systemUpdates}
+        loading={updatesLoading}
       />
 
       {/* Modal de Vinculación y Descarga de App Móvil */}

@@ -2,19 +2,24 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { existsSync } from 'node:fs';
+
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const viteEntry = join(root, 'node_modules', 'vite', 'bin', 'vite.js');
+const backendEntry = join(root, 'backend', 'app', 'main.py');
 
 let backend = null;
-try {
-  const response = await fetch('http://127.0.0.1:8000/api/health', { signal: AbortSignal.timeout(1200) });
-  if (!response.ok) throw new Error('Backend no disponible');
-  console.log('Backend de RuwaJay ya está activo en http://127.0.0.1:8000');
-} catch {
-  backend = spawn('python', ['-m', 'uvicorn', 'backend.app.main:app', '--host', '127.0.0.1', '--port', '8000', '--reload'], {
-    cwd: root,
-    stdio: 'inherit',
-  });
+if (existsSync(backendEntry)) {
+  try {
+    const response = await fetch('http://127.0.0.1:8000/api/health', { signal: AbortSignal.timeout(1200) });
+    if (!response.ok) throw new Error('Backend no disponible');
+    console.log('Backend de RuwaJay ya está activo en http://127.0.0.1:8000');
+  } catch {
+    backend = spawn('python', ['-m', 'uvicorn', 'backend.app.main:app', '--host', '127.0.0.1', '--port', '8000', '--reload'], {
+      cwd: root,
+      stdio: 'inherit',
+    });
+  }
 }
 const frontend = spawn(process.execPath, [viteEntry], { cwd: root, stdio: 'inherit' });
 

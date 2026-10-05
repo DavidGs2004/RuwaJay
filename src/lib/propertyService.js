@@ -1,6 +1,8 @@
-import { collection, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { firebaseWebEnabled, firestore, storage } from './firebase';
+import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { firebaseAuth, firebaseWebEnabled, firestore } from './firebase';
+import { uploadPropertyImagesToSupabase } from './supabaseStorage';
+import { demoProperties } from '../data/properties';
+import { publishRealtimeEvent } from './realtimeService';
 
 function numberOr(value, fallback = 0) {
   const number = Number(value);
@@ -44,18 +46,69 @@ export function normalizeFirebaseProperty(snapshot) {
     requirements: data.requirements || [],
     status: data.status || 'disponible',
     ownerId: data.ownerId || '',
+    ownerName: data.ownerName || '',
+    ownerEmail: data.ownerEmail || '',
+    ownerPhone: data.ownerPhone || '',
+    ownerPhoto: data.ownerPhoto || data.ownerAvatar || '',
     verified: Boolean(data.verified),
     isNew: true,
   };
 }
 
+export function readLocalCustomProperties() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function subscribeToProperties(onChange, onError = () => {}) {
-  if (!firebaseWebEnabled || !firestore) return () => {};
-  return onSnapshot(
-    collection(firestore, 'properties'),
-    (snapshot) => onChange(snapshot.docs.map(normalizeFirebaseProperty)),
-    onError
-  );
+  let fbProperties = [];
+  let firebaseSnapshotReady = false;
+
+  const emit = () => {
+    const local = (!firebaseWebEnabled || !firestore || !firebaseSnapshotReady)
+      ? readLocalCustomProperties()
+      : [];
+    const map = new Map();
+    [...local, ...fbProperties].forEach((p) => {
+      map.set(p.id, p);
+    });
+    onChange(Array.from(map.values()));
+  };
+
+  const handleStorageChange = () => emit();
+  window.addEventListener('storage', handleStorageChange);
+  window.addEventListener('ruwajay:properties-changed', handleStorageChange);
+  window.addEventListener('ruwajay:properties_changed', handleStorageChange);
+  emit();
+
+  let unsubscribeFb = () => {};
+  if (firebaseWebEnabled && firestore) {
+    unsubscribeFb = onSnapshot(
+      collection(firestore, 'properties'),
+      (snapshot) => {
+        firebaseSnapshotReady = true;
+        fbProperties = snapshot.docs.map(normalizeFirebaseProperty);
+        try {
+          // Firestore is authoritative. Remove legacy Base64/stale property copies
+          // so deleted listings cannot reappear from this browser's old cache.
+          localStorage.removeItem('ruwajay_custom_properties');
+        } catch { /* ignore unavailable storage */ }
+        emit();
+      },
+      onError
+    );
+  }
+
+  return () => {
+    window.removeEventListener('storage', handleStorageChange);
+    window.removeEventListener('ruwajay:properties-changed', handleStorageChange);
+    window.removeEventListener('ruwajay:properties_changed', handleStorageChange);
+    unsubscribeFb();
+  };
 }
 
 export async function publishPropertyToFirebase(property) {
@@ -94,25 +147,123 @@ export async function publishPropertyToFirebase(property) {
 }
 
 export async function updatePropertyStatus(propertyId, status) {
-  if (!firebaseWebEnabled || !firestore) {
-    throw new Error('Firebase Web no está configurado.');
-  }
+  try {
+    const local = readLocalCustomProperties();
+    const updated = local.map((p) => (p.id === propertyId ? { ...p, status } : p));
+    localStorage.setItem('ruwajay_custom_properties', JSON.stringify(updated));
+  } catch { /* ignore */ }
 
-  await updateDoc(doc(firestore, 'properties', propertyId), { status });
+  publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId, status });
+
+  if (firebaseWebEnabled && firestore) {
+    try {
+      await updateDoc(doc(firestore, 'properties', propertyId), { status });
+    } catch { /* fallback to local */ }
+  }
 }
 
-export async function uploadPropertyImages(files, propertyId) {
-  if (!firebaseWebEnabled || !storage || !files?.length) return [];
+export async function updatePropertyToFirebase(property) {
+  // 1. Update local storage
+  try {
+    const local = readLocalCustomProperties();
+    const idx = local.findIndex((p) => p.id === property.id);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], ...property, updatedAt: new Date().toISOString() };
+    } else {
+      local.unshift({ ...property, updatedAt: new Date().toISOString() });
+    }
+    localStorage.setItem('ruwajay_custom_properties', JSON.stringify(local));
+  } catch { /* ignore */ }
 
-  if (files.length > 8) throw new Error('Puedes subir un máximo de 8 imágenes.');
-  const validTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
-  const invalidFile = files.find((file) => !validTypes.has(file.type) || file.size > 8 * 1024 * 1024);
-  if (invalidFile) throw new Error('Cada imagen debe ser JPG, PNG o WebP y pesar máximo 8 MB.');
+  publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId: property.id, action: 'updated' });
 
-  return Promise.all(files.map(async (file, index) => {
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const imageRef = ref(storage, `properties/${propertyId}/${index}-${crypto.randomUUID()}.${extension}`);
-    const snapshot = await uploadBytes(imageRef, file, { contentType: file.type || 'image/jpeg' });
-    return getDownloadURL(snapshot.ref);
-  }));
+  // 2. Sync to Firebase
+  if (firebaseWebEnabled && firestore) {
+    try {
+      const propertyRef = doc(firestore, 'properties', property.id);
+      await setDoc(propertyRef, {
+        ...property,
+        price: Number(property.price) || 0,
+        bedrooms: Number(property.bedrooms) || 0,
+        bathrooms: Number(property.bathrooms) || 0,
+        images: property.images || [],
+        amenities: property.amenities || [],
+        rules: property.rules || [],
+        requirements: property.requirements || [],
+        features: {
+          bedrooms: Number(property.bedrooms) || 0,
+          bathrooms: Number(property.bathrooms) || 0,
+          area: Number(property.area) || 0,
+        },
+        location: {
+          department: property.address?.department || property.department || 'Guatemala',
+          municipality: property.address?.municipality || property.municipality || 'Guatemala',
+          zone: property.address?.zone || property.zone || 'Centro',
+          approximateAddress: property.address?.approximate || property.approximateAddress || '',
+          exactAddress: property.address?.exact || property.exactAddress || '',
+          address: property.address?.exact || property.exactAddress || property.address?.approximate || property.approximateAddress || '',
+          mapCoordinates: property.coordinates || null,
+        },
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Firebase update failed; local copy was saved:', err);
+    }
+  }
+
+  return true;
+}
+
+export function getPropertyById(propertyId) {
+  const local = readLocalCustomProperties();
+  return local.find((p) => p.id === propertyId) || null;
+}
+
+export async function fetchPropertyById(propertyId) {
+  if (!propertyId) return null;
+  const local = getPropertyById(propertyId);
+  if (local) return local;
+
+  if (firebaseWebEnabled && firestore) {
+    try {
+      const snap = await getDoc(doc(firestore, 'properties', propertyId));
+      if (snap.exists()) {
+        return normalizeFirebaseProperty(snap);
+      }
+    } catch (err) {
+      console.warn('Error fetching property from firestore:', err);
+    }
+  }
+
+  const demo = demoProperties.find((p) => p.id === propertyId);
+  if (demo) return demo;
+
+  return null;
+}
+
+export async function uploadPropertyImages(files, propertyId, ownerId, onProgress = () => {}) {
+  return uploadPropertyImagesToSupabase(files, propertyId, ownerId, onProgress);
+}
+
+export async function deleteOwnedProperty(propertyId, ownerId) {
+  const activeUid = firebaseAuth?.currentUser?.uid;
+  const acceptedOwnerIds = new Set([activeUid, ownerId].filter(Boolean));
+
+  if (firebaseWebEnabled && firestore && activeUid) {
+    const propertyRef = doc(firestore, 'properties', propertyId);
+    const snapshot = await getDoc(propertyRef);
+    if (snapshot.exists() && !acceptedOwnerIds.has(snapshot.data().ownerId)) {
+      throw new Error('Solo el propietario que publicó esta vivienda puede eliminarla.');
+    }
+    if (snapshot.exists()) await deleteDoc(propertyRef);
+  }
+
+  try {
+    const remaining = readLocalCustomProperties().filter((property) => property.id !== propertyId);
+    localStorage.setItem('ruwajay_custom_properties', JSON.stringify(remaining));
+  } catch { /* Firestore remains authoritative */ }
+
+  publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId, action: 'deleted' });
+  window.dispatchEvent(new Event('ruwajay:properties-changed'));
+  window.dispatchEvent(new Event('ruwajay:properties_changed'));
 }

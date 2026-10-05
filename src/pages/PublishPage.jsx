@@ -1,17 +1,18 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Building2, Home, MapPin, DollarSign, Upload, CheckCircle, ArrowRight,
   ArrowLeft, AlertTriangle, Image as ImageIcon, X, Bed, Bath, Car, Ruler,
   Sparkles, ShieldCheck, Check, Plus, Trash2, Clock, CheckCircle2,
   Calendar, Eye, HelpCircle, Layers, CheckSquare, Square, Rocket, Shield,
-  Award, Heart, Phone, FileText, ChevronRight
+  Award, Heart, Phone, FileText, ChevronRight, ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import RuwaSelect from '../components/ui/RuwaSelect';
-import { GUATEMALA_DEPARTMENTS_ONLY, getZonesForDepartment } from '../data/guatemalaLocations';
+import { GUATEMALA_DEPARTMENTS_ONLY, getZonesForDepartment, getCoordinatesForLocation } from '../data/guatemalaLocations';
+import PropertyLocationPickerMap from '../components/map/PropertyLocationPickerMap';
 import { sanitizeText } from '../utils/security';
-import { publishPropertyToFirebase, uploadPropertyImages } from '../lib/propertyService';
+import { publishPropertyToFirebase, uploadPropertyImages, updatePropertyToFirebase, getPropertyById, fetchPropertyById } from '../lib/propertyService';
 import { firebaseAuth } from '../lib/firebase';
 import { formatPrice } from '../data/properties';
 
@@ -33,10 +34,77 @@ const AVAILABLE_SERVICES = [
   'Cisterna y bomba de agua',
 ];
 
+const FIREBASE_TIMEOUT_MS = 60000;
+
+function withTimeout(promise, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), FIREBASE_TIMEOUT_MS);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+}
+
+// Comprime y procesa de forma permanente cada fotografía seleccionada por el usuario
+function compressAndReadImage(file, maxWidth = 1024, maxHeight = 768, quality = 0.76) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / height > maxWidth / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = () => resolve(event.target.result);
+      img.src = event.target.result;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataUrlToJpegFile(dataUrl, fileName) {
+  const [header, encodedData] = dataUrl.split(',');
+  if (!header || !encodedData) throw new Error('No se pudo preparar una de las fotografías.');
+
+  const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+  const binary = window.atob(encodedData);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  const safeName = (fileName || 'foto').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '-');
+  return new File([bytes], `${safeName || 'foto'}.jpg`, { type: mimeType });
+}
+
 export default function PublishPage() {
   const navigate = useNavigate();
+  const { editId } = useParams();
   const { user, updateProfile } = useAuth();
   const [step, setStep] = useState(1);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editPropertyData, setEditPropertyData] = useState(null);
+  const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editId));
 
   // Form State
   const [formData, setFormData] = useState({
@@ -59,14 +127,119 @@ export default function PublishPage() {
     zone: 'Zona 10 (Zona Viva / Oakland)',
     approximateAddress: '',
     exactAddress: '',
-    status: 'disponible', // 'disponible' | 'en_cita' | 'pausada'
+    status: 'disponible',
+    coordinates: null
   });
 
   const [published, setPublished] = useState(false);
   const [selectedImages, setSelectedImages] = useState([]);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [publishStage, setPublishStage] = useState('');
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [coverIndex, setCoverIndex] = useState(0);
+
+  // Load existing property data for edit mode
+  useEffect(() => {
+    if (!editId) {
+      setIsEditMode(false);
+      setEditPropertyData(null);
+      setIsLoadingEdit(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingEdit(true);
+
+    async function loadPropertyForEditing() {
+      try {
+        const existing = await fetchPropertyById(editId);
+        if (!isMounted) return;
+
+        if (!existing) {
+          console.warn('Vivienda no encontrada para edición:', editId);
+          navigate('/perfil?tab=propiedades', { replace: true });
+          return;
+        }
+
+        // Verify ownership (flexible check so google users/admins aren't locked out)
+        const currentUid = firebaseAuth?.currentUser?.uid;
+        const currentId = user?.id;
+        const currentEmail = user?.email?.toLowerCase();
+        const currentName = user?.name?.trim().toLowerCase();
+
+        const isAuthorized = Boolean(
+          user?.role === 'admin' ||
+          !existing.ownerId ||
+          (currentId && existing.ownerId === currentId) ||
+          (currentUid && existing.ownerId === currentUid) ||
+          (currentEmail && existing.ownerEmail && existing.ownerEmail.toLowerCase() === currentEmail) ||
+          (currentName && existing.ownerName && existing.ownerName.trim().toLowerCase() === currentName)
+        );
+
+        if (!isAuthorized) {
+          console.warn('Usuario no autorizado para editar esta vivienda.');
+          navigate('/perfil?tab=propiedades', { replace: true });
+          return;
+        }
+
+        setIsEditMode(true);
+        setEditPropertyData(existing);
+        setFormData({
+          type: existing.type || 'casa',
+          title: existing.title || '',
+          description: existing.description || '',
+          price: existing.price ? String(existing.price) : '',
+          deposit: existing.deposit ? String(existing.deposit) : '',
+          maintenanceFee: existing.maintenanceFee ? String(existing.maintenanceFee) : '',
+          bedrooms: Number(existing.bedrooms || 2),
+          bathrooms: Number(existing.bathrooms || 1),
+          area: existing.area ? String(existing.area) : '',
+          parking: Number(existing.parking || 1),
+          furnished: Boolean(existing.furnished),
+          petsAllowed: existing.petsAllowed !== false,
+          patio: Boolean(existing.patio),
+          servicesIncluded: Array.isArray(existing.servicesIncluded) ? existing.servicesIncluded : ['Agua potable 24/7', 'Extracción de basura'],
+          department: existing.department || existing.address?.department || 'Guatemala',
+          municipality: existing.municipality || existing.address?.municipality || 'Guatemala',
+          zone: existing.zone || existing.address?.zone || 'Zona 10 (Zona Viva / Oakland)',
+          approximateAddress: existing.approximateAddress || existing.address?.approximate || '',
+          exactAddress: existing.exactAddress || existing.address?.exact || '',
+          status: existing.status || 'disponible',
+          coordinates: existing.coordinates || existing.location?.mapCoordinates || null,
+        });
+
+        // Load existing images
+        const existingImages = [];
+        const rawImagesList = Array.isArray(existing.images)
+          ? existing.images
+          : [
+              ...(Array.isArray(existing.images?.fachada) ? existing.images.fachada : []),
+              ...(Array.isArray(existing.images?.general) ? existing.images.general : []),
+              ...(Array.isArray(existing.thumbnails) ? existing.thumbnails : []),
+              ...(existing.thumbnail ? [existing.thumbnail] : []),
+            ];
+
+        const uniqueUrls = Array.from(new Set(rawImagesList.filter((u) => u && typeof u === 'string' && !u.startsWith('blob:'))));
+        uniqueUrls.forEach((url, idx) => {
+          existingImages.push({ file: null, preview: url, name: `Foto ${idx + 1}` });
+        });
+
+        setSelectedImages(existingImages);
+      } catch (err) {
+        console.error('Error cargando vivienda para editar:', err);
+      } finally {
+        if (isMounted) setIsLoadingEdit(false);
+      }
+    }
+
+    loadPropertyForEditing();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [editId, user?.id, user?.email, user?.role]);
 
   // Auto-fill deposit if empty when price changes
   const handlePriceChange = (val) => {
@@ -129,6 +302,48 @@ export default function PublishPage() {
     else if (coverIndex > idx) setCoverIndex(coverIndex - 1);
   };
 
+  const handleFilesSelected = async (event) => {
+    const rawFiles = Array.from(event.target.files || []);
+    if (!rawFiles.length) return;
+
+    const validFiles = rawFiles.filter((f) => f.type.startsWith('image/'));
+    if (!validFiles.length) {
+      setPublishError('Por favor selecciona archivos de imagen válidos (JPG, PNG o WebP).');
+      return;
+    }
+
+    const availableSlots = 8 - selectedImages.length;
+    if (availableSlots <= 0) {
+      setPublishError('Ya has alcanzado el límite máximo de 8 fotografías.');
+      return;
+    }
+
+    const filesToProcess = validFiles.slice(0, availableSlots);
+    setIsProcessingImages(true);
+    setPublishError('');
+
+    try {
+      const processed = await Promise.all(
+        filesToProcess.map(async (file) => {
+          const dataUrl = await compressAndReadImage(file);
+          return {
+            file,
+            preview: dataUrl,
+            name: file.name,
+          };
+        })
+      );
+
+      setSelectedImages((prev) => [...prev, ...processed]);
+    } catch (err) {
+      console.error('Error procesando fotografías seleccionadas:', err);
+      setPublishError('Hubo un problema procesando las fotos. Intenta de nuevo.');
+    } finally {
+      setIsProcessingImages(false);
+      event.target.value = '';
+    }
+  };
+
   // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
@@ -137,6 +352,18 @@ export default function PublishPage() {
       });
     };
   }, [selectedImages]);
+
+  if (isLoadingEdit) {
+    return (
+      <main className="flex min-h-[70vh] items-center justify-center bg-[#FAF5EE] px-4 py-12">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-forest/20 border-t-forest" />
+          <p className="text-sm font-extrabold text-cafe">Cargando datos de la vivienda...</p>
+          <span className="text-xs text-text-muted">Preparando editor para modificar detalles y fotos</span>
+        </div>
+      </main>
+    );
+  }
 
   // If user is not logged in, prompt friendly login
   if (!user) {
@@ -172,9 +399,47 @@ export default function PublishPage() {
     );
   }
 
-  // Handle final submission
+  const ownerPhoneDigits = String(user?.phone || '').replace(/\D/g, '');
+  const ownerRequirementsComplete = ownerPhoneDigits.length >= 8 && Boolean(user?.dpiData?.cui);
+  if (!ownerRequirementsComplete) {
+    return (
+      <main className="flex min-h-[70vh] items-center justify-center bg-[#FAF5EE] px-4 py-12">
+        <div className="w-full max-w-lg rounded-3xl border border-[#E8D9C8] bg-white p-8 text-center shadow-card sm:p-10">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <ShieldAlert size={30} />
+          </div>
+          <h1 className="text-2xl font-black text-cafe">Completa tus datos de propietario</h1>
+          <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+            Para anunciar o administrar una vivienda debes registrar un teléfono válido y completar la identificación DPI.
+          </p>
+          <div className="mt-5 space-y-2 text-left text-sm font-bold">
+            <p className={ownerPhoneDigits.length >= 8 ? 'text-jade' : 'text-red-600'}>
+              {ownerPhoneDigits.length >= 8 ? '✓' : '•'} Número de teléfono
+            </p>
+            <p className={user?.dpiData?.cui ? 'text-jade' : 'text-red-600'}>
+              {user?.dpiData?.cui ? '✓' : '•'} Identificación DPI
+            </p>
+          </div>
+          <Link
+            to="/perfil?tab=configuracion"
+            className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-forest px-6 text-sm font-black text-white hover:bg-forest-dark"
+          >
+            Completar datos en mi perfil
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  // Handle final submission (create OR update)
   const handlePublish = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    const ownerPhoneDigits = String(user?.phone || '').replace(/\D/g, '');
+    const hasOwnerIdentification = Boolean(user?.dpiData?.cui);
+    if (ownerPhoneDigits.length < 8 || !hasOwnerIdentification) {
+      setPublishError('Para publicar una vivienda debes registrar un número de teléfono válido y completar la identificación DPI en Ajustes de tu perfil.');
+      return;
+    }
     if (selectedImages.length === 0) {
       setPublishError('Debes agregar al menos una fotografía de la vivienda.');
       setStep(4);
@@ -182,43 +447,63 @@ export default function PublishPage() {
     }
 
     setIsPublishing(true);
+    setUploadProgress(3);
+    setPublishStage('Preparando fotografías...');
     setPublishError('');
 
     try {
-      // 1. Upgrade user to 'owner' automatically if they registered as 'seeker'
+      // 1. Upgrade user to 'owner' in background if needed (non-blocking)
       if (user.role !== 'owner') {
-        try {
-          await updateProfile({ role: 'owner' });
-        } catch { /* proceed */ }
+        updateProfile({ role: 'owner' }).catch(() => {});
       }
 
       const cleanTitle = sanitizeText(formData.title);
-      const ownerId = user?.id || firebaseAuth?.currentUser?.uid || 'custom-owner';
+      const ownerId = firebaseAuth?.currentUser?.uid || user?.id || 'custom-owner';
 
-      // 2. Separate real files for upload vs demo URLs
-      const realFiles = selectedImages.filter((img) => img.file).map((img) => img.file);
-      const demoUrls = selectedImages.filter((img) => !img.file).map((img) => img.preview);
+      // 2. Upload new compressed images to Firebase Storage. Persist only their URLs.
+      const propertyId = isEditMode && editPropertyData ? editPropertyData.id : `custom-${Date.now()}`;
+      const newImages = selectedImages.filter((image) => image.file && image.preview?.startsWith('data:'));
+      const uploadFiles = newImages.map((image) => dataUrlToJpegFile(image.preview, image.name));
+      if (uploadFiles.length) setPublishStage('Subiendo fotografías a la nube...');
+      const uploadedUrls = uploadFiles.length
+        ? await withTimeout(
+            uploadPropertyImages(uploadFiles, propertyId, ownerId, (progress) => {
+              setUploadProgress(5 + Math.round(progress * 0.85));
+            }),
+            'La subida de las fotografías tardó demasiado. Revisa tu conexión e intenta nuevamente.'
+          )
+        : [];
 
-      const propertyId = `custom-${Date.now()}`;
-      let uploadedUrls = [];
+      setUploadProgress(92);
+      setPublishStage('Guardando los datos de la vivienda...');
 
-      if (realFiles.length > 0) {
-        try {
-          uploadedUrls = await uploadPropertyImages(realFiles, propertyId);
-        } catch (uploadErr) {
-          console.warn('Image upload fallback to preview URLs:', uploadErr);
-          uploadedUrls = realFiles.map((_, i) => selectedImages[i].preview);
+      let uploadedIndex = 0;
+      const allImages = selectedImages.map((image) => {
+        if (image.file && image.preview?.startsWith('data:')) {
+          const uploadedUrl = uploadedUrls[uploadedIndex];
+          uploadedIndex += 1;
+          return uploadedUrl;
         }
+        return image.preview;
+      }).filter((url) => url && typeof url === 'string' && !url.startsWith('data:') && !url.startsWith('blob:'));
+
+      if (allImages.length === 0) {
+        throw new Error('No se pudieron guardar las fotografías en la nube. Intenta nuevamente.');
       }
 
-      const allImages = [...uploadedUrls, ...demoUrls];
-      const primaryThumbnail = allImages[coverIndex] || allImages[0] || SAMPLE_DEMO_IMAGES[0].url;
+      const primaryThumbnail = allImages[coverIndex] || allImages[0];
 
-      const newProperty = {
+      const ownerPhoto = user?.avatarImage || user?.photoURL || user?.avatar || firebaseAuth?.currentUser?.photoURL || (isEditMode ? editPropertyData?.ownerPhoto : '') || '';
+      const ownerEmail = user?.email || firebaseAuth?.currentUser?.email || (isEditMode ? editPropertyData?.ownerEmail : '') || '';
+
+      const propertyPayload = {
+        ...(isEditMode && editPropertyData ? editPropertyData : {}),
         id: propertyId,
         ownerId,
-        ownerName: user.name || 'Arrendador RuwaJay',
-        ownerPhone: user.phone || '+502 5482 9104',
+        ownerName: user.name || (isEditMode ? editPropertyData?.ownerName : '') || 'Arrendador RuwaJay',
+        ownerEmail,
+        ownerPhone: user.phone || (isEditMode ? editPropertyData?.ownerPhone : '') || '',
+        ownerPhoto,
         title: cleanTitle || `${formData.type === 'casa' ? 'Casa' : 'Apartamento'} en ${formData.zone}`,
         type: formData.type,
         price: Number(formData.price),
@@ -235,6 +520,7 @@ export default function PublishPage() {
         department: formData.department,
         municipality: formData.municipality,
         zone: formData.zone,
+        coordinates: formData.coordinates || getCoordinatesForLocation(formData.department, formData.zone) || { lat: 14.6349, lng: -90.5069 },
         approximateAddress: sanitizeText(formData.approximateAddress),
         exactAddress: sanitizeText(formData.exactAddress) || sanitizeText(formData.approximateAddress),
         address: {
@@ -243,41 +529,80 @@ export default function PublishPage() {
           zone: formData.zone,
           municipality: formData.municipality,
           department: formData.department,
+          coordinates: formData.coordinates || getCoordinatesForLocation(formData.department, formData.zone) || { lat: 14.6349, lng: -90.5069 },
         },
         description: sanitizeText(formData.description),
-        status: formData.status || 'disponible', // 'disponible' | 'en_cita' | 'pausada'
+        status: formData.status || 'disponible',
         thumbnail: primaryThumbnail,
-        images: {
-          fachada: [primaryThumbnail],
-          general: allImages,
-        },
+        thumbnails: allImages,
+        images: allImages,
         verified: Boolean(user.verified),
-        isNew: true,
-        createdAt: new Date().toISOString(),
+        isNew: !isEditMode,
+        createdAt: (isEditMode && editPropertyData?.createdAt) ? editPropertyData.createdAt : new Date().toISOString(),
       };
 
-      // 3. Save to Firebase Firestore if online
-      try {
-        await publishPropertyToFirebase(newProperty);
-      } catch (fbErr) {
-        console.warn('Firebase publish failed, persisting to local storage backup:', fbErr);
+      if (isEditMode) {
+        // ── UPDATE existing property (instant local + non-blocking cloud) ──
+        try {
+          const local = (() => {
+            try {
+              const parsed = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+              return Array.isArray(parsed) ? parsed : [];
+            } catch { return []; }
+          })();
+          const idx = local.findIndex((p) => p.id === propertyPayload.id);
+          if (idx >= 0) {
+            local[idx] = { ...local[idx], ...propertyPayload, updatedAt: new Date().toISOString() };
+          } else {
+            local.unshift({ ...propertyPayload, updatedAt: new Date().toISOString() });
+          }
+          localStorage.setItem('ruwajay_custom_properties', JSON.stringify(local));
+        } catch { /* ignore */ }
+
+        publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId: propertyPayload.id, action: 'updated' });
+        window.dispatchEvent(new Event('ruwajay:properties-changed'));
+        window.dispatchEvent(new Event('ruwajay:properties_changed'));
+
+        await updatePropertyToFirebase(propertyPayload);
+      } else {
+        // ── CREATE new property in the cloud, then keep a lightweight URL cache ──
+        await publishPropertyToFirebase(propertyPayload);
+
+        const localProps = (() => {
+          try {
+            const parsed = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })();
+
+        try {
+          localStorage.setItem(
+            'ruwajay_custom_properties',
+            JSON.stringify([propertyPayload, ...localProps.filter((item) => item?.id !== propertyPayload.id)])
+          );
+          publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId: propertyPayload.id, action: 'created' });
+          window.dispatchEvent(new Event('ruwajay:properties-changed'));
+          window.dispatchEvent(new Event('ruwajay:properties_changed'));
+        } catch (storageError) {
+          // The cloud copy is authoritative; a full browser cache must not block publishing.
+          console.warn('La vivienda se guardó en Firebase, pero no se pudo actualizar el caché local:', storageError);
+        }
       }
 
-      // 4. Save to local storage backup for seamless instant appearance in "Mis Propiedades"
-      try {
-        const localProps = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-        localStorage.setItem('ruwajay_custom_properties', JSON.stringify([newProperty, ...localProps]));
-      } catch { /* ignore */ }
-
+      setUploadProgress(100);
+      setPublishStage('Publicación completada');
       setPublished(true);
       setTimeout(() => {
         navigate('/perfil?tab=propiedades');
-      }, 2200);
+      }, 700);
 
     } catch (err) {
       setPublishError(err?.message || 'Error al procesar la publicación. Intenta nuevamente.');
     } finally {
       setIsPublishing(false);
+      setPublishStage('');
     }
   };
 
@@ -324,10 +649,12 @@ export default function PublishPage() {
               Paso a Paso Guiado
             </span>
             <h1 className="text-2xl sm:text-3xl font-black text-cafe mt-2">
-              Publica tu Inmueble en Alquiler
+              {isEditMode ? 'Editar mi Vivienda Publicada' : 'Publica tu Inmueble en Alquiler'}
             </h1>
             <p className="text-xs sm:text-sm font-semibold text-text-secondary mt-1">
-              Completa los datos para dar de alta tu propiedad en el mapa y catálogo de RuwaJay
+              {isEditMode
+                ? 'Actualiza la información, fotos o estado de tu propiedad'
+                : 'Completa los datos para dar de alta tu propiedad en el mapa y catálogo de RuwaJay'}
             </p>
           </div>
 
@@ -386,13 +713,15 @@ export default function PublishPage() {
               </div>
               <div>
                 <span className="text-xs font-black uppercase tracking-widest text-jade bg-jade/10 px-3 py-1 rounded-full">
-                  ¡Enhorabuena, Arrendador!
+                  {isEditMode ? '¡Cambios Guardados!' : '¡Enhorabuena, Arrendador!'}
                 </span>
                 <h2 className="text-2xl sm:text-3xl font-black text-cafe mt-2">
-                  ¡Tu Vivienda Ha Sido Publicada!
+                  {isEditMode ? '¡Tu Vivienda Ha Sido Actualizada!' : '¡Tu Vivienda Ha Sido Publicada!'}
                 </h2>
                 <p className="mt-2 text-sm font-medium text-text-secondary max-w-md mx-auto">
-                  Tu propiedad ya está sincronizada con el mapa interactivo y lista para recibir solicitudes de visitas de inquilinos.
+                  {isEditMode
+                    ? 'Los cambios ya están reflejados en el catálogo y el mapa interactivo de RuwaJay.'
+                    : 'Tu propiedad ya está sincronizada con el mapa interactivo y lista para recibir solicitudes de visitas de inquilinos.'}
                 </p>
               </div>
               <div className="flex items-center justify-center gap-2 text-forest font-bold text-sm">
@@ -462,7 +791,7 @@ export default function PublishPage() {
                     <input
                       type="text"
                       required
-                      maxLength={80}
+                      maxLength={60}
                       placeholder="Ej. Casa familiar con jardín y garita en Zona 10"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -598,6 +927,32 @@ export default function PublishPage() {
                         align="auto"
                       />
                     </div>
+                  </div>
+
+                  {/* Mapa Interactivo con GPS y Búsqueda */}
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-cafe mb-2">
+                      Mapear Ubicación Exacta (GPS o Búsqueda) *
+                    </label>
+                    <PropertyLocationPickerMap
+                      coordinates={formData.coordinates}
+                      department={formData.department}
+                      zone={formData.zone}
+                      onLocationSelected={(coords) => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          coordinates: coords,
+                        }));
+                      }}
+                      onAddressResolved={(addrInfo) => {
+                        if (addrInfo.reference && !formData.approximateAddress) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            approximateAddress: addrInfo.reference,
+                          }));
+                        }
+                      }}
+                    />
                   </div>
 
                   <div>
@@ -819,8 +1174,13 @@ export default function PublishPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={!validations.step3}
                       onClick={() => setStep(4)}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-forest px-8 py-3.5 text-xs font-black text-white shadow-md hover:bg-forest-dark transition-all"
+                      className={`inline-flex items-center gap-2 rounded-2xl px-8 py-3.5 text-xs font-black text-white shadow-md transition-all ${
+                        validations.step3
+                          ? 'bg-forest hover:bg-forest-dark hover:-translate-y-0.5'
+                          : 'bg-text-muted/40 cursor-not-allowed'
+                      }`}
                     >
                       <span>Siguiente: Fotos de la Vivienda</span>
                       <ArrowRight size={16} />
@@ -852,42 +1212,37 @@ export default function PublishPage() {
                           <Upload size={28} />
                         </div>
                         <p className="font-black text-sm text-cafe">
-                          Haz clic para subir fotos desde tu computadora o teléfono
+                          {isProcessingImages ? 'Cargando y procesando fotos...' : 'Haz clic para subir fotos desde tu computadora o teléfono'}
                         </p>
                         <p className="text-[11px] font-bold text-text-muted mt-1 uppercase tracking-widest">
-                          Formatos JPG, PNG, WebP (Máx. 8 MB por imagen)
+                          Formatos JPG, PNG, WebP (Selecciona una o varias fotos de tu vivienda)
                         </p>
                       </div>
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         multiple
+                        disabled={isProcessingImages}
                         className="sr-only"
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files || []).slice(0, 8);
-                          setSelectedImages((previous) => {
-                            return [
-                              ...previous,
-                              ...files.map((file) => ({
-                                file,
-                                preview: URL.createObjectURL(file),
-                                name: file.name,
-                              })),
-                            ].slice(0, 8);
-                          });
-                        }}
+                        onChange={handleFilesSelected}
                       />
                     </label>
 
                     {/* Previews Grid */}
                     {selectedImages.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs font-black text-cafe">
-                          <span>Fotos seleccionadas ({selectedImages.length}/8):</span>
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-black text-cafe">
+                          <div className="flex items-center gap-2">
+                            <span>Fotos seleccionadas ({selectedImages.length}/8):</span>
+                            <span className="text-[11px] font-bold text-forest bg-forest/10 px-2 py-0.5 rounded-md">
+                              {selectedImages.length} fotos reales de tu casa
+                            </span>
+                          </div>
                           <span className="text-[11px] text-text-muted">
-                            Haz clic en "Portada" para elegir la foto principal
+                            Haz clic en "Portada" en la foto que quieras como imagen principal
                           </span>
                         </div>
+
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {selectedImages.map((img, idx) => {
                             const isCover = coverIndex === idx;
@@ -895,18 +1250,23 @@ export default function PublishPage() {
                               <div
                                 key={idx}
                                 className={`group relative aspect-[4/3] rounded-2xl overflow-hidden shadow-xs border-2 transition-all ${
-                                  isCover ? 'border-forest ring-2 ring-forest/30' : 'border-border-light'
+                                  isCover ? 'border-forest ring-2 ring-forest/40 shadow-md' : 'border-border-light hover:border-dorado'
                                 }`}
                               >
                                 <img
                                   src={img.preview}
-                                  alt="Vista previa"
+                                  alt={`Foto ${idx + 1}`}
                                   className="w-full h-full object-cover transition-transform group-hover:scale-105"
                                 />
+                                {isCover && (
+                                  <div className="absolute top-2 left-2 bg-forest text-white px-2 py-0.5 rounded-lg text-[9px] font-black uppercase shadow-xs">
+                                    ★ Portada
+                                  </div>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => removeImage(idx)}
-                                  className="absolute top-2 right-2 bg-black/70 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="absolute top-2 right-2 bg-red-600/85 hover:bg-red-600 text-white p-1 rounded-full transition-colors cursor-pointer shadow-xs"
                                   title="Eliminar foto"
                                 >
                                   <X size={12} />
@@ -914,17 +1274,34 @@ export default function PublishPage() {
                                 <button
                                   type="button"
                                   onClick={() => setCoverIndex(idx)}
-                                  className={`absolute bottom-2 left-2 rounded-md px-2 py-0.5 text-[9px] font-black transition-all ${
+                                  className={`absolute bottom-2 left-2 right-2 rounded-md py-1 text-[10px] font-black transition-all text-center cursor-pointer ${
                                     isCover
-                                      ? 'bg-forest text-white'
+                                      ? 'bg-forest text-white shadow-xs'
                                       : 'bg-black/60 text-white hover:bg-forest'
                                   }`}
                                 >
-                                  {isCover ? '★ Portada' : 'Elegir Portada'}
+                                  {isCover ? '✓ Foto de Portada' : 'Elegir como Portada'}
                                 </button>
                               </div>
                             );
                           })}
+
+                          {/* Add more photos button */}
+                          {selectedImages.length < 8 && (
+                            <label className="flex flex-col items-center justify-center aspect-[4/3] rounded-2xl border-2 border-dashed border-[#D4962A]/60 bg-dorado/5 hover:bg-dorado/10 cursor-pointer transition-all text-center p-2 group">
+                              <Plus size={24} className="text-dorado group-hover:scale-110 transition-transform mb-1" />
+                              <span className="text-[11px] font-bold text-cafe">Añadir otra foto</span>
+                              <span className="text-[9px] text-text-muted">({8 - selectedImages.length} restantes)</span>
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                multiple
+                                disabled={isProcessingImages}
+                                className="sr-only"
+                                onChange={handleFilesSelected}
+                              />
+                            </label>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1088,6 +1465,33 @@ export default function PublishPage() {
                           {formData.area && <span>📏 {formData.area} m²</span>}
                         </div>
                       </div>
+
+                      {/* Mini tira de todas las fotos de la vivienda */}
+                      {selectedImages.length > 1 && (
+                        <div className="p-3 bg-[#FAF5EE] border-t border-border-light">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-text-muted mb-1.5 flex items-center justify-between">
+                            <span>Galería de fotos ({selectedImages.length} fotos):</span>
+                            <span className="text-forest font-bold">Todas se guardarán</span>
+                          </p>
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                            {selectedImages.map((img, i) => (
+                              <div
+                                key={i}
+                                className={`relative w-14 h-11 rounded-lg overflow-hidden shrink-0 border-2 ${
+                                  coverIndex === i ? 'ring-2 ring-forest border-forest' : 'border-border-light'
+                                }`}
+                              >
+                                <img src={img.preview} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                                {coverIndex === i && (
+                                  <span className="absolute bottom-0 inset-x-0 bg-forest text-white text-[7px] font-black text-center leading-tight">
+                                    Portada
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1095,6 +1499,31 @@ export default function PublishPage() {
                     <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700">
                       <AlertTriangle size={18} className="shrink-0" />
                       <span>{publishError}</span>
+                    </div>
+                  )}
+
+                  {isPublishing && (
+                    <div className="rounded-2xl border border-forest/15 bg-white p-4 shadow-sm" role="status" aria-live="polite">
+                      <div className="mb-2 flex items-center justify-between gap-4 text-xs font-black text-forest">
+                        <span>{publishStage || 'Publicando vivienda...'}</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div
+                        className="h-3 w-full overflow-hidden rounded-full bg-forest/10"
+                        role="progressbar"
+                        aria-label="Progreso de publicación"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={uploadProgress}
+                      >
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-jade to-forest transition-[width] duration-300 ease-out"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-[10px] font-semibold text-text-muted">
+                        No cierres esta ventana mientras termina la publicación.
+                      </p>
                     </div>
                   )}
 
@@ -1123,7 +1552,7 @@ export default function PublishPage() {
                       ) : (
                         <>
                           <Rocket size={18} className="text-dorado" />
-                          <span>Publicar mi vivienda ahora</span>
+                          <span>{isEditMode ? 'Guardar cambios' : 'Publicar mi vivienda ahora'}</span>
                         </>
                       )}
                     </button>

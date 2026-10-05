@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
 }
+
+val ruwaLocalProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun localSetting(name: String): String =
+    (ruwaLocalProperties.getProperty(name) ?: System.getenv(name) ?: "")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
 
 android {
     namespace = "com.example.ruwajay"
@@ -14,6 +26,10 @@ android {
         targetSdk = 37
         versionCode = 2
         versionName = "2.4.0"
+
+        buildConfigField("String", "SUPABASE_URL", "\"${localSetting("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localSetting("SUPABASE_ANON_KEY")}\"")
+        buildConfigField("String", "SUPABASE_PROPERTY_BUCKET", "\"${localSetting("SUPABASE_PROPERTY_BUCKET").ifBlank { "property-images" }}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -31,6 +47,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -82,6 +82,7 @@ function RuwaJayRoutes() {
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/perfil" element={<ProfilePage />} />
           <Route path="/publicar" element={<PublishPage />} />
+          <Route path="/publicar/:editId" element={<PublishPage />} />
           {/* Si ya está en sesión e intenta entrar aquí, lo redirige al home */}
           <Route path="/reset-password" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />

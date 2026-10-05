@@ -83,7 +83,7 @@ export default function LoginPage() {
     setBusy(true);
 
     try {
-      // 1. Intentar inicio de sesión oficial con Google Popup
+      // 1. Iniciar sesión oficial con servicios de Google (Firebase Popup)
       await loginWithGoogle();
       navigate('/');
       return;
@@ -92,15 +92,25 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
-      if (err?.message !== 'REQUIRES_GOOGLE_INPUT') {
-        console.warn("Popup de Google no completado, ofreciendo selector alternativo:", err);
+      if (err?.code === 'auth/popup-blocked') {
+        notify('Tu navegador bloqueó la ventana emergente de Google. Habilita ventanas emergentes o usa el acceso alternativo.', true);
+        setShowGoogleModal(true);
+        return;
       }
+      if (err?.code === 'auth/unauthorized-domain') {
+        notify('El dominio no está registrado en la lista de dominios autorizados de Firebase Console. Abriendo selector:', true);
+        setShowGoogleModal(true);
+        return;
+      }
+      if (err?.message === 'REQUIRES_GOOGLE_INPUT') {
+        setShowGoogleModal(true);
+        return;
+      }
+      console.warn("Google Auth error:", err);
+      notify(err.message || 'Error al conectar con los servicios de Google.', true);
     } finally {
       setBusy(false);
     }
-
-    // 2. Si se cancela o requiere selección manual, mostrar modal de sincronización
-    setShowGoogleModal(true);
   };
 
   const executeGoogleAuth = async (selectedEmail, selectedName) => {

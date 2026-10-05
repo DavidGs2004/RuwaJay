@@ -52,8 +52,8 @@ export function useGeolocation() {
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000, // 5 minutes cache
+        timeout: 20000,
+        maximumAge: 0, // never center the map with a stale cached position
       }
     );
   }, [permissionState]);

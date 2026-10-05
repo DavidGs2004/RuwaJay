@@ -15,14 +15,16 @@ import { demoProperties } from '../data/properties';
 import PropertyCard from '../components/property/PropertyCard';
 import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
+import EditPropertyModal from '../components/property/EditPropertyModal';
 import { sanitizeText, validateImageFile, maskSensitive } from '../utils/security';
 import { firebaseAuth } from '../lib/firebase';
-import { subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
+import { deleteOwnedProperty, subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
+import { changeVisitStatus, deleteVisit, setVisitConversationId, subscribeToUserVisits } from '../lib/visitService';
+import { getOrCreateConversation } from '../lib/chatService';
 import {
   subscribeToUsers,
   updateUserRole,
   updateUserStatus,
-  deleteProperty,
   subscribeToSystemUpdates,
   createSystemUpdate,
   updateSystemUpdate,
@@ -131,6 +133,12 @@ export default function ProfilePage() {
   const activeTab = searchParams.get('tab') || 'perfil';
   const { user, logout, updateProfile, changePassword, requestVerification, purgeDpiData, isAdmin } = useAuth();
   const { favorites, recentSearches } = useFavorites();
+  const [editingProperty, setEditingProperty] = useState(null);
+  const [myProperties, setMyProperties] = useState([]);
+  const isOwner = user?.role === 'owner' || user?.role === 'admin' || myProperties.length > 0;
+  const currentUserId = firebaseAuth?.currentUser?.uid || user?.id;
+  const currentUserPhone = String(user?.phone || '').replace(/\D/g, '');
+  const currentUserEmail = String(user?.email || firebaseAuth?.currentUser?.email || '').trim().toLowerCase();
 
   const favProperties = demoProperties.filter((p) => favorites.includes(p.id));
 
@@ -178,8 +186,7 @@ export default function ProfilePage() {
     swornDeclaration: false,
   });
 
-  /* ── My Properties State ── */
-  const [myProperties, setMyProperties] = useState([]);
+  /* ── My Properties State (declared above) ── */
 
   /* ── Admin State ── */
   const [allUsers, setAllUsers] = useState([]);
@@ -212,18 +219,31 @@ export default function ProfilePage() {
     }
   }, [user, editingProfile]);
 
-  // Keep owner properties backed by the shared Firestore collection.
+  // Keep owner properties backed by the shared Firestore collection & local storage.
   useEffect(() => {
     const ownerId = user?.id || firebaseAuth?.currentUser?.uid;
-    if (!ownerId) {
+    const currentEmail = user?.email?.toLowerCase();
+    const currentName = user?.name?.trim().toLowerCase();
+
+    if (!ownerId && !currentEmail && !currentName) {
       setMyProperties([]);
       return undefined;
     }
 
     return subscribeToProperties((properties) => {
-      setMyProperties(properties.filter((property) => property.ownerId === ownerId));
+      const filtered = properties.filter((property) => {
+        if (!property) return false;
+        return (
+          (ownerId && property.ownerId === ownerId) ||
+          (user?.id && property.ownerId === user.id) ||
+          (firebaseAuth?.currentUser?.uid && property.ownerId === firebaseAuth.currentUser.uid) ||
+          (currentEmail && property.ownerEmail && property.ownerEmail.toLowerCase() === currentEmail) ||
+          (currentName && property.ownerName && property.ownerName.trim().toLowerCase() === currentName)
+        );
+      });
+      setMyProperties(filtered);
     });
-  }, [user?.id, activeTab]);
+  }, [user?.id, user?.email, user?.name, activeTab]);
 
   /* ── Visits State & Persistence ── */
   const [visits, setVisits] = useState([]);
@@ -231,13 +251,13 @@ export default function ProfilePage() {
 
   const loadVisits = () => {
     try {
-      const stored = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-      const hasSeeded = localStorage.getItem('ruwajay_visits_seeded');
+      const parsedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+      const stored = Array.isArray(parsedVisits) ? parsedVisits : [];
       const now = Date.now();
 
       // Rule: If an appointment has been pending for more than 7 days (1 week) without being accepted,
       // mark it as expired ('vencida') so the tenant must schedule a new appointment.
-      const cleaned = stored.map((v) => {
+      const cleaned = stored.filter((v) => v?.id !== 'visit-seed-1').map((v) => {
         if (v.status === 'pendiente') {
           const created = new Date(v.createdAt || Date.now()).getTime();
           const diffDays = (now - created) / (1000 * 60 * 60 * 24);
@@ -248,35 +268,9 @@ export default function ProfilePage() {
         return v;
       });
 
-      if (cleaned.length === 0 && !hasSeeded) {
-        const initial = [
-          {
-            id: 'visit-seed-1',
-            propertyId: 'prop-1',
-            propertyTitle: 'Casa amplia con jardín en Zona 10',
-            propertyImage: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
-            propertyPrice: 4500,
-            propertyZone: 'Zona 10, Ciudad de Guatemala',
-            ownerId: user?.id || 'owner-1',
-            ownerName: user?.name || 'María Elena López',
-            ownerPhone: user?.phone || '+502 5482 9104',
-            tenantId: 'tenant-demo',
-            tenantName: 'Carlos Mendizábal',
-            tenantPhone: '+502 5555 1234',
-            date: '2026-09-29',
-            time: '10:00',
-            notes: 'Me interesa conocer las áreas verdes y el estado de la garita de seguridad.',
-            status: 'pendiente',
-            createdAt: new Date().toISOString(),
-          },
-        ];
-        localStorage.setItem('ruwajay_visits', JSON.stringify(initial));
-        localStorage.setItem('ruwajay_visits_seeded', 'true');
-        setVisits(initial);
-      } else {
-        localStorage.setItem('ruwajay_visits', JSON.stringify(cleaned));
-        setVisits(cleaned);
-      }
+      localStorage.setItem('ruwajay_visits', JSON.stringify(cleaned));
+      localStorage.setItem('ruwajay_visits_seeded', 'true');
+      setVisits(cleaned);
     } catch {
       setVisits([]);
     }
@@ -286,48 +280,131 @@ export default function ProfilePage() {
     loadVisits();
   }, [activeTab]);
 
-  const handleUpdateVisitStatus = (visitId, newStatus) => {
+  const myPropertyIds = useMemo(() => myProperties.map((p) => p.id), [myProperties]);
+  const myPropertySet = useMemo(() => new Set(myPropertyIds), [myPropertyIds]);
+
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+    return subscribeToUserVisits(
+      currentUserId,
+      setVisits,
+      (error) => console.warn('No se pudieron sincronizar las citas en tiempo real:', error),
+      { userPhone: currentUserPhone, userName: user?.name, myPropertyIds }
+    );
+  }, [currentUserId, currentUserPhone, user?.name, myPropertyIds]);
+
+  useEffect(() => {
+    const refreshVisits = () => loadVisits();
+    window.addEventListener('storage', refreshVisits);
+    window.addEventListener('ruwajay:visits-changed', refreshVisits);
+    return () => {
+      window.removeEventListener('storage', refreshVisits);
+      window.removeEventListener('ruwajay:visits-changed', refreshVisits);
+    };
+  }, [user?.id]);
+
+  const handleUpdateVisitStatus = async (visitId, newStatus) => {
     try {
-      const updated = visits.map((v) => (v.id === visitId ? { ...v, status: newStatus } : v));
-      localStorage.setItem('ruwajay_visits', JSON.stringify(updated));
-      setVisits(updated);
-    } catch { /* ignore */ }
+      await changeVisitStatus(visitId, newStatus);
+      const visitObj = visits.find((v) => v.id === visitId);
+      if (visitObj && (newStatus === 'confirmada' || newStatus === 'aceptada')) {
+        try {
+          const canonicalOwnerId = firebaseAuth?.currentUser?.uid || currentUserId || visitObj.ownerId;
+          const roomId = await getOrCreateConversation(
+            visitObj.tenantId || 'tenant',
+            canonicalOwnerId || 'owner',
+            visitObj.propertyId,
+            visitObj.propertyTitle || 'Vivienda',
+            { ...visitObj, ownerId: canonicalOwnerId }
+          );
+          await setVisitConversationId(visitObj.id, roomId).catch(() => {});
+        } catch { /* chat fallback */ }
+      }
+      window.dispatchEvent(new Event('ruwajay:visits-changed'));
+    } catch (error) {
+      console.warn('No se pudo actualizar la cita:', error);
+    }
   };
 
-  const handleDeleteVisit = (visitId) => {
+  const handleDeleteVisit = async (visitId) => {
+    if (!window.confirm('¿Deseas eliminar esta cita del historial para ambos participantes?')) return;
     try {
-      const updated = visits.filter((v) => v.id !== visitId);
-      localStorage.setItem('ruwajay_visits', JSON.stringify(updated));
-      setVisits(updated);
-    } catch { /* ignore */ }
+      await deleteVisit(visitId);
+    } catch (error) {
+      console.warn('No se pudo eliminar la cita:', error);
+    }
   };
 
-  const currentUserId = user?.id || firebaseAuth?.currentUser?.uid;
-  const currentUserPhone = (user?.phone || '').replace(/\D/g, '');
+  const handleDeleteOwnedProperty = async (property) => {
+    const confirmed = window.confirm(
+      `¿Eliminar permanentemente "${property.title || 'esta vivienda'}"? Dejará de aparecer para todos los usuarios.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteOwnedProperty(property.id, currentUserId);
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo eliminar la vivienda.');
+    }
+  };
+
+  const handleOpenVisitChat = async (visit) => {
+    try {
+      const activeUid = firebaseAuth?.currentUser?.uid || currentUserId;
+      const ownsVisitedProperty = myPropertySet.has(visit.propertyId)
+        || visit.ownerId === activeUid
+        || (currentUserName && String(visit.ownerName || '').trim().toLowerCase() === currentUserName);
+      const effectiveOwnerId = ownsVisitedProperty ? activeUid : visit.ownerId;
+      const effectiveTenantId = ownsVisitedProperty ? visit.tenantId : activeUid;
+
+      const roomId = await getOrCreateConversation(
+        effectiveTenantId,
+        effectiveOwnerId,
+        visit.propertyId,
+        visit.propertyTitle || 'Vivienda',
+        visit
+      );
+
+      await setVisitConversationId(visit.id, roomId).catch(() => {});
+      navigate(`/chat?conversation=${encodeURIComponent(roomId)}&property=${encodeURIComponent(visit.propertyId)}`);
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo abrir el chat privado. Verifica que hayas iniciado sesión con Firebase.');
+    }
+  };
+
+  const currentUserName = useMemo(() => String(user?.name || '').trim().toLowerCase(), [user?.name]);
 
   const receivedVisits = useMemo(() => {
+    const fbUid = firebaseAuth?.currentUser?.uid;
     return visits.filter((v) => {
       if (currentUserId && v.ownerId === currentUserId) return true;
-      if (currentUserPhone && v.ownerPhone && v.ownerPhone.replace(/\D/g, '') === currentUserPhone) return true;
-      if (isOwner && v.tenantId !== currentUserId) return true;
+      if (fbUid && v.ownerId === fbUid) return true;
+      if (currentUserPhone && v.ownerPhone && String(v.ownerPhone).replace(/\D/g, '') === currentUserPhone) return true;
+      if (currentUserName && v.ownerName && String(v.ownerName).trim().toLowerCase() === currentUserName) return true;
+      if (v.propertyId && myPropertySet.has(v.propertyId)) return true;
       return false;
     });
-  }, [visits, currentUserId, currentUserPhone, isOwner]);
+  }, [visits, currentUserId, currentUserPhone, currentUserName, myPropertySet]);
 
   const requestedVisits = useMemo(() => {
     return visits.filter((v) => {
       if (currentUserId && v.tenantId === currentUserId) return true;
-      if (currentUserPhone && v.tenantPhone && v.tenantPhone.replace(/\D/g, '') === currentUserPhone) return true;
-      if (!isOwner) return true;
+      if (firebaseAuth?.currentUser?.uid && v.tenantId === firebaseAuth.currentUser.uid) return true;
+      if (currentUserPhone && v.tenantPhone && String(v.tenantPhone).replace(/\D/g, '') === currentUserPhone) return true;
       return false;
     });
-  }, [visits, currentUserId, currentUserPhone, isOwner]);
+  }, [visits, currentUserId, currentUserPhone]);
+
+  const relevantVisits = useMemo(() => {
+    const relevantIds = new Set([...receivedVisits, ...requestedVisits].map((visit) => visit.id));
+    return visits.filter((visit) => relevantIds.has(visit.id));
+  }, [visits, receivedVisits, requestedVisits]);
 
   const displayedVisits = useMemo(() => {
     if (visitSubTab === 'recibidas') return receivedVisits;
     if (visitSubTab === 'solicitadas') return requestedVisits;
-    return visits;
-  }, [visits, visitSubTab, receivedVisits, requestedVisits]);
+    return relevantVisits;
+  }, [relevantVisits, visitSubTab, receivedVisits, requestedVisits]);
 
   /* ── Saved Searches State ── */
   const [savedSearches, setSavedSearches] = useState([]);
@@ -489,7 +566,6 @@ export default function ProfilePage() {
     );
   };
 
-  const isOwner = user?.role === 'owner';
   const isVerified = user?.verified || verifyDone;
 
   /* ── Admin: subscribe to all users, properties, and system updates ── */
@@ -510,7 +586,7 @@ export default function ProfilePage() {
     { key: 'perfil', label: 'Mi Perfil', icon: User },
     { key: 'favoritos', label: 'Favoritos', count: favorites.length, icon: Heart },
     { key: 'busquedas', label: 'Búsquedas', count: savedSearches.length > 0 ? savedSearches.length : undefined, icon: Bookmark },
-    { key: 'visitas', label: 'Citas y Visitas', count: visits.length, icon: Calendar },
+    { key: 'visitas', label: 'Citas y Visitas', count: relevantVisits.length, icon: Calendar },
     ...(isOwner ? [{ key: 'propiedades', label: 'Mis Propiedades', count: myProperties.length, icon: Building2 }] : []),
     ...(isAdmin ? [{ key: 'admin', label: 'Administración', icon: Shield }] : []),
     { key: 'configuracion', label: 'Ajustes', icon: Settings },
@@ -1190,7 +1266,7 @@ export default function ProfilePage() {
                       : 'bg-crema/60 text-cafe hover:bg-forest/10'
                   }`}
                 >
-                  Todas las citas ({visits.length})
+                  Todas las citas ({relevantVisits.length})
                 </button>
                 {(isOwner || receivedVisits.length > 0) && (
                   <button
@@ -1252,19 +1328,32 @@ export default function ProfilePage() {
                   const isExpired = v.status === 'vencida';
 
                   // Expiration calculations
-                  const createdTime = new Date(v.createdAt || Date.now()).getTime();
+                  const rawCreatedAt = v.createdAtIso || v.createdAt;
+                  const createdTime = rawCreatedAt?.toDate
+                    ? rawCreatedAt.toDate().getTime()
+                    : new Date(rawCreatedAt || Date.now()).getTime();
                   const daysPassed = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
                   const daysLeft = Math.max(0, Math.ceil(7 - daysPassed));
 
                   // Determine if current user is owner of the visited property
                   const isOwnerOfThisVisit =
                     (currentUserId && v.ownerId === currentUserId) ||
-                    (currentUserPhone && v.ownerPhone && v.ownerPhone.replace(/\D/g, '') === currentUserPhone) ||
-                    (isOwner && v.tenantId !== currentUserId);
+                    (currentUserPhone && v.ownerPhone && String(v.ownerPhone).replace(/\D/g, '') === currentUserPhone) ||
+                    (currentUserEmail && v.ownerEmail && String(v.ownerEmail).trim().toLowerCase() === currentUserEmail) ||
+                    (currentUserName && v.ownerName && String(v.ownerName).trim().toLowerCase() === currentUserName) ||
+                    (v.propertyId && myPropertySet.has(v.propertyId));
+
+                  const visitProperty = myProperties.find((property) => property.id === v.propertyId)
+                    || demoProperties.find((property) => property.id === v.propertyId);
+                  const visitImage = visitProperty?.thumbnail
+                    || visitProperty?.thumbnails?.[0]
+                    || (Array.isArray(visitProperty?.images) ? visitProperty.images[0] : null)
+                    || v.propertyImage
+                    || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80';
 
                   // Determine target phone for WhatsApp
                   const targetPhone = isOwnerOfThisVisit ? (v.tenantPhone || '50255551234') : (v.ownerPhone || '50255551234');
-                  const cleanPhone = targetPhone.replace(/\D/g, '');
+                  const cleanPhone = String(targetPhone).replace(/\D/g, '');
                   const waGreeting = isOwnerOfThisVisit
                     ? `¡Hola ${v.tenantName || 'inquilino'}! Te escribo respecto a tu solicitud de visita a "${v.propertyTitle}" en RuwaJay para el día ${v.date} a las ${v.time}. ¿Coordinamos los detalles?`
                     : `¡Hola ${v.ownerName || 'propietario'}! Te escribo por la visita a "${v.propertyTitle}" agendada en RuwaJay para el día ${v.date} a las ${v.time}. ¿Podemos coordinar la hora exacta?`;
@@ -1284,9 +1373,12 @@ export default function ProfilePage() {
                       {/* Property Thumbnail */}
                       <div className="relative w-full md:w-52 h-40 md:h-auto rounded-2xl overflow-hidden bg-stone-100 flex-shrink-0">
                         <img
-                          src={v.propertyImage || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80'}
+                          src={visitImage}
                           alt={v.propertyTitle}
                           className="w-full h-full object-cover"
+                          onError={(event) => {
+                            event.currentTarget.src = 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80';
+                          }}
                         />
                         <div className="absolute top-2 left-2 rounded-lg bg-black/70 px-2 py-0.5 text-[10px] font-black text-white backdrop-blur-xs">
                           Q{Number(v.propertyPrice || 0).toLocaleString()}/mes
@@ -1333,7 +1425,7 @@ export default function ProfilePage() {
                             )}
                             {isRejected && (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1 text-xs font-black text-stone-700">
-                                <X size={13} /> No disponible / Rechazada
+                                <X size={13} /> {isOwnerOfThisVisit ? 'Cita rechazada' : 'El propietario negó la cita'}
                               </span>
                             )}
                             {isCancelled && (
@@ -1440,17 +1532,18 @@ export default function ProfilePage() {
                             {/* Chat button: only available on confirmed visits */}
                             {isAccepted && (
                               <>
-                                <Link
-                                  to={`/chat?property=${v.propertyId}`}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenVisitChat(v)}
                                   className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
                                 >
-                                  <MessageCircle size={14} /> Chatear
-                                </Link>
+                                  <MessageCircle size={15} /> 💬 Abrir Chat en Tiempo Real
+                                </button>
                                 <Link
                                   to={`/ruta?property=${v.propertyId}`}
-                                  className="inline-flex items-center gap-1.5 rounded-xl bg-azul-ruta hover:bg-azul-ruta/90 text-white px-3.5 py-2 text-xs font-extrabold shadow-sm transition-all"
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark text-white px-3.5 py-2 text-xs font-black shadow-sm transition-all"
                                 >
-                                  <Navigation size={14} /> Ver Ruta Waze
+                                  <Navigation size={14} /> Trazar Ruta RuwaJay
                                 </Link>
                               </>
                             )}
@@ -1482,14 +1575,14 @@ export default function ProfilePage() {
                                   onClick={() => handleUpdateVisitStatus(v.id, 'confirmada')}
                                   className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 text-white px-3 py-2 text-xs font-black hover:bg-emerald-700 shadow-xs transition-colors"
                                 >
-                                  <Check size={14} /> Aceptar Cita
+                                  <Check size={14} /> Confirmar cita
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleUpdateVisitStatus(v.id, 'rechazada')}
                                   className="inline-flex items-center gap-1 rounded-xl bg-stone-100 text-stone-600 hover:bg-red-50 hover:text-red-600 px-2.5 py-2 text-xs font-bold transition-colors"
                                 >
-                                  Rechazar
+                                  Negar cita
                                 </button>
                               </>
                             )}
@@ -1529,7 +1622,7 @@ export default function ProfilePage() {
         {activeTab === 'propiedades' && isOwner && (
           <div className="space-y-5">
             {/* Quick stats */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
               {[
                 { label: 'Total publicadas', value: myProperties.length, icon: Building2, color: 'text-forest bg-forest/10' },
                 { label: 'Disponibles', value: myProperties.filter((p) => p.status === 'disponible').length, icon: Home, color: 'text-jade bg-jade/10' },
@@ -1554,9 +1647,9 @@ export default function ProfilePage() {
               <div className="space-y-3">
                 {myProperties.map((property) => (
                   <SectionCard key={property.id}>
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center">
                       {/* Property image */}
-                      <div className="h-24 w-full shrink-0 overflow-hidden rounded-2xl bg-crema sm:h-20 sm:w-28 relative">
+                      <div className="relative h-40 w-full shrink-0 overflow-hidden rounded-2xl bg-crema sm:h-48 lg:h-24 lg:w-36">
                         {property.images?.[0] ? (
                           <img src={property.images[0]} alt={property.title} className="h-full w-full object-cover" />
                         ) : (
@@ -1570,8 +1663,8 @@ export default function ProfilePage() {
                       </div>
                       {/* Info */}
                       <div className="min-w-0 flex-1">
-                        <h4 className="text-sm font-extrabold text-cafe truncate">{property.title}</h4>
-                        <p className="text-xs text-text-muted mt-0.5">{property.zone || property.municipality || 'Guatemala'}</p>
+                        <h4 className="break-words text-sm font-extrabold text-cafe">{property.title}</h4>
+                        <p className="mt-0.5 break-words text-xs text-text-muted">{property.zone || property.municipality || 'Guatemala'}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
                           <span className="text-sm font-black text-forest">Q{Number(property.price || 0).toLocaleString()}/mes</span>
                           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
@@ -1591,13 +1684,13 @@ export default function ProfilePage() {
                         </div>
                       </div>
                       {/* Actions: Live status selector and Link */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-1 bg-[#FAF7F2] p-1 rounded-xl border border-border-light">
+                      <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center">
+                        <div className="flex min-w-0 items-center gap-1 rounded-xl border border-border-light bg-[#FAF7F2] p-1 min-[430px]:col-span-2 xl:col-span-1">
                           <label className="text-[10px] font-bold text-text-muted px-1 hidden sm:inline">Estado:</label>
                           <select
                             value={property.status || 'disponible'}
                             onChange={(e) => handleSetPropertyStatus(property.id, e.target.value)}
-                            className="rounded-lg border-0 bg-white px-2.5 py-1.5 text-xs font-black text-cafe shadow-xs focus:ring-2 focus:ring-forest cursor-pointer"
+                            className="min-w-0 flex-1 rounded-lg border-0 bg-white px-2.5 py-2 text-xs font-black text-cafe shadow-xs focus:ring-2 focus:ring-forest cursor-pointer"
                           >
                             <option value="disponible">🟢 Disponible</option>
                             <option value="en_cita">🟠 En Cita</option>
@@ -1605,12 +1698,27 @@ export default function ProfilePage() {
                             <option value="pausada">⚪ Pausada</option>
                           </select>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingProperty(property)}
+                          className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-dorado/15 px-3 py-2 text-center text-xs font-black text-[#976008] shadow-2xs transition-colors hover:bg-dorado/25"
+                        >
+                          <Edit3 size={13} /> Editar vivienda
+                        </button>
                         <Link
                           to={`/propiedad/${property.id}`}
-                          className="inline-flex items-center gap-1 rounded-xl bg-forest/10 hover:bg-forest/20 text-forest px-3 py-2 text-xs font-bold transition-colors"
+                          className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-xl bg-forest/10 px-3 py-2 text-center text-xs font-bold text-forest transition-colors hover:bg-forest/20"
                         >
                           <Eye size={13} /> Ver ficha
                         </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOwnedProperty(property)}
+                          className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-black text-red-600 transition-colors hover:bg-red-100 min-[430px]:col-span-2 xl:col-span-1"
+                          title="Eliminar permanentemente mi vivienda"
+                        >
+                          <Trash2 size={13} /> Eliminar vivienda
+                        </button>
                       </div>
                     </div>
                   </SectionCard>
@@ -2029,22 +2137,6 @@ export default function ProfilePage() {
                         <option value="alquilada">Alquilada</option>
                         <option value="pausada">Pausada</option>
                       </select>
-                      <button
-                        onClick={async () => {
-                          if (window.confirm('¿Eliminar esta propiedad permanentemente?')) {
-                            try {
-                              await deleteProperty(prop.id);
-                              setAdminNotice('Propiedad eliminada por moderación.');
-                            } catch (err) {
-                              window.alert(err.message);
-                            }
-                          }
-                        }}
-                        className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
-                        title="Eliminar propiedad"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -2790,7 +2882,17 @@ export default function ProfilePage() {
           );
         }}
       />
+      {/* Modal para Editar Vivienda */}
+      <EditPropertyModal
+        property={editingProperty}
+        isOpen={Boolean(editingProperty)}
+        onClose={() => setEditingProperty(null)}
+        onSaved={(updated) => {
+          setMyProperties((prev) =>
+            prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+          );
+        }}
+      />
     </main>
   );
 }
-

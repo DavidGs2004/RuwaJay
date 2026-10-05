@@ -7,11 +7,12 @@ import {
   useCallback,
 } from 'react';
 
-import { demoProperties } from '../data/properties';
 import { useAuth } from './AuthContext';
+import { firebaseAuth } from '../lib/firebase';
 
 import {
   subscribeToMessages,
+  subscribeToConversation,
   subscribeToConversations,
   sendMessageToFirestore,
   getOrCreateConversation,
@@ -52,24 +53,115 @@ function playNotificationSound() {
 
 export function ChatProvider({ children }) {
   const { user } = useAuth();
+  const chatUserId = firebaseAuth?.currentUser?.uid || user?.id;
 
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [directConversation, setDirectConversation] = useState(null);
   const [activeToast, setActiveToast] = useState(null);
+
+  // Reparar citas confirmadas antiguas que guardaron el id local del
+  // propietario antes de que su sesión de Firebase estuviera disponible.
+  useEffect(() => {
+    const firebaseUid = firebaseAuth?.currentUser?.uid;
+    if (!firebaseUid || !user) return;
+
+    try {
+      const visits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+      if (!Array.isArray(visits)) return;
+      const userName = String(user.name || '').trim().toLowerCase();
+
+      visits
+        .filter((visit) => visit.status === 'confirmada' || visit.status === 'aceptada')
+        .filter((visit) => (
+          visit.ownerId === user.id ||
+          visit.ownerId === firebaseUid ||
+          (userName && String(visit.ownerName || '').trim().toLowerCase() === userName)
+        ))
+        .forEach((visit) => {
+          getOrCreateConversation(
+            visit.tenantId,
+            firebaseUid,
+            visit.propertyId,
+            visit.propertyTitle || 'Vivienda',
+            { ...visit, ownerId: firebaseUid }
+          ).catch((error) => console.warn('No se pudo reparar la conversación confirmada:', error));
+        });
+    } catch (error) {
+      console.warn('No se pudieron revisar las citas confirmadas:', error);
+    }
+  }, [user, chatUserId]);
 
   // Escuchar las conversaciones del usuario
   useEffect(() => {
-    if (!user?.id) {
+    if (!chatUserId) {
       setConversations([]);
       return;
     }
 
     return subscribeToConversations(
-      user.id,
-      setConversations
+      chatUserId,
+      (items) => {
+        const emailRoomProperties = new Set(
+          items.filter((item) => String(item?.id || '').startsWith('email_')).map((item) => item.propertyId)
+        );
+        const visibleItems = items.filter((item) => (
+          String(item?.id || '').startsWith('email_') || !emailRoomProperties.has(item.propertyId)
+        ));
+        setConversations(visibleItems.map((conversation) => {
+        const isOwner = conversation.ownerId === chatUserId || (
+          conversation.ownerEmail && user?.email &&
+          String(conversation.ownerEmail).toLowerCase() === String(user.email).toLowerCase()
+        );
+        return {
+          ...conversation,
+          participantId: isOwner ? conversation.seekerId : conversation.ownerId,
+          participantName: String(isOwner
+            ? (conversation.seekerName || 'Interesado')
+            : (conversation.ownerName || 'Propietario')),
+          participantPhone: isOwner ? conversation.seekerPhone : conversation.ownerPhone,
+          participantAvatar: isOwner ? conversation.seekerPhoto : conversation.ownerPhoto,
+          participantRole: isOwner ? 'Interesado' : 'Propietario',
+          currentUserRole: isOwner ? 'Propietario' : 'Interesado',
+          participantOnline: true,
+          unreadCount: conversation.lastSenderId && conversation.lastSenderId !== chatUserId ? 1 : 0,
+        };
+        }));
+      }
     );
-  }, [user?.id]);
+  }, [chatUserId, user?.email]);
+
+  const decorateConversation = useCallback((conversation) => {
+    if (!conversation) return null;
+    const isOwner = conversation.ownerId === chatUserId || (
+      conversation.ownerEmail && user?.email &&
+      String(conversation.ownerEmail).toLowerCase() === String(user.email).toLowerCase()
+    );
+    return {
+      ...conversation,
+      participantId: isOwner ? conversation.seekerId : conversation.ownerId,
+      participantName: String(isOwner
+        ? (conversation.seekerName || 'Interesado')
+        : (conversation.ownerName || 'Propietario')),
+      participantPhone: isOwner ? conversation.seekerPhone : conversation.ownerPhone,
+      participantAvatar: isOwner ? conversation.seekerPhoto : conversation.ownerPhoto,
+      participantRole: isOwner ? 'Interesado' : 'Propietario',
+      currentUserRole: isOwner ? 'Propietario' : 'Interesado',
+      participantOnline: true,
+      unreadCount: conversation.lastSenderId && conversation.lastSenderId !== chatUserId ? 1 : 0,
+    };
+  }, [chatUserId, user?.email]);
+
+  useEffect(() => {
+    if (!activeConversationId || !chatUserId) {
+      setDirectConversation(null);
+      return undefined;
+    }
+    return subscribeToConversation(activeConversationId, chatUserId, (conversation) => {
+      setDirectConversation(decorateConversation(conversation));
+    });
+  }, [activeConversationId, chatUserId, decorateConversation]);
 
   // Escuchar los mensajes de la conversación activa
   useEffect(() => {
@@ -88,12 +180,12 @@ export function ChatProvider({ children }) {
         const last =
           newMessages[newMessages.length - 1];
 
-        if (last && last.senderId !== user?.id) {
+        if (last && last.senderId !== chatUserId) {
           playNotificationSound();
         }
       }
     );
-  }, [activeConversationId, user?.id]);
+  }, [activeConversationId, chatUserId]);
 
   // Obtener conversación activa
   const activeConversation = useMemo(() => {
@@ -101,32 +193,71 @@ export function ChatProvider({ children }) {
       conversations.find(
         (conversation) =>
           conversation.id === activeConversationId
-      ) || null
+      ) || directConversation || null
     );
-  }, [conversations, activeConversationId]);
+  }, [conversations, activeConversationId, directConversation]);
+
+  const activeConversationWithMessages = useMemo(() => (
+    activeConversation ? { ...activeConversation, messages } : null
+  ), [activeConversation, messages]);
 
   // Crear o abrir conversación desde una propiedad
   const startConversationWithProperty = useCallback(
     async (propertyId) => {
-      if (!user) return;
+      if (!user) return null;
 
-      const prop = demoProperties.find(
-        (property) => property.id === propertyId
-      );
+      const existing = conversations.find((conversation) => conversation.propertyId === propertyId);
+      if (existing) {
+        setActiveConversationId(existing.id);
+        return existing.id;
+      }
 
-      if (!prop) return;
+      let confirmedVisit = null;
+      try {
+        const parsedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
+        const visits = Array.isArray(parsedVisits) ? parsedVisits : [];
+        const userPhone = String(user.phone || '').replace(/\D/g, '');
+        const fbUid = firebaseAuth?.currentUser?.uid;
+
+        confirmedVisit = visits.find((visit) => {
+          if (visit.propertyId !== propertyId) return false;
+          if (visit.status !== 'confirmada' && visit.status !== 'aceptada') return false;
+
+          if (visit.tenantId === user.id || visit.ownerId === user.id) return true;
+          if (fbUid && (visit.tenantId === fbUid || visit.ownerId === fbUid)) return true;
+          if (userPhone) {
+            const cleanOwnerPhone = String(visit.ownerPhone || '').replace(/\D/g, '');
+            const cleanTenantPhone = String(visit.tenantPhone || '').replace(/\D/g, '');
+            if ((cleanOwnerPhone && cleanOwnerPhone === userPhone) || (cleanTenantPhone && cleanTenantPhone === userPhone)) {
+              return true;
+            }
+          }
+          return false;
+        });
+      } catch { /* no confirmed local visit */ }
+
+      if (!confirmedVisit) return;
 
       const roomId = await getOrCreateConversation(
-        user.id,
-        prop.ownerId,
-        prop.id,
-        prop.title
+        confirmedVisit.tenantId,
+        confirmedVisit.ownerId,
+        confirmedVisit.propertyId,
+        confirmedVisit.propertyTitle
       );
 
       setActiveConversationId(roomId);
+      return roomId;
     },
-    [user]
+    [user, conversations]
   );
+
+  const markAsRead = useCallback(() => {}, []);
+  const resetDemoChats = useCallback(() => {
+    localStorage.removeItem('ruwajay_local_conversations');
+    localStorage.removeItem('ruwajay_local_messages');
+    setActiveConversationId(null);
+  }, []);
+  const typingMap = useMemo(() => ({}), []);
 
   // Enviar mensaje a Firestore
   const sendMessage = useCallback(
@@ -155,23 +286,23 @@ export function ChatProvider({ children }) {
 
       await sendMessageToFirestore(
         convId,
-        user.id,
+        chatUserId,
         user.name || 'Usuario',
         text?.trim() ||
           (image ? '📷 Foto' : '🎤 Audio'),
         extras
       );
     },
-    [user]
+    [user, chatUserId]
   );
 
   // Contador de conversaciones no leídas
   const totalUnreadCount = useMemo(() => {
     return conversations.filter(
       (conversation) =>
-        conversation.lastSenderId !== user?.id
+        conversation.lastSenderId !== chatUserId
     ).length;
-  }, [conversations, user?.id]);
+  }, [conversations, chatUserId]);
 
   // Cerrar notificación flotante
   const dismissToast = useCallback(() => {
@@ -180,12 +311,15 @@ export function ChatProvider({ children }) {
 
   const value = {
     conversations,
-    activeConversation,
+    activeConversation: activeConversationWithMessages,
     activeConversationId,
     setActiveConversationId,
     messages,
     sendMessage,
     startConversationWithProperty,
+    markAsRead,
+    resetDemoChats,
+    typingMap,
     totalUnreadCount,
     activeToast,
     dismissToast,
