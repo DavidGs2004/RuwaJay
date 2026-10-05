@@ -20,6 +20,8 @@ if (existsSync(backendEntry)) {
       stdio: 'inherit',
     });
   }
+} else {
+  console.log('ℹ️ Modo Firebase / Frontend: Servidor Vite iniciando en modo cliente.');
 }
 const frontend = spawn(process.execPath, [viteEntry], { cwd: root, stdio: 'inherit' });
 
@@ -33,14 +35,17 @@ function shutdown(exitCode = 0) {
 }
 
 backend?.on('error', (error) => {
-    console.error(`No se pudo iniciar el backend: ${error.message}`);
-    shutdown(1);
-  });
+  console.warn(`No se pudo iniciar el backend opcional: ${error.message}`);
+});
 frontend.on('error', (error) => {
   console.error(`No se pudo iniciar Vite: ${error.message}`);
   shutdown(1);
 });
-backend?.on('exit', (code) => { if (!closing && code) shutdown(code); });
+backend?.on('exit', (code) => {
+  if (!closing && code) {
+    console.warn(`Backend finalizó (código ${code}). Frontend continúa en ejecución.`);
+  }
+});
 frontend.on('exit', (code) => shutdown(code || 0));
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));

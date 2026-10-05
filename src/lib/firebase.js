@@ -14,9 +14,14 @@ const firebaseConfig = {
 
 export const firebaseWebEnabled = Boolean(firebaseConfig.apiKey);
 
-const app = firebaseWebEnabled
-  ? (getApps()[0] || initializeApp(firebaseConfig))
-  : null;
+let app = null;
+try {
+  app = firebaseWebEnabled
+    ? (getApps()[0] || initializeApp(firebaseConfig))
+    : null;
+} catch (err) {
+  console.warn('Firebase init warning:', err);
+}
 
 export const firestore = app ? getFirestore(app) : null;
 export const storage = app ? getStorage(app) : null;
