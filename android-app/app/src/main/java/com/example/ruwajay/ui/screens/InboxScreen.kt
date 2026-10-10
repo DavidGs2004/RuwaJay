@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ruwajay.data.model.Conversation
 import com.example.ruwajay.data.repository.ChatRepository
-import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.Timestamp
@@ -154,7 +153,7 @@ fun ConversationItem(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = conversation.participantName.first().toString(),
+                text = conversation.participantName.firstOrNull()?.toString() ?: "U",
                 color = Color.White,
                 fontWeight = FontWeight.Black,
                 fontSize = 20.sp

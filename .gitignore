@@ -33,4 +33,6 @@ android-app/android-app
 *.sln
 *.sw?
 .firebase/
+.artifacts/
+**/.artifacts/
 

@@ -1,16 +1,11 @@
 package com.example.ruwajay.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -18,47 +13,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.Bathtub
-import androidx.compose.material.icons.filled.Bed
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import android.net.Uri
-import androidx.compose.ui.platform.LocalContext
-import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ruwajay.ui.theme.BrandCrema
-import com.example.ruwajay.ui.theme.BrandCremaDark
-import com.example.ruwajay.ui.theme.BrandForest
-import com.example.ruwajay.ui.theme.BrandGold
-import com.example.ruwajay.ui.theme.BrandTextPrimary
-import com.example.ruwajay.ui.theme.BrandTextSecondary
-import com.example.ruwajay.ui.theme.BrandTerracota
+import coil.compose.AsyncImage
+import com.example.ruwajay.data.model.Coordinates
 import com.example.ruwajay.data.repository.publishProperty
+import com.example.ruwajay.ui.components.OsmLocationPickerMap
+import com.example.ruwajay.ui.theme.*
+import org.osmdroid.util.GeoPoint
 
 @Composable
 fun PublishScreen() {
@@ -68,16 +39,21 @@ fun PublishScreen() {
     var deposit by remember { mutableStateOf("") }
     var department by remember { mutableStateOf("Guatemala") }
     var municipality by remember { mutableStateOf("Guatemala") }
-    var zone by remember { mutableStateOf("") }
+    var zone by remember { mutableStateOf("Zona 10") }
     var approximateAddress by remember { mutableStateOf("") }
     var exactAddress by remember { mutableStateOf("") }
     var bedrooms by remember { mutableStateOf("") }
     var bathrooms by remember { mutableStateOf("") }
     var propertyType by remember { mutableStateOf("casa") }
+
+    // Map Coordinates State
+    var pickedGeoPoint by remember { mutableStateOf(GeoPoint(14.5975, -90.5106)) } // Default Guatemala City
+    var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
     var submitted by remember { mutableStateOf(false) }
     var isPublishing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         selectedImages = uris.take(10)
@@ -107,7 +83,7 @@ fun PublishScreen() {
                 Text("¡Publicación enviada!", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = BrandForest)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Tu propiedad será revisada y publicada en las próximas 24 horas.",
+                    "Tu propiedad se ha registrado y está disponible en tiempo real en la plataforma.",
                     color = BrandTextSecondary,
                     fontSize = 14.sp
                 )
@@ -125,6 +101,7 @@ fun PublishScreen() {
                 errorMessage?.let { error ->
                     Text(error, color = BrandTerracota, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 }
+
                 FormSection("Tipo de Propiedad") {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("casa", "apartamento").forEach { type ->
@@ -154,11 +131,37 @@ fun PublishScreen() {
                     FormField("Descripción", description, { description = it }, Icons.Default.Description, "Describe las características...", maxLines = 4)
                 }
 
-                FormSection("Precio y ubicación") {
+                FormSection("Precio y Alquiler") {
                     FormField("Precio mensual (Q)", price, { price = it }, Icons.Default.AttachMoney, "Ej: 4500", keyboardType = KeyboardType.Number)
                     Spacer(modifier = Modifier.height(10.dp))
                     FormField("Depósito (Q)", deposit, { deposit = it }, Icons.Default.AttachMoney, "Ej: 4500", keyboardType = KeyboardType.Number)
-                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // ── MAPA INTERACTIVO NATIVO DE UBICACIÓN ──
+                FormSection("Ubicación Exacta en el Mapa") {
+                    Text(
+                        "Usa el buscador, el botón GPS o toca el mapa para marcar el punto exacto de la vivienda:",
+                        color = BrandTextSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    OsmLocationPickerMap(
+                        initialPoint = pickedGeoPoint,
+                        onLocationSelected = { geoPoint ->
+                            pickedGeoPoint = geoPoint
+                        },
+                        onAddressResolved = { geocoded ->
+                            if (geocoded.road.isNotBlank()) exactAddress = geocoded.road
+                            if (geocoded.reference.isNotBlank() && approximateAddress.isBlank()) approximateAddress = geocoded.reference
+                            if (geocoded.zone.isNotBlank()) zone = geocoded.zone
+                            if (geocoded.municipality.isNotBlank()) municipality = geocoded.municipality
+                            if (geocoded.department.isNotBlank()) department = geocoded.department
+                        }
+                    )
+                }
+
+                FormSection("Detalles de Dirección") {
                     FormField("Departamento", department, { department = it }, Icons.Default.LocationOn, "Ej: Guatemala")
                     Spacer(modifier = Modifier.height(10.dp))
                     FormField("Municipio", municipality, { municipality = it }, Icons.Default.LocationOn, "Ej: Guatemala")
@@ -181,8 +184,8 @@ fun PublishScreen() {
                     }
                 }
 
-                // Image upload placeholder
-                FormSection("Imágenes") {
+                // Image upload
+                FormSection("Fotografías") {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -197,11 +200,12 @@ fun PublishScreen() {
                             verticalArrangement = Arrangement.Center
                         ) {
                             Icon(Icons.Default.Image, null, tint = BrandForest, modifier = Modifier.padding(8.dp))
-                            Text("Toca para subir fotos", color = BrandTextSecondary, fontSize = 13.sp)
+                            Text("Toca para subir fotos de la vivienda", color = BrandTextSecondary, fontSize = 13.sp)
                             Text("Máximo 10 imágenes", color = BrandTextSecondary, fontSize = 11.sp)
                         }
                     }
                     if (selectedImages.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(selectedImages) { uri ->
                                 AsyncImage(
@@ -214,7 +218,7 @@ fun PublishScreen() {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(20.dp))
                 Button(
                     onClick = {
                         val numericPrice = price.toIntOrNull()
@@ -241,6 +245,7 @@ fun PublishScreen() {
                             exactAddress = exactAddress,
                             bedrooms = numericBedrooms,
                             bathrooms = numericBathrooms,
+                            coordinates = Coordinates(pickedGeoPoint.latitude, pickedGeoPoint.longitude),
                             imageUris = selectedImages,
                             contentResolver = context.contentResolver,
                             onResult = { result ->
@@ -256,7 +261,7 @@ fun PublishScreen() {
                     enabled = !isPublishing
                 ) {
                     Text(
-                        if (isPublishing) "Publicando..." else "Publicar propiedad",
+                        if (isPublishing) "Publicando en vivo..." else "Publicar propiedad",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 16.sp,
                         color = Color.White

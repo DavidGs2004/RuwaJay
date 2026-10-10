@@ -32,6 +32,10 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -57,9 +61,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.data.repository.rememberProperties
 import com.example.ruwajay.data.repository.ChatRepository
+import com.example.ruwajay.data.repository.VisitRepository
 import androidx.compose.material3.CircularProgressIndicator
 import com.example.ruwajay.ui.components.PropertyReviews
 import com.google.firebase.auth.FirebaseAuth
@@ -81,14 +85,38 @@ fun PropertyDetailScreen(
             Text("Propiedad no encontrada", color = BrandTextPrimary)
         }
 
-    val owner = MockDataRepository.owners.find { it.id == property.ownerId }
+    var owner by remember(propertyId) { mutableStateOf<com.example.ruwajay.data.model.Owner?>(null) }
     val firebaseUser = FirebaseAuth.getInstance().currentUser
     var isFavorite by remember(propertyId, firebaseUser?.uid) { mutableStateOf(false) }
     var reviewCount by remember(propertyId) { mutableStateOf(0) }
     val chatRepo = remember { ChatRepository() }
+    val visitRepo = remember { VisitRepository() }
     var isCreatingChat by remember { mutableStateOf(false) }
 
-    LaunchedEffect(propertyId, firebaseUser?.uid) {
+    var hasConfirmedVisit by remember { mutableStateOf(false) }
+    var hasPendingVisit by remember { mutableStateOf(false) }
+    var showVisitDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(propertyId, firebaseUser?.uid, property.ownerId) {
+        // Fetch owner info
+        if (property.ownerId.isNotBlank()) {
+            FirebaseFirestore.getInstance().collection("users").document(property.ownerId).get()
+                .addOnSuccessListener { doc ->
+                    if (doc.exists()) {
+                        owner = com.example.ruwajay.data.model.Owner(
+                            id = doc.id,
+                            name = doc.getString("name") ?: doc.getString("displayName") ?: "Propietario",
+                            verified = doc.getBoolean("verified") ?: false,
+                            rating = doc.getDouble("rating") ?: 5.0,
+                            responseTime = doc.getString("responseTime") ?: "~1h",
+                            propertiesCount = doc.getLong("propertiesCount")?.toInt() ?: 1,
+                            memberSince = doc.getString("memberSince") ?: "2024",
+                            online = doc.getBoolean("online") ?: false
+                        )
+                    }
+                }
+        }
+
         FirebaseFirestore.getInstance().collection("properties").document(propertyId)
             .collection("reviews").get()
             .addOnSuccessListener { reviewCount = it.size() }
@@ -97,6 +125,16 @@ fun PropertyDetailScreen(
                 .collection("users").document(firebaseUser.uid)
                 .collection("favorites").document(propertyId).get()
                 .addOnSuccessListener { isFavorite = it.exists() }
+
+            FirebaseFirestore.getInstance().collection("visits")
+                .whereEqualTo("propertyId", propertyId)
+                .whereEqualTo("tenantId", firebaseUser.uid)
+                .get()
+                .addOnSuccessListener { snap ->
+                    val visits = snap.documents.mapNotNull { it.getString("status") }
+                    hasConfirmedVisit = visits.contains("confirmada")
+                    hasPendingVisit = visits.contains("pendiente")
+                }
         }
     }
 
@@ -254,25 +292,25 @@ fun PropertyDetailScreen(
                     Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = CircleShape, color = BrandForest, modifier = Modifier.size(48.dp)) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Text(owner.name.first().toString(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                Text(owner!!.name.firstOrNull()?.toString() ?: "P", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                             }
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(owner.name, color = BrandTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                                if (owner.verified) {
+                                Text(owner!!.name, color = BrandTextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                if (owner!!.verified) {
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(Icons.Default.VerifiedUser, null, tint = BrandForest, modifier = Modifier.size(14.dp))
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Star, null, tint = BrandGold, modifier = Modifier.size(12.dp))
-                                Text(" ${owner.rating} • Responde ${owner.responseTime}", color = BrandTextMuted, fontSize = 12.sp)
+                                Text(" ${owner!!.rating} • Responde ${owner!!.responseTime}", color = BrandTextMuted, fontSize = 12.sp)
                             }
                         }
                         Surface(
-                            color = if (owner.online) Color(0xFF22C55E) else BrandCremaDark,
+                            color = if (owner!!.online) Color(0xFF22C55E) else BrandCremaDark,
                             shape = CircleShape,
                             modifier = Modifier.size(10.dp)
                         ) {}
@@ -303,41 +341,65 @@ fun PropertyDetailScreen(
                             position = propPoint,
                             title = property.title
                         )
-                    )
+                    ),
+                    showTopBadges = false
                 )
             }
 
             // Action Buttons
             Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = {
-                    if (isCreatingChat) return@Button
-                    isCreatingChat = true
-                    chatRepo.getOrCreateConversation(
-                        propertyId = property.id,
-                        ownerId = property.ownerId,
-                        propertyTitle = property.title
-                    ) { result ->
-                        isCreatingChat = false
-                        result.onSuccess { convId ->
-                            onChatClick(convId)
-                        }.onFailure {
-                            onChatClick("")
+            if (hasConfirmedVisit || (firebaseUser?.uid == property.ownerId)) {
+                Button(
+                    onClick = {
+                        if (isCreatingChat) return@Button
+                        isCreatingChat = true
+                        chatRepo.getOrCreateConversation(
+                            propertyId = property.id,
+                            ownerId = property.ownerId,
+                            propertyTitle = property.title
+                        ) { result ->
+                            isCreatingChat = false
+                            result.onSuccess { convId ->
+                                onChatClick(convId)
+                            }.onFailure {
+                                onChatClick("")
+                            }
                         }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
+                    enabled = !isCreatingChat
+                ) {
+                    if (isCreatingChat) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Chat, null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Chat con el propietario", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
-                enabled = !isCreatingChat
-            ) {
-                if (isCreatingChat) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.Chat, null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Contactar propietario", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
+            } else {
+                Button(
+                    onClick = { showVisitDialog = true },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandTerracota),
+                    enabled = !hasPendingVisit
+                ) {
+                    Icon(Icons.Default.Event, null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (hasPendingVisit) "Solicitud de Cita Pendiente" else "Solicitar Cita Presencial", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "💬 El chat se desbloqueará cuando el propietario acepte tu solicitud de visita.",
+                    color = BrandTextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             Button(
@@ -352,6 +414,75 @@ fun PropertyDetailScreen(
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    // Modal Request Visit
+    if (showVisitDialog) {
+        var visitDate by remember { mutableStateOf("") }
+        var visitTime by remember { mutableStateOf("") }
+        var isSubmitting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showVisitDialog = false },
+            title = { Text("Agendar visita presencial", color = BrandCafe, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Selecciona una fecha y hora sugerida. Al confirmar, enviaremos la solicitud al propietario.", color = BrandTextSecondary, fontSize = 14.sp)
+                    OutlinedTextField(
+                        value = visitDate,
+                        onValueChange = { visitDate = it },
+                        label = { Text("Fecha (Ej: 25/10/2026)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = visitTime,
+                        onValueChange = { visitTime = it },
+                        label = { Text("Hora (Ej: 10:00 AM)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isSubmitting = true
+                        visitRepo.createVisit(
+                            propertyId = property.id,
+                            propertyTitle = property.title,
+                            propertyAddress = property.location.address,
+                            ownerId = property.ownerId,
+                            ownerName = owner?.name ?: "Propietario",
+                            visitDate = visitDate,
+                            visitTime = visitTime,
+                            notes = "Solicitud enviada desde la app."
+                        ) { result ->
+                            isSubmitting = false
+                            if (result.isSuccess) {
+                                hasPendingVisit = true
+                                showVisitDialog = false
+                            }
+                        }
+                    },
+                    enabled = visitDate.isNotBlank() && visitTime.isNotBlank() && !isSubmitting,
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandForest)
+                ) {
+                    if (isSubmitting) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Confirmar")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVisitDialog = false }) {
+                    Text("Cancelar", color = BrandTextMuted)
+                }
+            },
+            containerColor = BrandCrema,
+            titleContentColor = BrandCafe
+        )
     }
 }
 

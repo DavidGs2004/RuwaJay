@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ruwajay.data.model.Review
-import com.example.ruwajay.data.repository.MockDataRepository
 import com.example.ruwajay.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -67,10 +66,7 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
         onDispose { listener.remove() }
     }
 
-    val displayReviews = remember(firestoreReviews) {
-        if (firestoreReviews.isNotEmpty()) firestoreReviews
-        else MockDataRepository.reviews.filter { it.propertyId == propertyId }
-    }
+    val displayReviews = firestoreReviews
     
     val stats = remember(displayReviews) {
         if (displayReviews.isEmpty()) return@remember Pair(5.0, 0)

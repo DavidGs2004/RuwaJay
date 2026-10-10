@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.ruwajay.ui.theme.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bathtub
 import androidx.compose.material.icons.filled.Bed
@@ -90,6 +91,7 @@ fun PropertyCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(210.dp)
+                    .background(BrandCremaDark)
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
