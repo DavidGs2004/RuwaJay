@@ -1,3 +1,5 @@
+import { uploadPropertyImages } from '../../lib/propertyService';
+import { firebaseAuth } from '../../lib/firebase';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -131,6 +133,12 @@ export default function EditPropertyModal({ property, isOpen, onClose, onSaved }
 
     setIsSaving(true);
     try {
+      const persistedImages = await Promise.all(images.map(async source => {
+        if (/^https:\/\//.test(source)) return source;
+        const response=await fetch(source); const blob=await response.blob();
+        const file=new File([blob],'photo.jpg',{type:blob.type});
+        return (await uploadPropertyImages([file],property.id,firebaseAuth.currentUser.uid))[0];
+      }));
       const updatedPayload = {
         ...property,
         title: sanitizeText(formData.title.trim()),
@@ -149,12 +157,9 @@ export default function EditPropertyModal({ property, isOpen, onClose, onSaved }
           ...(property.location || {}),
           mapCoordinates: formData.coordinates || property.coordinates || property.location?.mapCoordinates || null,
         },
-        thumbnail: images[0],
-        thumbnails: images,
-        images: {
-          fachada: [images[0]],
-          general: images,
-        },
+        thumbnail: persistedImages[0],
+        thumbnails: persistedImages,
+        images: persistedImages,
       };
 
       await updatePropertyToFirebase(updatedPayload);

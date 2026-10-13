@@ -169,14 +169,7 @@ export default function PublishPage() {
         const currentEmail = user?.email?.toLowerCase();
         const currentName = user?.name?.trim().toLowerCase();
 
-        const isAuthorized = Boolean(
-          user?.role === 'admin' ||
-          !existing.ownerId ||
-          (currentId && existing.ownerId === currentId) ||
-          (currentUid && existing.ownerId === currentUid) ||
-          (currentEmail && existing.ownerEmail && existing.ownerEmail.toLowerCase() === currentEmail) ||
-          (currentName && existing.ownerName && existing.ownerName.trim().toLowerCase() === currentName)
-        );
+        const isAuthorized = user?.role === 'admin' || existing.ownerId === currentUid;
 
         if (!isAuthorized) {
           console.warn('Usuario no autorizado para editar esta vivienda.');
@@ -453,12 +446,14 @@ export default function PublishPage() {
 
     try {
       // 1. Upgrade user to 'owner' in background if needed (non-blocking)
-      if (user.role !== 'owner') {
+      if (user.role === 'seeker') {
         updateProfile({ role: 'owner' }).catch(() => {});
       }
 
+      if (!formData.coordinates) throw new Error('Selecciona el punto real de la vivienda en el mapa.');
       const cleanTitle = sanitizeText(formData.title);
-      const ownerId = firebaseAuth?.currentUser?.uid || user?.id || 'custom-owner';
+      const uploadUid = firebaseAuth?.currentUser?.uid;
+      const ownerId = isEditMode ? editPropertyData.ownerId : uploadUid;
 
       // 2. Upload new compressed images to Firebase Storage. Persist only their URLs.
       const propertyId = isEditMode && editPropertyData ? editPropertyData.id : `custom-${Date.now()}`;
@@ -467,7 +462,7 @@ export default function PublishPage() {
       if (uploadFiles.length) setPublishStage('Subiendo fotografías a la nube...');
       const uploadedUrls = uploadFiles.length
         ? await withTimeout(
-            uploadPropertyImages(uploadFiles, propertyId, ownerId, (progress) => {
+            uploadPropertyImages(uploadFiles, propertyId, uploadUid, (progress) => {
               setUploadProgress(5 + Math.round(progress * 0.85));
             }),
             'La subida de las fotografías tardó demasiado. Revisa tu conexión e intenta nuevamente.'
@@ -500,10 +495,10 @@ export default function PublishPage() {
         ...(isEditMode && editPropertyData ? editPropertyData : {}),
         id: propertyId,
         ownerId,
-        ownerName: user.name || (isEditMode ? editPropertyData?.ownerName : '') || 'Arrendador RuwaJay',
-        ownerEmail,
-        ownerPhone: user.phone || (isEditMode ? editPropertyData?.ownerPhone : '') || '',
-        ownerPhoto,
+        ownerName: ownerId === uploadUid ? user.name : editPropertyData.ownerName,
+        ownerEmail: ownerId === uploadUid ? ownerEmail : editPropertyData.ownerEmail || '',
+        ownerPhone: ownerId === uploadUid ? user.phone || '' : editPropertyData.ownerPhone || '',
+        ownerPhoto: ownerId === uploadUid ? ownerPhoto : editPropertyData.ownerPhoto || '',
         title: cleanTitle || `${formData.type === 'casa' ? 'Casa' : 'Apartamento'} en ${formData.zone}`,
         type: formData.type,
         price: Number(formData.price),
@@ -520,7 +515,7 @@ export default function PublishPage() {
         department: formData.department,
         municipality: formData.municipality,
         zone: formData.zone,
-        coordinates: formData.coordinates || getCoordinatesForLocation(formData.department, formData.zone) || { lat: 14.6349, lng: -90.5069 },
+        coordinates: formData.coordinates,
         approximateAddress: sanitizeText(formData.approximateAddress),
         exactAddress: sanitizeText(formData.exactAddress) || sanitizeText(formData.approximateAddress),
         address: {
@@ -529,14 +524,14 @@ export default function PublishPage() {
           zone: formData.zone,
           municipality: formData.municipality,
           department: formData.department,
-          coordinates: formData.coordinates || getCoordinatesForLocation(formData.department, formData.zone) || { lat: 14.6349, lng: -90.5069 },
+          coordinates: formData.coordinates,
         },
         description: sanitizeText(formData.description),
         status: formData.status || 'disponible',
         thumbnail: primaryThumbnail,
         thumbnails: allImages,
         images: allImages,
-        verified: Boolean(user.verified),
+        verified: isEditMode ? Boolean(editPropertyData?.verified) : false,
         isNew: !isEditMode,
         createdAt: (isEditMode && editPropertyData?.createdAt) ? editPropertyData.createdAt : new Date().toISOString(),
       };

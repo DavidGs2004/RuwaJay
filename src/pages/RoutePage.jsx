@@ -36,21 +36,12 @@ export default function RoutePage() {
 
   const propertyId = searchParams.get('property') || 'prop-1';
 
-  // Find property across Firebase, local storage, and demo catalog
-  const localProps = readLocalCustomProperties();
-  const property =
-    firebaseProperties.find((p) => p.id === propertyId) ||
-    localProps.find((p) => p.id === propertyId) ||
-    demoProperties.find((p) => p.id === propertyId) ||
-    demoProperties[0];
-
-  // La ruta de la vivienda siempre inicia en el GPS actual del usuario.
-  // Los datos calculados por el mapa no deben sustituir el origen ni el destino.
-  const origin = position || { lat: 14.6349, lng: -90.5069 };
-  const destination =
-    property.coordinates ||
-    property.location?.mapCoordinates ||
-    { lat: 14.595, lng: -90.485 };
+  const property = firebaseProperties.find(p=>p.id===propertyId);
+  const origin = position;
+  const destination = property?.coordinates || property?.location?.mapCoordinates;
+  if(!property) return <main className="p-10 text-center">La vivienda no esta disponible o esta cargando.</main>;
+  if(!destination) return <main className="p-10 text-center">Esta vivienda no tiene una ubicacion confirmada.</main>;
+  if(!origin) return <main className="p-10 text-center"><p>{locationError || 'Necesitamos tu ubicacion para calcular una ruta real.'}</p><button onClick={requestPosition} disabled={locationLoading}>Usar mi ubicacion</button></main>;
 
   const currentDestTitle = activeRouteInfo?.customDestName || property.title;
   const currentDestAddress = activeRouteInfo?.customDestAddress || property.address?.exact || property.exactAddress || property.address?.approximate || 'Guatemala';

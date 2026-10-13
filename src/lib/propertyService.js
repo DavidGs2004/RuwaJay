@@ -1,6 +1,8 @@
 import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { firebaseAuth, firebaseWebEnabled, firestore } from './firebase';
-import { uploadPropertyImagesToSupabase } from './supabaseStorage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from './firebase';
+import { imageUrls, coordinatesOrNull } from './contracts';
 import { demoProperties } from '../data/properties';
 import { publishRealtimeEvent } from './realtimeService';
 
@@ -13,8 +15,8 @@ export function normalizeFirebaseProperty(snapshot) {
   const data = snapshot.data();
   const features = data.features || {};
   const location = data.location || {};
-  const images = Array.isArray(data.images) ? data.images : Object.values(data.images || {}).flat();
-  const thumbnail = data.thumbnail || images[0] || '/Casas/cat-familiar.jpg';
+  const images = imageUrls(data.images);
+  const thumbnail = imageUrls([data.thumbnail])[0] || images[0] || '';
   const approximate = data.address?.approximate || location.approximateAddress || data.approximateAddress || location.address || 'Guatemala';
 
   return {
@@ -37,8 +39,8 @@ export function normalizeFirebaseProperty(snapshot) {
       municipality: data.address?.municipality || location.municipality || location.city || data.municipality || 'Guatemala',
       zone: data.address?.zone || location.zone || data.zone || 'Centro',
     },
-    coordinates: data.coordinates || location.mapCoordinates || null,
-    images: data.images || { fachada: [thumbnail] },
+    coordinates: coordinatesOrNull(data.coordinates || location.mapCoordinates),
+    images: imageUrls(data.images),
     thumbnail,
     thumbnails: images.length ? images : [thumbnail],
     amenities: data.amenities || [],
@@ -51,7 +53,7 @@ export function normalizeFirebaseProperty(snapshot) {
     ownerPhone: data.ownerPhone || '',
     ownerPhoto: data.ownerPhoto || data.ownerAvatar || '',
     verified: Boolean(data.verified),
-    isNew: true,
+    isNew: data.isNew === true,
   };
 }
 
@@ -64,51 +66,22 @@ export function readLocalCustomProperties() {
   }
 }
 
-export function subscribeToProperties(onChange, onError = () => {}) {
-  let fbProperties = [];
-  let firebaseSnapshotReady = false;
+export function subscribeToProperties(onChange, onError = () => {}, { includeCachedEmpty = true } = {}) {
+  if (!firestore) { onError(new Error('Firebase no est? configurado.')); return () => {}; }
+  return onSnapshot(collection(firestore,'properties'), snapshot => {
+    if(!includeCachedEmpty && snapshot.metadata.fromCache && snapshot.empty) return;
+    onChange(snapshot.docs.map(normalizeFirebaseProperty));
+  },onError);
+}
 
-  const emit = () => {
-    const local = (!firebaseWebEnabled || !firestore || !firebaseSnapshotReady)
-      ? readLocalCustomProperties()
-      : [];
-    const map = new Map();
-    [...local, ...fbProperties].forEach((p) => {
-      map.set(p.id, p);
-    });
-    onChange(Array.from(map.values()));
-  };
-
-  const handleStorageChange = () => emit();
-  window.addEventListener('storage', handleStorageChange);
-  window.addEventListener('ruwajay:properties-changed', handleStorageChange);
-  window.addEventListener('ruwajay:properties_changed', handleStorageChange);
-  emit();
-
-  let unsubscribeFb = () => {};
-  if (firebaseWebEnabled && firestore) {
-    unsubscribeFb = onSnapshot(
-      collection(firestore, 'properties'),
-      (snapshot) => {
-        firebaseSnapshotReady = true;
-        fbProperties = snapshot.docs.map(normalizeFirebaseProperty);
-        try {
-          // Firestore is authoritative. Remove legacy Base64/stale property copies
-          // so deleted listings cannot reappear from this browser's old cache.
-          localStorage.removeItem('ruwajay_custom_properties');
-        } catch { /* ignore unavailable storage */ }
-        emit();
-      },
-      onError
-    );
-  }
-
-  return () => {
-    window.removeEventListener('storage', handleStorageChange);
-    window.removeEventListener('ruwajay:properties-changed', handleStorageChange);
-    window.removeEventListener('ruwajay:properties_changed', handleStorageChange);
-    unsubscribeFb();
-  };
+function persistedProperty(property) {
+  const images = imageUrls(property.images);
+  if (!images.length) throw new Error('Sube al menos una fotograf?a persistente.');
+  const coordinates = coordinatesOrNull(property.coordinates || property.location?.mapCoordinates);
+  if (!coordinates) throw new Error('Selecciona la ubicaci?n real de la vivienda.');
+  if (!firebaseAuth?.currentUser) throw new Error('Debes iniciar sesi?n.');
+  return { ...property, images, thumbnail: images.includes(property.thumbnail) ? property.thumbnail : images[0],
+    coordinates, location: { ...property.location, mapCoordinates:coordinates }, schemaVersion:2 };
 }
 
 export async function publishPropertyToFirebase(property) {
@@ -116,6 +89,7 @@ export async function publishPropertyToFirebase(property) {
     throw new Error('Firebase Web no está configurado. Completa las variables VITE_FIREBASE_API_KEY y VITE_FIREBASE_APP_ID.');
   }
 
+  property = persistedProperty(property);
   const propertyRef = doc(firestore, 'properties', property.id);
   await setDoc(propertyRef, {
     ...property,
@@ -146,71 +120,15 @@ export async function publishPropertyToFirebase(property) {
   return true;
 }
 
-export async function updatePropertyStatus(propertyId, status) {
-  try {
-    const local = readLocalCustomProperties();
-    const updated = local.map((p) => (p.id === propertyId ? { ...p, status } : p));
-    localStorage.setItem('ruwajay_custom_properties', JSON.stringify(updated));
-  } catch { /* ignore */ }
-
-  publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId, status });
-
-  if (firebaseWebEnabled && firestore) {
-    try {
-      await updateDoc(doc(firestore, 'properties', propertyId), { status });
-    } catch { /* fallback to local */ }
-  }
+export async function updatePropertyStatus(propertyId,status) {
+  await updateDoc(doc(firestore,'properties',propertyId),{status});
 }
-
 export async function updatePropertyToFirebase(property) {
-  // 1. Update local storage
-  try {
-    const local = readLocalCustomProperties();
-    const idx = local.findIndex((p) => p.id === property.id);
-    if (idx >= 0) {
-      local[idx] = { ...local[idx], ...property, updatedAt: new Date().toISOString() };
-    } else {
-      local.unshift({ ...property, updatedAt: new Date().toISOString() });
-    }
-    localStorage.setItem('ruwajay_custom_properties', JSON.stringify(local));
-  } catch { /* ignore */ }
-
-  publishRealtimeEvent('PROPERTIES_CHANGED', { propertyId: property.id, action: 'updated' });
-
-  // 2. Sync to Firebase
-  if (firebaseWebEnabled && firestore) {
-    try {
-      const propertyRef = doc(firestore, 'properties', property.id);
-      await setDoc(propertyRef, {
-        ...property,
-        price: Number(property.price) || 0,
-        bedrooms: Number(property.bedrooms) || 0,
-        bathrooms: Number(property.bathrooms) || 0,
-        images: property.images || [],
-        amenities: property.amenities || [],
-        rules: property.rules || [],
-        requirements: property.requirements || [],
-        features: {
-          bedrooms: Number(property.bedrooms) || 0,
-          bathrooms: Number(property.bathrooms) || 0,
-          area: Number(property.area) || 0,
-        },
-        location: {
-          department: property.address?.department || property.department || 'Guatemala',
-          municipality: property.address?.municipality || property.municipality || 'Guatemala',
-          zone: property.address?.zone || property.zone || 'Centro',
-          approximateAddress: property.address?.approximate || property.approximateAddress || '',
-          exactAddress: property.address?.exact || property.exactAddress || '',
-          address: property.address?.exact || property.exactAddress || property.address?.approximate || property.approximateAddress || '',
-          mapCoordinates: property.coordinates || null,
-        },
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } catch (err) {
-      console.warn('Firebase update failed; local copy was saved:', err);
-    }
-  }
-
+  const data = persistedProperty(property);
+  await setDoc(doc(firestore,'properties',property.id),{
+    ...data, features:{bedrooms:Number(property.bedrooms)||0,bathrooms:Number(property.bathrooms)||0,area:Number(property.area)||0,parking:Number(property.parking)||0},
+    updatedAt:serverTimestamp(),
+  },{merge:true});
   return true;
 }
 
@@ -221,8 +139,7 @@ export function getPropertyById(propertyId) {
 
 export async function fetchPropertyById(propertyId) {
   if (!propertyId) return null;
-  const local = getPropertyById(propertyId);
-  if (local) return local;
+
 
   if (firebaseWebEnabled && firestore) {
     try {
@@ -235,14 +152,21 @@ export async function fetchPropertyById(propertyId) {
     }
   }
 
-  const demo = demoProperties.find((p) => p.id === propertyId);
-  if (demo) return demo;
+
 
   return null;
 }
 
 export async function uploadPropertyImages(files, propertyId, ownerId, onProgress = () => {}) {
-  return uploadPropertyImagesToSupabase(files, propertyId, ownerId, onProgress);
+  if (!firebaseAuth?.currentUser || firebaseAuth.currentUser.uid !== ownerId || !storage) throw new Error('Debes iniciar sesi?n.');
+  if (!files?.length || files.length > 8) throw new Error('Sube entre 1 y 8 fotograf?as.');
+  let finished = 0;
+  return Promise.all(files.map(async file => {
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8*1024*1024) throw new Error('Fotograf?a inv?lida o mayor de 8 MB.');
+    const target=ref(storage,`properties/${propertyId}/${ownerId}/${crypto.randomUUID()}`);
+    await uploadBytes(target,file,{contentType:file.type});
+    const url=await getDownloadURL(target);onProgress(Math.round(++finished/files.length*100));return url;
+  }));
 }
 
 export async function deleteOwnedProperty(propertyId, ownerId) {

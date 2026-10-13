@@ -53,7 +53,7 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
                                 userName = doc.getString("userName") ?: "Inquilino",
                                 rating = (doc.get("rating") as? Number)?.toDouble() ?: 5.0,
                                 date = dateStr,
-                                verifiedTenant = doc.getBoolean("verifiedTenant") ?: true,
+                                verifiedTenant = doc.getBoolean("verifiedTenant") ?: false,
                                 comment = doc.getString("comment") ?: "",
                                 tags = (doc.get("tags") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                                 isNew = false
@@ -177,7 +177,7 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
                 onCancel = { showAddModal = false },
                 onSubmit = { rating, comment, tags ->
                     val currentUser = auth.currentUser
-                    val nameToUse = currentUser?.displayName ?: "Inquilino Verificado"
+                    val nameToUse = currentUser?.displayName ?: "Usuario"
                     val payload = mapOf(
                         "propertyId" to propertyId,
                         "userName" to nameToUse,
@@ -185,17 +185,19 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
                         "rating" to rating,
                         "comment" to comment,
                         "tags" to tags,
-                        "verifiedTenant" to true,
+                        "verifiedTenant" to false,
                         "createdAt" to FieldValue.serverTimestamp()
                     )
 
+                    if(currentUser==null) {successMessage="Debes iniciar sesion.";return@AddReviewForm}
+                    firestore.collection("users").document(currentUser.uid).get().addOnSuccessListener {profile->
                     firestore.collection("properties")
                         .document(propertyId)
                         .collection("reviews")
-                        .add(payload)
-
-                    showAddModal = false
-                    successMessage = "¡Gracias por tu opinión! Tu reseña ha sido publicada con éxito."
+                        .add(payload + ("userName" to (profile.getString("name") ?: nameToUse)))
+                        .addOnFailureListener { successMessage = it.message ?: "No se pudo guardar la opinion." }
+                        .addOnSuccessListener { showAddModal = false; successMessage = "¡Gracias por tu opinión! Tu reseña ha sido publicada con éxito." }
+                    }.addOnFailureListener{successMessage=it.message ?: "No se pudo leer el perfil."}
                 }
             )
         }

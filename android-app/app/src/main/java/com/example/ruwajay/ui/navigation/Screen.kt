@@ -3,6 +3,7 @@ package com.example.ruwajay.ui.navigation
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Explore : Screen("explore")
+    object SavedSearch : Screen("saved_search/{id}") {fun createRoute(id:String)="saved_search/$id"}
     object Profile : Screen("profile")
     object PropertyDetail : Screen("property_detail/{id}") {
         fun createRoute(id: String) = "property_detail/$id"
@@ -15,5 +16,6 @@ sealed class Screen(val route: String) {
     }
     object Inbox : Screen("inbox")
     object Login : Screen("login")
+    object EditProperty : Screen("edit_property/{id}") { fun createRoute(id: String) = "edit_property/$id" }
     object Publish : Screen("publish")
 }

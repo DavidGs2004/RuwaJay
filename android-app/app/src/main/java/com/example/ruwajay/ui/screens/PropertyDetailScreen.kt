@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,7 +79,8 @@ fun PropertyDetailScreen(
     propertyId: String,
     onNavigateBack: () -> Unit = {},
     onChatClick: (String) -> Unit = {},
-    onRouteClick: () -> Unit = {}
+    onRouteClick: () -> Unit = {},
+    onEditClick: () -> Unit = {}
 ) {
     val property = rememberProperties().find { it.id == propertyId }
         ?: return Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -98,25 +100,7 @@ fun PropertyDetailScreen(
     var showVisitDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(propertyId, firebaseUser?.uid, property.ownerId) {
-        // Fetch owner info
-        if (property.ownerId.isNotBlank()) {
-            FirebaseFirestore.getInstance().collection("users").document(property.ownerId).get()
-                .addOnSuccessListener { doc ->
-                    if (doc.exists()) {
-                        owner = com.example.ruwajay.data.model.Owner(
-                            id = doc.id,
-                            name = doc.getString("name") ?: doc.getString("displayName") ?: "Propietario",
-                            verified = doc.getBoolean("verified") ?: false,
-                            rating = doc.getDouble("rating") ?: 5.0,
-                            responseTime = doc.getString("responseTime") ?: "~1h",
-                            propertiesCount = doc.getLong("propertiesCount")?.toInt() ?: 1,
-                            memberSince = doc.getString("memberSince") ?: "2024",
-                            online = doc.getBoolean("online") ?: false
-                        )
-                    }
-                }
-        }
-
+        owner = com.example.ruwajay.data.model.Owner(id=property.ownerId,name=property.ownerName.ifBlank { "Propietario" },verified=property.verified,rating=0.0,responseTime="",propertiesCount=0,memberSince="",online=false)
         FirebaseFirestore.getInstance().collection("properties").document(propertyId)
             .collection("reviews").get()
             .addOnSuccessListener { reviewCount = it.size() }
@@ -126,16 +110,17 @@ fun PropertyDetailScreen(
                 .collection("favorites").document(propertyId).get()
                 .addOnSuccessListener { isFavorite = it.exists() }
 
-            FirebaseFirestore.getInstance().collection("visits")
-                .whereEqualTo("propertyId", propertyId)
-                .whereEqualTo("tenantId", firebaseUser.uid)
-                .get()
-                .addOnSuccessListener { snap ->
-                    val visits = snap.documents.mapNotNull { it.getString("status") }
-                    hasConfirmedVisit = visits.contains("confirmada")
-                    hasPendingVisit = visits.contains("pendiente")
-                }
         }
+    }
+    DisposableEffect(propertyId, firebaseUser?.uid) {
+        val listener = if (firebaseUser != null) FirebaseFirestore.getInstance().collection("visits")
+            .whereEqualTo("propertyId",propertyId).whereEqualTo("tenantId",firebaseUser.uid)
+            .addSnapshotListener { snap, _ ->
+                val statuses=snap?.documents?.mapNotNull { it.getString("status") }.orEmpty()
+                hasConfirmedVisit=statuses.any { it == "confirmada" || it == "aceptada" }
+                hasPendingVisit=statuses.contains("pendiente")
+            } else null
+        onDispose { listener?.remove() }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BrandCrema).verticalScroll(rememberScrollState())) {
@@ -231,7 +216,7 @@ fun PropertyDetailScreen(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-                Text("Q ${"%,d".format(property.price)} / mes", color = BrandTerracota, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text("Q ${"%,.2f".format(property.price)} / mes", color = BrandTerracota, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
             }
             if (reviewCount > 0) {
                 Text("${reviewCount} reseña(s) compartida(s)", color = BrandTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
@@ -328,10 +313,9 @@ fun PropertyDetailScreen(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().height(200.dp)
             ) {
-                val propPoint = GeoPoint(
-                    property.location.coordinates.lat,
-                    property.location.coordinates.lng
-                )
+                val coords=property.location.mapCoordinates
+                if(coords==null) { Text("Ubicacion sin confirmar",Modifier.padding(12.dp));return@Surface }
+                val propPoint = GeoPoint(coords.lat,coords.lng)
                 OsmMapView(
                     center = propPoint,
                     zoom = 14.0,
@@ -346,9 +330,11 @@ fun PropertyDetailScreen(
                 )
             }
 
+            if(firebaseUser?.uid == property.ownerId) Button(onClick=onEditClick){Text("Editar vivienda")}
+            com.example.ruwajay.ui.components.SharedLeaseDraft(property)
             // Action Buttons
             Spacer(modifier = Modifier.height(20.dp))
-            if (hasConfirmedVisit || (firebaseUser?.uid == property.ownerId)) {
+            if (hasConfirmedVisit && firebaseUser?.uid != property.ownerId) {
                 Button(
                     onClick = {
                         if (isCreatingChat) return@Button
@@ -362,7 +348,7 @@ fun PropertyDetailScreen(
                             result.onSuccess { convId ->
                                 onChatClick(convId)
                             }.onFailure {
-                                onChatClick("")
+                                android.util.Log.e("RuwaJay", "No se pudo abrir el chat", it)
                             }
                         }
                     },
@@ -410,7 +396,7 @@ fun PropertyDetailScreen(
             ) {
                 Icon(Icons.Default.Map, null, tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Ver Ruta Waze en Vivo", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+                Text("Ver ruta hacia la vivienda", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
             }
             Spacer(modifier = Modifier.height(24.dp))
         }

@@ -18,7 +18,7 @@ import LeaseContractModal from '../components/property/LeaseContractModal';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
 import MobileAppConnectModal from '../components/ui/MobileAppConnectModal';
 import { subscribeToProperties } from '../lib/propertyService';
-import { createVisit } from '../lib/visitService';
+import { createVisit, subscribeToUserVisits } from '../lib/visitService';
 import { firebaseAuth } from '../lib/firebase';
 
 function WhatsAppIcon({ size = 18, className = '' }) {
@@ -44,37 +44,17 @@ function readStoredVisits() {
   }
 }
 
-export default function PropertyDetailPage() {
+function PropertyDetailContent({ property }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { position } = useGeolocation();
   const { isInCompare, toggleCompare } = useCompare();
   const { user } = useAuth();
-  const [firebaseProperties, setFirebaseProperties] = useState([]);
-
-  useEffect(() => subscribeToProperties(setFirebaseProperties), []);
-
-  const property = firebaseProperties.find((p) => p.id === id)
-    || demoProperties.find((p) => p.id === id)
-    || (() => {
-      try {
-        const local = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-        return local.find((p) => p.id === id);
-      } catch { return null; }
-    })()
-    || demoProperties[0];
-  const isCurrentUserOwner = Boolean(
-    user && (
-      (property?.ownerId && (property.ownerId === user.id || property.ownerId === firebaseAuth?.currentUser?.uid)) ||
-      (property?.ownerEmail && user.email && property.ownerEmail.toLowerCase() === user.email.toLowerCase()) ||
-      (property?.ownerName && user.name && property.ownerName.trim().toLowerCase() === user.name.trim().toLowerCase())
-    )
-  );
-
+  const isCurrentUserOwner = Boolean(user?.id && property.ownerId === user.id);
   const currentUserPhoto = user?.avatarImage || user?.photoURL || user?.avatar || null;
 
-  const rawOwner = demoOwners.find((o) => o.id === property?.ownerId);
+  const rawOwner = null;
   const owner = rawOwner ? {
     ...rawOwner,
     photo: (isCurrentUserOwner && currentUserPhoto) || property?.ownerPhoto || property?.ownerAvatar || rawOwner.avatar || rawOwner.photo || null,
@@ -116,18 +96,8 @@ export default function PropertyDetailPage() {
   const [visitConflictError, setVisitConflictError] = useState('');
 
   // Read existing visits to prevent overlapping appointments at the same time
-  const [existingVisits, setExistingVisits] = useState(readStoredVisits);
-
-  useEffect(() => {
-    const refreshVisits = () => setExistingVisits(readStoredVisits());
-    refreshVisits();
-    window.addEventListener('storage', refreshVisits);
-    window.addEventListener('ruwajay:visits-changed', refreshVisits);
-    return () => {
-      window.removeEventListener('storage', refreshVisits);
-      window.removeEventListener('ruwajay:visits-changed', refreshVisits);
-    };
-  }, [showVisitModal]);
+  const [existingVisits, setExistingVisits] = useState([]);
+  useEffect(() => subscribeToUserVisits(user?.id,setExistingVisits),[user?.id]);
 
   // Check if there's a confirmed visit for this property by the current user
   const hasConfirmedVisit = useMemo(() => {
@@ -235,7 +205,7 @@ export default function PropertyDetailPage() {
       ownerId: property.ownerId || owner.id || 'owner-custom',
       ownerName: property.ownerName || owner.name || 'Propietario RuwaJay',
       ownerEmail: property.ownerEmail || owner.email || '',
-      ownerPhone: property.ownerPhone || owner.phone || ownerPhone || '+502 5482 9104',
+      ownerPhone: property.ownerPhone || owner.phone || ownerPhone || '',
       ownerPhoto: property.ownerPhoto || owner.photo || owner.avatar || '',
       tenantId: firebaseAuth?.currentUser?.uid || user?.id || 'guest',
       tenantName: user?.name || 'Inquilino interesado',
@@ -1115,4 +1085,16 @@ export default function PropertyDetailPage() {
       />
     </main>
   );
+}
+
+export default function PropertyDetailPage() {
+  const { id } = useParams();
+  const [properties,setProperties]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  useEffect(()=>subscribeToProperties(items=>{setProperties(items);setLoading(false);},()=>{setError('No se pudo cargar la vivienda.');setLoading(false);}),[]);
+  const property=properties.find(p=>p.id===id);
+  if(loading) return <div className="p-12 text-center">Cargando vivienda...</div>;
+  if(!property) return <div className="p-12 text-center">{error || 'Esta vivienda no existe o fue eliminada.'}</div>;
+  return <PropertyDetailContent property={property} />;
 }

@@ -228,7 +228,7 @@ fun PropertyCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Q ${"%,d".format(property.price)}",
+                            text = "Q ${"%,.2f".format(property.price)}",
                             color = BrandForest,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.ExtraBold

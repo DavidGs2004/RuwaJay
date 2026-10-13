@@ -38,11 +38,11 @@ object MockDataRepository {
         Property(
             id = "prop-1",
             title = "Casa moderna en zona residencial exclusiva",
-            price = 6500,
+            price = 6500.0,
             type = "casa",
             status = "disponible",
             description = "Hermosa casa de diseño moderno ubicada en condominio seguro. Ideal para familias que buscan tranquilidad sin alejarse de la ciudad. Cuenta con acabados de primera, jardín amplio y seguridad 24/7.",
-            features = PropertyFeatures(bedrooms = 3, bathrooms = 2, area = 180),
+            features = PropertyFeatures(bedrooms = 3, bathrooms = 2, area = 180.0),
             location = Location(
                 address = "Residenciales Vista Linda, Lote 45",
                 zone = "Zona 15",
@@ -61,11 +61,11 @@ object MockDataRepository {
         Property(
             id = "prop-2",
             title = "Apartamento tipo Loft con vista a los volcanes",
-            price = 4200,
+            price = 4200.0,
             type = "apartamento",
             status = "disponible",
             description = "Elegante apartamento loft en piso alto. Iluminación natural increíble, ventanales de piso a techo y balcón amplio. Cerca de centros comerciales, universidades y áreas corporativas.",
-            features = PropertyFeatures(bedrooms = 1, bathrooms = 1, area = 75),
+            features = PropertyFeatures(bedrooms = 1, bathrooms = 1, area = 75.0),
             location = Location(
                 address = "Torre Vistas, Nivel 14",
                 zone = "Zona 14",
@@ -84,11 +84,11 @@ object MockDataRepository {
         Property(
             id = "prop-3",
             title = "Casa colonial restaurada",
-            price = 5800,
+            price = 5800.0,
             type = "casa",
             status = "reservada",
             description = "Casa de estilo colonial con detalles auténticos, patio central con fuente de agua, y terraza española.",
-            features = PropertyFeatures(bedrooms = 2, bathrooms = 2, area = 150),
+            features = PropertyFeatures(bedrooms = 2, bathrooms = 2, area = 150.0),
             location = Location(
                 address = "Calle de los pasos, #21",
                 zone = "Centro",

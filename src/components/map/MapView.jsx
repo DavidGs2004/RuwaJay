@@ -136,8 +136,9 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
 
         {/* Property markers */}
         {properties.map((prop) => {
-          const propLat = Number(prop.coordinates?.lat ?? prop.location?.mapCoordinates?.lat ?? 14.6349);
-          const propLng = Number(prop.coordinates?.lng ?? prop.location?.mapCoordinates?.lng ?? -90.5069);
+          if (!prop.coordinates && !prop.location?.mapCoordinates) return null;
+          const propLat = Number(prop.coordinates?.lat ?? prop.location?.mapCoordinates?.lat);
+          const propLng = Number(prop.coordinates?.lng ?? prop.location?.mapCoordinates?.lng);
           if (isNaN(propLat) || isNaN(propLng)) return null;
 
           const isSelected = selectedProperty?.id === prop.id;

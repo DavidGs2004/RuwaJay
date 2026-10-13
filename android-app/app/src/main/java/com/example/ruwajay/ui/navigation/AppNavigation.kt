@@ -76,6 +76,7 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
                         navController.navigate(Screen.Inbox.route)
                     }
                 },
+                onEditClick = { navController.navigate(Screen.EditProperty.createRoute(id)) },
                 onRouteClick = { navController.navigate(Screen.Route.createRoute(id)) }
             )
         }
@@ -144,10 +145,16 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             ProfileScreen(
                 onLoginClick = { navController.navigate(Screen.Login.route) },
                 onInboxClick = { navController.navigate(Screen.Inbox.route) },
+                onChatClick = { id -> navController.navigate(Screen.Chat.createRoute(id)) },
                 onExploreClick = { navController.navigate(Screen.Explore.route) },
+                onSearchClick = { id -> navController.navigate(Screen.SavedSearch.createRoute(id)) },
                 onPublishClick = { navController.navigate(Screen.Publish.route) },
                 onPropertyClick = { id -> navController.navigate(Screen.PropertyDetail.createRoute(id)) }
             )
+        }
+        composable(route=Screen.SavedSearch.route,arguments=listOf(navArgument("id"){type=NavType.StringType})) {entry->ExploreScreen(savedSearchId=entry.arguments?.getString("id"),onPropertyClick={id->navController.navigate(Screen.PropertyDetail.createRoute(id))})}
+        composable(route=Screen.EditProperty.route,arguments=listOf(navArgument("id"){type=NavType.StringType})) { entry ->
+            PublishScreen(propertyId=entry.arguments?.getString("id"))
         }
         composable(
             route = Screen.Publish.route,

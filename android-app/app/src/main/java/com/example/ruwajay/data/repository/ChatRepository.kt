@@ -4,128 +4,76 @@ import android.content.ContentResolver
 import android.net.Uri
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Query
+import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.storage.FirebaseStorage
 
 class ChatRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
-    fun observeConversations(userId: String, onChange: (List<Map<String, Any>>) -> Unit) =
-        firestore.collection("conversations")
-            .whereArrayContains("participants", userId)
-            .orderBy("lastMessageTimestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, _ ->
-                onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
+    fun observeConversations(userId: String, onError: (Exception) -> Unit = {}, onChange: (List<Map<String, Any>>) -> Unit) =
+        firestore.collection("conversations").whereArrayContains("participants", userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { onError(error); return@addSnapshotListener }
+                onChange(snapshot?.documents?.filter { it.getString("migratedTo") == null && it.getBoolean("archived") != true }?.map { it.data.orEmpty() + ("id" to it.id) }
+                    ?.sortedByDescending { (it["lastMessageTimestamp"] as? com.google.firebase.Timestamp)?.toDate()?.time ?: 0L } ?: emptyList())
             }
 
-    fun getOrCreateConversation(
-        propertyId: String,
-        ownerId: String,
-        propertyTitle: String,
-        onResult: (Result<String>) -> Unit
-    ) {
-        val currentUser = auth.currentUser
-        if (currentUser == null) {
-            onResult(Result.failure(Exception("Debes iniciar sesión para iniciar un chat.")))
-            return
-        }
-
-        firestore.collection("conversations")
-            .whereEqualTo("propertyId", propertyId)
-            .whereArrayContains("participants", currentUser.uid)
-            .get()
-            .addOnSuccessListener { querySnapshot ->
-                if (!querySnapshot.isEmpty) {
-                    val existingDoc = querySnapshot.documents.first()
-                    onResult(Result.success(existingDoc.id))
-                } else {
-                    val targetOwnerId = if (ownerId.isNotBlank()) ownerId else "owner-1"
-                    val newConversation = mapOf(
-                        "propertyId" to propertyId,
-                        "ownerId" to targetOwnerId,
-                        "propertyTitle" to propertyTitle,
-                        "participants" to listOf(currentUser.uid, targetOwnerId),
-                        "lastMessage" to "Consulta sobre $propertyTitle",
-                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
-                        "lastSenderId" to currentUser.uid
-                    )
-
-                    firestore.collection("conversations").add(newConversation)
-                        .addOnSuccessListener { docRef ->
-                            onResult(Result.success(docRef.id))
-                        }
-                        .addOnFailureListener { error ->
-                            onResult(Result.failure(error))
-                        }
-                }
-            }
-            .addOnFailureListener { error ->
-                onResult(Result.failure(error))
-            }
+    fun getOrCreateConversation(propertyId: String, ownerId: String, propertyTitle: String, seekerId: String? = null,
+        onResult: (Result<String>) -> Unit) {
+        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        FirebaseFunctions.getInstance("us-central1").getHttpsCallable("openConversation")
+            .call(mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to (seekerId ?: user.uid)))
+            .addOnSuccessListener { result ->
+                val id = (result.getData() as? Map<*, *>)?.get("id") as? String
+                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta de chat invalida.")))
+            }.addOnFailureListener { onResult(Result.failure(it)) }
     }
-
-    fun observeMessages(roomId: String, onChange: (List<Map<String, Any>>) -> Unit) =
+    fun observeMessages(roomId: String, onError: (Exception) -> Unit = {}, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
-            .orderBy("createdAt", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, _ ->
+            .orderBy("createdAt", Query.Direction.ASCENDING).addSnapshotListener { snapshot, error ->
+                if (error != null) { onError(error); return@addSnapshotListener }
                 onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
             }
-
+    fun markAsRead(roomId: String, onError: (Exception) -> Unit = {}) {
+        val uid = auth.currentUser?.uid ?: return
+        firestore.collection("conversations").document(roomId).update("readAt.$uid", FieldValue.serverTimestamp())
+            .addOnFailureListener { onError(it) }
+    }
     fun sendText(roomId: String, text: String, onResult: (Result<Unit>) -> Unit) {
-        addMessage(roomId, mapOf("type" to "text", "text" to text), onResult)
+        if (text.isBlank() || text.length > 4000) return onResult(Result.failure(Exception("Mensaje invalido.")))
+        addMessage(roomId, mapOf("type" to "text", "text" to text.trim()), onResult)
     }
-
     fun sendLocation(roomId: String, latitude: Double, longitude: Double, onResult: (Result<Unit>) -> Unit) {
-        addMessage(roomId, mapOf("type" to "location", "latitude" to latitude, "longitude" to longitude), onResult)
+        addMessage(roomId, mapOf("type" to "location", "text" to "Ubicacion", "latitude" to latitude, "longitude" to longitude), onResult)
     }
-
-    fun uploadMedia(
-        roomId: String,
-        uri: Uri,
-        contentResolver: ContentResolver,
-        type: String,
-        onResult: (Result<Unit>) -> Unit
-    ) {
-        val uid = auth.currentUser?.uid ?: "anonymous"
-        val extension = if (type == "audio") "m4a" else "jpg"
-        val reference = storage.reference.child("chat/$roomId/$uid/${System.currentTimeMillis()}.$extension")
-        val stream = contentResolver.openInputStream(uri)
-        if (stream == null) {
-            onResult(Result.failure(Exception("No se pudo leer el archivo.")))
-            return
-        }
-        reference.putStream(stream)
-            .continueWithTask { reference.downloadUrl }
-            .addOnSuccessListener { downloadUri ->
-                addMessage(roomId, mapOf("type" to type, "mediaUrl" to downloadUri.toString()), onResult)
-            }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+    fun uploadMedia(roomId: String, uri: Uri, contentResolver: ContentResolver, type: String, onResult: (Result<Unit>) -> Unit) {
+        val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        val reference = storage.reference.child("chat/$roomId/$uid/${java.util.UUID.randomUUID()}")
+        val mime = contentResolver.getType(uri) ?: if (type == "audio") "audio/mp4" else "image/jpeg"
+        val metadata = com.google.firebase.storage.StorageMetadata.Builder().setContentType(mime).build()
+        reference.putFile(uri, metadata).continueWithTask { task ->
+            if (!task.isSuccessful) throw task.exception ?: Exception("No se pudo subir el archivo.")
+            reference.downloadUrl
+        }.addOnSuccessListener { url ->
+            addMessage(roomId, mapOf("type" to type, "mediaUrl" to url.toString(), "text" to if (type == "audio") "Audio" else "Foto"), onResult)
+        }.addOnFailureListener { onResult(Result.failure(it)) }
     }
-
     private fun addMessage(roomId: String, payload: Map<String, Any>, onResult: (Result<Unit>) -> Unit) {
-        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
-        
-        val message = payload + mapOf(
-            "senderId" to user.uid,
-            "senderName" to (user.displayName ?: "Usuario"),
-            "createdAt" to FieldValue.serverTimestamp()
-        )
-        
-        firestore.collection("conversations").document(roomId).collection("messages").add(message)
-            .addOnSuccessListener {
-                // Update conversation metadata
-                firestore.collection("conversations").document(roomId).update(
-                    mapOf(
-                        "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
-                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
-                        "lastSenderId" to user.uid
-                    )
-                )
-                onResult(Result.success(Unit)) 
-            }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        val room = firestore.collection("conversations").document(roomId)
+        val ref = room.collection("messages").document()
+        firestore.collection("users").document(user.uid).get().addOnSuccessListener { profile ->
+            val batch = firestore.batch()
+            batch.set(ref, payload + mapOf("senderId" to user.uid,
+                "senderName" to (profile.getString("name") ?: user.displayName ?: "Usuario"),
+                "createdAt" to FieldValue.serverTimestamp(), "status" to "sent"))
+            batch.update(room, mapOf("lastMessage" to (payload["text"] ?: "Archivo"),
+                "lastMessageTimestamp" to FieldValue.serverTimestamp(), "lastSenderId" to user.uid,"lastMessageId" to ref.id))
+            batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
+        }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 }

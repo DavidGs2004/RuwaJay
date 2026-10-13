@@ -32,7 +32,7 @@ import com.example.ruwajay.ui.theme.*
 import org.osmdroid.util.GeoPoint
 
 @Composable
-fun PublishScreen() {
+fun PublishScreen(propertyId: String? = null) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
@@ -45,18 +45,40 @@ fun PublishScreen() {
     var bedrooms by remember { mutableStateOf("") }
     var bathrooms by remember { mutableStateOf("") }
     var propertyType by remember { mutableStateOf("casa") }
+    var area by remember { mutableStateOf("") }
+    var parking by remember { mutableStateOf("") }
+    var maintenance by remember { mutableStateOf("") }
+    var amenities by remember { mutableStateOf("") }
+    var rules by remember { mutableStateOf("") }
+    var requirements by remember { mutableStateOf("") }
+    var furnished by remember { mutableStateOf(false) }
+    var petsAllowed by remember { mutableStateOf(false) }
+    var retainedImages by remember { mutableStateOf<List<String>>(emptyList()) }
 
     // Map Coordinates State
-    var pickedGeoPoint by remember { mutableStateOf(GeoPoint(14.5975, -90.5106)) } // Default Guatemala City
+    var pickedGeoPoint by remember { mutableStateOf<GeoPoint?>(null) } // Default Guatemala City
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     var submitted by remember { mutableStateOf(false) }
     var isPublishing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val existing = com.example.ruwajay.data.repository.rememberProperties().find { it.id == propertyId }
+    LaunchedEffect(existing?.id) {
+        if(existing!=null) {
+            title=existing.title; description=existing.description;price=existing.price.toString();deposit=(existing.deposit?:0.0).toString()
+            department=existing.location.department?:"Guatemala";municipality=existing.location.city;zone=existing.location.zone
+            approximateAddress=existing.location.approximateAddress?:"";exactAddress=existing.location.exactAddress?:""
+            bedrooms=existing.features.bedrooms.toString();bathrooms=existing.features.bathrooms.toString();propertyType=existing.type
+            area=existing.features.area.toString();parking=existing.features.parking.toString();maintenance=existing.maintenanceFee.toString()
+            amenities=existing.amenities.joinToString(", ");rules=existing.rules.joinToString(", ");requirements=existing.requirements.joinToString(", ")
+            furnished=existing.furnished;petsAllowed=existing.petsAllowed;retainedImages=existing.images
+            pickedGeoPoint=existing.location.mapCoordinates?.let {GeoPoint(it.lat,it.lng)}
+        }
+    }
     val context = LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        selectedImages = uris.take(10)
+        selectedImages = uris.take(8)
     }
 
     Column(
@@ -138,6 +160,20 @@ fun PublishScreen() {
                 }
 
                 // ── MAPA INTERACTIVO NATIVO DE UBICACIÓN ──
+                FormSection("Detalles y condiciones") {
+                    FormField("Area en m2",area,{area=it},Icons.Default.SquareFoot,"0",keyboardType=KeyboardType.Decimal)
+                    FormField("Parqueos",parking,{parking=it},Icons.Default.DirectionsCar,"0",keyboardType=KeyboardType.Number)
+                    FormField("Mantenimiento mensual",maintenance,{maintenance=it},Icons.Default.AttachMoney,"0",keyboardType=KeyboardType.Decimal)
+                    FormField("Amenidades separadas por coma",amenities,{amenities=it},Icons.Default.Check,"Agua, Jardin")
+                    FormField("Reglas separadas por coma",rules,{rules=it},Icons.Default.Check,"Reglas de convivencia")
+                    FormField("Requisitos separados por coma",requirements,{requirements=it},Icons.Default.Check,"Requisitos")
+                    Row {Checkbox(checked=furnished,onCheckedChange={furnished=it});Text("Amueblada")}
+                    Row {Checkbox(checked=petsAllowed,onCheckedChange={petsAllowed=it});Text("Permite mascotas")}
+                    if(retainedImages.isNotEmpty()) {
+                        Text("Fotografias actuales: ${retainedImages.size}")
+                        TextButton(onClick={retainedImages=emptyList()}){Text("Reemplazar fotografias actuales")}
+                    }
+                }
                 FormSection("Ubicación Exacta en el Mapa") {
                     Text(
                         "Usa el buscador, el botón GPS o toca el mapa para marcar el punto exacto de la vivienda:",
@@ -147,7 +183,7 @@ fun PublishScreen() {
                     )
 
                     OsmLocationPickerMap(
-                        initialPoint = pickedGeoPoint,
+                        initialPoint = pickedGeoPoint ?: GeoPoint(14.6349,-90.5069),
                         onLocationSelected = { geoPoint ->
                             pickedGeoPoint = geoPoint
                         },
@@ -221,8 +257,8 @@ fun PublishScreen() {
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
                     onClick = {
-                        val numericPrice = price.toIntOrNull()
-                        val numericDeposit = deposit.toIntOrNull() ?: 0
+                        val numericPrice = price.toDoubleOrNull()
+                        val numericDeposit = deposit.toDoubleOrNull() ?: 0.0
                         val numericBedrooms = bedrooms.toIntOrNull()
                         val numericBathrooms = bathrooms.toIntOrNull()
                         if (title.isBlank() || description.isBlank() || department.isBlank() || municipality.isBlank() || zone.isBlank() || approximateAddress.isBlank() || exactAddress.isBlank() || numericPrice == null || numericBedrooms == null || numericBathrooms == null) {
@@ -245,7 +281,11 @@ fun PublishScreen() {
                             exactAddress = exactAddress,
                             bedrooms = numericBedrooms,
                             bathrooms = numericBathrooms,
-                            coordinates = Coordinates(pickedGeoPoint.latitude, pickedGeoPoint.longitude),
+                            area=area.toDoubleOrNull()?:0.0,parking=parking.toIntOrNull()?:0,maintenanceFee=maintenance.toDoubleOrNull()?:0.0,
+                            amenities=amenities.split(',').map{it.trim()}.filter{it.isNotEmpty()},rules=rules.split(',').map{it.trim()}.filter{it.isNotEmpty()},
+                            requirements=requirements.split(',').map{it.trim()}.filter{it.isNotEmpty()},furnished=furnished,petsAllowed=petsAllowed,
+                            propertyId=propertyId,retainedImages=retainedImages,
+                            coordinates = pickedGeoPoint?.let { Coordinates(it.latitude,it.longitude) },
                             imageUris = selectedImages,
                             contentResolver = context.contentResolver,
                             onResult = { result ->

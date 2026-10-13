@@ -23,5 +23,7 @@ data class Message(
     val timestamp: String,
     val status: String, // "read", "delivered", "sent"
     val image: String? = null,
-    val isVoice: Boolean = false
+    val isVoice: Boolean = false,
+    val type: String = "text",
+    val mediaUrl: String? = null
 )

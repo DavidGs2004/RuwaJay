@@ -3,7 +3,7 @@ package com.example.ruwajay.data.model
 data class Property(
     val id: String,
     val title: String,
-    val price: Int,
+    val price: Double,
     val currency: String = "GTQ",
     val type: String,
     val status: String,
@@ -11,22 +11,28 @@ data class Property(
     val features: PropertyFeatures,
     val location: Location,
     val ownerId: String,
+    val ownerName: String = "",
+    val ownerPhone: String = "",
+    val ownerPhoto: String = "",
+    val ownerEmail: String = "",
     val images: List<String>,
     val amenities: List<String>,
     val rules: List<String>,
     val requirements: List<String>,
-    val deposit: Int? = null,
-    val verified: Boolean = true,
+    val deposit: Double? = null,
+    val maintenanceFee: Double = 0.0,
+    val verified: Boolean = false,
     val isNew: Boolean = false,
     val furnished: Boolean = false,
-    val petsAllowed: Boolean = true
+    val patio: Boolean = false,
+    val petsAllowed: Boolean = false
 )
 
 data class PropertyFeatures(
     val bedrooms: Int,
     val bathrooms: Int,
-    val area: Int,
-    val parking: Int = 1
+    val area: Double,
+    val parking: Int = 0
 )
 
 data class Location(

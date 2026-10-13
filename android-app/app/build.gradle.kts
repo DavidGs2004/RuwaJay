@@ -24,9 +24,10 @@ android {
         applicationId = "com.example.ruwajay"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "2.4.0"
+        versionCode = 3
+        versionName = "2.5.0"
 
+        buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"${localSetting("MAPBOX_ACCESS_TOKEN")}\"")
         buildConfigField("String", "SUPABASE_URL", "\"${localSetting("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localSetting("SUPABASE_ANON_KEY")}\"")
         buildConfigField("String", "SUPABASE_PROPERTY_BUCKET", "\"${localSetting("SUPABASE_PROPERTY_BUCKET").ifBlank { "property-images" }}\"")
@@ -66,6 +67,8 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
+    implementation(libs.firebase.functions)
+    implementation(libs.firebase.messaging)
     implementation(libs.play.services.location)
     implementation(libs.coil.compose)
     implementation(libs.androidx.compose.material.icons.extended)

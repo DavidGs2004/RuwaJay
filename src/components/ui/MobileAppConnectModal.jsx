@@ -8,7 +8,11 @@ export default function MobileAppConnectModal({ isOpen, onClose, targetPath = ''
 
   // Limpiar ruta para deep link
   const cleanPath = targetPath.startsWith('/') ? targetPath.slice(1) : targetPath;
-  const deepLink = cleanPath ? `ruwajay://${cleanPath}` : 'ruwajay://home';
+  const query = new URLSearchParams(cleanPath.split('?')[1] || '');
+  const route = cleanPath.split('?')[0];
+  const appPath = route === 'ruta' && query.get('property') ? `ruta/${query.get('property')}`
+    : route === 'chat' && query.get('conversation') ? `chat/${query.get('conversation')}` : route;
+  const deepLink = appPath ? `ruwajay://${appPath}` : 'ruwajay://home';
   const webLink = `${window.location.origin}/${cleanPath}`;
 
   const handleOpenApp = () => {

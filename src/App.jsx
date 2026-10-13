@@ -1,3 +1,4 @@
+import NotificationCenter from './components/ui/NotificationCenter';
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -36,6 +37,11 @@ function ScrollToTop() {
   return null;
 }
 
+function SuspendedSignOut() {
+  const { logout } = useAuth();
+  return <button onClick={logout}>Cerrar sesión</button>;
+}
+
 function RuwaJayRoutes() {
   const { user, isInitializing, isPostAuthLoading } = useAuth();
   const location = useLocation();
@@ -51,6 +57,10 @@ function RuwaJayRoutes() {
   }
 
   if (isPostAuthLoading) return <RuwaJayLoader />;
+  if(user?.suspended || user?.status === 'suspended') return <div className="p-12 text-center">
+    <p>Tu cuenta está suspendida. Contacta al administrador.</p>
+    <SuspendedSignOut />
+  </div>;
 
   // Rutas accesibles sin haber iniciado sesión
   if (!user) {
@@ -91,7 +101,7 @@ function RuwaJayRoutes() {
       {!isChatRoute && <Footer />}
       {!isChatRoute && <MobileNav />}
       <PropertyCompareModal />
-      <ChatNotificationToast />
+      <ChatNotificationToast /><NotificationCenter />
       <MobileAppConnectModal
         isOpen={mobileAppModalOpen}
         onClose={() => setMobileAppModalOpen(false)}

@@ -1,3 +1,5 @@
+import { useAuth } from '../context/AuthContext';
+import { subscribeSavedSearches } from '../lib/savedSearchService';
 import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -35,6 +37,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function ExplorePage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const viewMode = searchParams.get('view') === 'map' ? 'map' : 'list';
   const nearbyMode = searchParams.get('nearby') === 'true';
@@ -98,21 +101,8 @@ export default function ExplorePage() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    try {
-      const items = JSON.parse(localStorage.getItem('ruwajay_saved_searches') || '[]');
-      setSavedSearches(items);
-    } catch {
-      setSavedSearches([]);
-    }
-  }, []);
-
-  const refreshSavedSearches = () => {
-    try {
-      const items = JSON.parse(localStorage.getItem('ruwajay_saved_searches') || '[]');
-      setSavedSearches(items);
-    } catch {}
-  };
+  useEffect(()=>subscribeSavedSearches(user?.id,setSavedSearches),[user?.id]);
+  const refreshSavedSearches = () => {};
 
   const handleApplySavedSearch = (saved) => {
     if (!saved?.filters) return;
@@ -291,7 +281,7 @@ export default function ExplorePage() {
 
   // Firestore is the shared source; demo records remain only as a fallback for an empty database.
   const allProperties = useMemo(() => {
-    const merged = firebaseProperties.length > 0 ? firebaseProperties : demoProperties;
+    const merged = firebaseProperties;
     return Array.from(new Map(merged.map((property) => [property.id, property])).values());
   }, [firebaseProperties]);
 

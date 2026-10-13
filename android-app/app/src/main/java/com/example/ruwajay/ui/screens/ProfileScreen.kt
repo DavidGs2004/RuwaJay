@@ -46,7 +46,9 @@ fun ProfileScreen(
     onInboxClick: () -> Unit = {},
     onExploreClick: () -> Unit = {},
     onPublishClick: () -> Unit = {},
-    onPropertyClick: (String) -> Unit = {}
+    onPropertyClick: (String) -> Unit = {},
+    onChatClick: (String) -> Unit = {},
+    onSearchClick: (String) -> Unit = {}
 ) {
     val auth = FirebaseAuth.getInstance()
     val firestore = FirebaseFirestore.getInstance()
@@ -96,7 +98,7 @@ fun ProfileScreen(
                     }
                 }
 
-            chatListener = firestore.collection("chats")
+            chatListener = firestore.collection("conversations")
                 .whereArrayContains("participants", uid)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null) {
@@ -122,7 +124,7 @@ fun ProfileScreen(
     
     var selectedTab by remember { mutableStateOf(0) }
     val userRole = (userData?.get("role") as? String) ?: "inquilino"
-    val isAdmin = userRole == "admin" || currentUser?.email?.lowercase()?.contains("admin") == true || currentUser?.email == "admin@ruwajay.com"
+    val isAdmin = userRole == "admin"
 
     var showPublishUpdateDialog by remember { mutableStateOf(false) }
     var newUpdateTitle by remember { mutableStateOf("") }
@@ -212,7 +214,9 @@ fun ProfileScreen(
                                 .background(BrandForest),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
+                            val photo=(userData?.get("avatarImage") ?: userData?.get("avatar") ?: userData?.get("photoURL")) as? String
+                            if(!photo.isNullOrBlank()) coil.compose.AsyncImage(model=photo,contentDescription="Perfil",modifier=Modifier.fillMaxSize())
+                            else Text(
                                 text = (currentUser?.displayName?.take(1) ?: currentUser?.email?.take(1) ?: "U").uppercase(),
                                 color = Color.White,
                                 fontSize = 28.sp,
@@ -221,7 +225,7 @@ fun ProfileScreen(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = currentUser?.displayName ?: (userData?.get("name") as? String) ?: "Usuario RuwaJay",
+                            text = (userData?.get("name") as? String) ?: currentUser?.displayName ?: "Usuario RuwaJay",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = BrandTextPrimary
@@ -247,8 +251,7 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedButton(
                             onClick = {
-                                auth.signOut()
-                                currentUser = null
+                                com.example.ruwajay.data.repository.NotificationRepository.signOut { currentUser = null }
                             },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
@@ -262,6 +265,7 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                AccountTools(onPropertyClick = onPropertyClick, onChatClick = onChatClick, onSearchClick = onSearchClick)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

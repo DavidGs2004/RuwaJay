@@ -1,3 +1,4 @@
+import { fetchPropertyById } from '../lib/propertyService';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
@@ -11,12 +12,8 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { firebaseAuth } from '../lib/firebase';
 
-function isUserMsg(msg, currentUserId) {
-  if (!msg) return false;
-  if (typeof msg.isUser === 'boolean') return msg.isUser;
-  if (msg.senderId === 'user' || msg.senderId === 'user-demo' || msg.senderName === 'Tú') return true;
-  if (currentUserId && String(msg.senderId) === String(currentUserId)) return true;
-  return false;
+function isUserMsg(message,currentUserId) {
+  return Boolean(message && currentUserId && message.senderId === currentUserId);
 }
 
 function formatConversationTime(value) {
@@ -45,14 +42,12 @@ export default function ChatPage() {
     startConversationWithProperty,
     totalUnreadCount,
     typingMap,
-    resetDemoChats,
+    resetDemoChats, chatError,
   } = useChat();
 
   const [inputText, setInputText] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread'
-  const [showCallModal, setShowCallModal] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
   const [mobileView, setMobileView] = useState('chat'); // 'list' | 'chat'
   const [selectedImage, setSelectedImage] = useState(null);
 
@@ -93,33 +88,12 @@ export default function ChatPage() {
     if (urlConversationId) return;
     if (!urlPropertyId || !user?.id) return;
 
-    // Check if there's a confirmed visit for this property
-    try {
-      const parsedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-      const visits = Array.isArray(parsedVisits) ? parsedVisits : [];
-      const hasConfirmed = visits.some(
-        (v) =>
-          v.propertyId === urlPropertyId &&
-          (v.status === 'confirmada' || v.status === 'aceptada') &&
-          (
-            v.tenantId === user.id ||
-            v.ownerId === user.id ||
-            (firebaseAuth?.currentUser?.uid && (v.tenantId === firebaseAuth.currentUser.uid || v.ownerId === firebaseAuth.currentUser.uid)) ||
-            (user?.phone && (String(v.tenantPhone).replace(/\D/g, '') === String(user.phone).replace(/\D/g, '') || String(v.ownerPhone).replace(/\D/g, '') === String(user.phone).replace(/\D/g, '')))
-          )
-      );
-
-      if (hasConfirmed) {
-        setChatBlocked(false);
-        startConversationWithProperty(urlPropertyId);
-        setMobileView('chat');
-      } else {
-        setChatBlocked(true);
-      }
-    } catch {
-      setChatBlocked(true);
-    }
-  }, [urlConversationId, urlPropertyId, user?.id, startConversationWithProperty, visitRevision]);
+    let mounted = true;
+    startConversationWithProperty(urlPropertyId).then(() => {
+      if (mounted) { setChatBlocked(false); setMobileView('chat'); }
+    }).catch(() => { if (mounted) setChatBlocked(true); });
+    return () => { mounted = false; };
+  }, [urlConversationId, urlPropertyId, user?.id, startConversationWithProperty]);
 
   // Mark active conversation as read
   useEffect(() => {
@@ -149,47 +123,21 @@ export default function ChatPage() {
     }
   }, [activeConversationId]);
 
-  // Simulated call timer
-  useEffect(() => {
-    let interval = null;
-    if (showCallModal) {
-      interval = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
-    return () => clearInterval(interval);
-  }, [showCallModal]);
-
   // Current Property & Owner details for active chat
-  const activeProperty = useMemo(() => {
-    if (!activeConversation?.propertyId) return null;
-    try {
-      const localProps = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-      const found = Array.isArray(localProps) ? localProps.find((p) => p.id === activeConversation.propertyId) : null;
-      if (found) return found;
-    } catch { /* ignore */ }
-
-    return (
-      demoProperties.find((p) => p.id === activeConversation.propertyId) || {
-        id: activeConversation.propertyId,
-        title: activeConversation.propertyTitle || 'Vivienda RuwaJay',
-        price: activeConversation.propertyPrice || 0,
-        thumbnail: activeConversation.propertyImage || '/Casas/cat-familiar.jpg',
-      }
-    );
-  }, [activeConversation]);
+  const [activeProperty,setActiveProperty]=useState(null);
+  useEffect(()=>{
+    let active=true;setActiveProperty(null);
+    if(activeConversation?.propertyId) fetchPropertyById(activeConversation.propertyId).then(p=>{if(active)setActiveProperty(p);});
+    return()=>{active=false;};
+  },[activeConversation?.propertyId]);
 
   const activeOwner = useMemo(() => {
-    const rawOwner = demoOwners.find((o) => o.id === activeConversation?.ownerId);
-    if (rawOwner) return rawOwner;
 
     if (activeProperty?.ownerName) {
       return {
         id: activeProperty.ownerId || activeConversation?.ownerId || 'owner-custom',
         name: activeProperty.ownerName,
-        phone: activeProperty.ownerPhone || '+502 5482 9104',
+        phone: activeProperty.ownerPhone || '',
         photo: activeProperty.ownerPhoto || activeConversation?.participantAvatar || null,
         avatar: activeProperty.ownerPhoto || activeConversation?.participantAvatar || null,
         verified: Boolean(activeProperty.verified),
@@ -199,10 +147,10 @@ export default function ChatPage() {
     return {
       id: activeConversation?.ownerId || 'owner-custom',
       name: activeConversation?.participantName || 'Propietario',
-      phone: activeConversation?.participantPhone || '+502 5482 9104',
+      phone: activeConversation?.participantPhone || '',
       photo: activeConversation?.participantAvatar || null,
       avatar: activeConversation?.participantAvatar || null,
-      verified: true,
+      verified: false,
     };
   }, [activeConversation, activeProperty]);
 
@@ -239,16 +187,31 @@ export default function ChatPage() {
     }
   };
 
-  // Handle simulated Voice Note
+  const recorderRef = useRef(null);
+  const recordingStream = useRef(null);
+  const [recording, setRecording] = useState(false);
+  useEffect(() => () => {
+    if (recorderRef.current?.state === 'recording') { recorderRef.current.onstop = null; recorderRef.current.stop(); }
+    recordingStream.current?.getTracks().forEach(track => track.stop());
+  }, []);
   const handleSendVoiceNote = async () => {
     if (!activeConversation?.id) return;
+    if (recording) { recorderRef.current?.stop(); setRecording(false); return; }
     try {
-      await sendMessage(activeConversation.id, '', null, true);
-    } catch (error) {
-      window.alert(error?.message === 'CHAT_REQUIRES_FIREBASE_AUTH'
-        ? 'Para usar el chat en tiempo real inicia nuevamente con Google.'
-        : 'No se pudo enviar la nota de voz.');
-    }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      recordingStream.current = stream;
+      const recorder = new MediaRecorder(stream);
+      const room = activeConversation.id;
+      const chunks = [];
+      recorder.ondataavailable = event => { if(event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop()); setRecording(false);
+        try { await sendMessage(room, '', new Blob(chunks, {type:recorder.mimeType}), true); }
+        catch { window.alert('No se pudo enviar el audio. Intenta nuevamente.'); }
+      };
+      recorderRef.current = recorder; recorder.start(); setRecording(true);
+      setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 60000);
+    } catch { window.alert('Permite el acceso al microfono para grabar audio.'); }
   };
 
   // Handle image upload from file picker
@@ -614,7 +577,7 @@ export default function ChatPage() {
                       ) : activeConversation.participantOnline ? (
                         <span className="text-forest font-bold">En línea ahora</span>
                       ) : (
-                        <span className="text-text-muted">Responde en ~15 min</span>
+                        <span className="text-text-muted">Mensajeria privada</span>
                       )}
                     </p>
                   </div>
@@ -625,7 +588,7 @@ export default function ChatPage() {
                   {/* Property Card Pill */}
                   {activeProperty && (
                     <Link
-                      to={`/propiedad/${activeProperty.id}`}
+                      to={`/propiedad/${activeConversation.propertyId}`}
                       className="hidden sm:flex items-center gap-2 rounded-2xl border border-border bg-[#FAF5EE] p-1.5 pr-3 hover:border-forest hover:bg-white transition-all shadow-2xs max-w-[210px]"
                     >
                       <img
@@ -643,7 +606,7 @@ export default function ChatPage() {
                   {/* Simulated Voice Call */}
                   <button
                     type="button"
-                    onClick={() => setShowCallModal(true)}
+                    onClick={() => { const phone = activeConversation.participantPhone?.replace(/[^+0-9]/g, ''); if (phone) window.location.href = `tel:${phone}`; else window.alert('Este usuario no tiene un telefono de contacto.'); }}
                     className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-[#FAF8F5] text-cafe hover:border-forest hover:bg-forest hover:text-white transition-all shadow-2xs"
                     title="Llamada de voz en vivo"
                   >
@@ -652,7 +615,7 @@ export default function ChatPage() {
 
                   {/* Visit Shortcut */}
                   <Link
-                    to={`/propiedad/${activeProperty.id}`}
+                    to={`/propiedad/${activeConversation.propertyId}`}
                     className="hidden md:inline-flex items-center gap-1 rounded-xl bg-forest px-3 py-2 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs"
                   >
                     <Calendar size={13} /> Agendar Visita
@@ -698,6 +661,7 @@ export default function ChatPage() {
                   backgroundSize: '16px 16px',
                 }}
               >
+                {chatError && <p role="alert" className="text-red-600">{chatError}</p>}
                 {/* Date Badge */}
                 <div className="flex justify-center my-2">
                   <span className="rounded-full bg-white/80 backdrop-blur-xs px-3 py-1 text-[10px] font-bold text-text-muted shadow-2xs border border-border/50">
@@ -734,27 +698,10 @@ export default function ChatPage() {
                           </div>
                         )}
 
-                        {/* Voice Note Simulation */}
-                        {msg.isVoice ? (
-                          <div className="flex items-center gap-2.5 py-1">
-                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isUser ? 'bg-white text-forest' : 'bg-forest text-white'}`}>
-                              <Mic size={15} />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className={`h-4 w-1 rounded-full ${isUser ? 'bg-white/60' : 'bg-forest/60'}`} />
-                              <span className={`h-6 w-1 rounded-full ${isUser ? 'bg-white' : 'bg-forest'}`} />
-                              <span className={`h-3 w-1 rounded-full ${isUser ? 'bg-white/40' : 'bg-forest/40'}`} />
-                              <span className={`h-5 w-1 rounded-full ${isUser ? 'bg-white/70' : 'bg-forest/70'}`} />
-                              <span className={`h-2 w-1 rounded-full ${isUser ? 'bg-white/30' : 'bg-forest/30'}`} />
-                              <span className={`h-4 w-1 rounded-full ${isUser ? 'bg-white/60' : 'bg-forest/60'}`} />
-                            </div>
-                            <span className={`text-[11px] font-mono font-bold ${isUser ? 'text-white/80' : 'text-text-muted'}`}>0:08</span>
-                          </div>
-                        ) : (
-                          <p className={`text-xs sm:text-sm font-semibold leading-relaxed break-words whitespace-pre-wrap ${isUser ? 'text-white' : 'text-cafe'}`}>
-                            {msg.text}
-                          </p>
-                        )}
+                        {msg.type === 'image' && msg.mediaUrl && <img src={msg.mediaUrl} alt="Adjunto" className="max-h-60 rounded-xl" />}
+                        {msg.type === 'audio' && msg.mediaUrl ? <audio controls src={msg.mediaUrl} className="max-w-full" /> :
+                          <p className="text-sm break-words whitespace-pre-wrap">{msg.text}</p>}
+                        {msg.isVoice && !msg.mediaUrl && <span className="text-xs">Audio antiguo sin archivo disponible</span>}
 
                         {/* Timestamp and status check */}
                         <div className={`mt-1.5 flex items-center justify-end gap-1 text-[9px] font-bold ${isUser ? 'text-white/70' : 'text-text-muted/70'}`}>
@@ -845,9 +792,9 @@ export default function ChatPage() {
                   type="button"
                   onClick={handleSendVoiceNote}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-text-muted hover:bg-crema hover:text-forest transition-colors"
-                  title="Enviar nota de voz simulada"
+                  title={recording ? "Detener y enviar audio" : "Grabar audio"}
                 >
-                  <Mic size={18} />
+                  <Mic size={18} className={recording ? "text-red-600 animate-pulse" : ""} />
                 </button>
 
                 {/* Text Input */}
@@ -880,43 +827,6 @@ export default function ChatPage() {
         </main>
       </div>
 
-      {/* ══════════════ SIMULATED VOICE CALL MODAL ══════════════ */}
-      {showCallModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-[fade-in_0.2s_ease-out]">
-          <div className="flex w-full max-w-sm flex-col items-center rounded-3xl bg-[#1A1A1A] p-8 text-center text-white shadow-2xl border border-white/10">
-            {/* Avatar Pulse */}
-            <div className="relative mb-6">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full bg-forest text-2xl font-black shadow-lg">
-                {activeConversation?.participantName?.charAt(0) || 'M'}
-              </div>
-              <span className="absolute inset-0 rounded-full border-2 border-jade animate-ping" />
-            </div>
-
-            <h3 className="text-lg font-black">{activeConversation?.participantName}</h3>
-            <p className="text-xs font-semibold text-white/60 mt-1">{activeConversation?.participantPhone}</p>
-
-            <div className="my-6 rounded-full bg-white/10 px-4 py-1.5 text-xs font-mono text-jade font-bold">
-              {callDuration > 0
-                ? `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, '0')}`
-                : 'Conectando audio en vivo...'}
-            </div>
-
-            <p className="text-xs text-white/50 mb-8 max-w-[240px]">
-              Llamada de voz de prueba a través de la plataforma segura de RuwaJay Guatemala.
-            </p>
-
-            {/* End Call Button */}
-            <button
-              type="button"
-              onClick={() => setShowCallModal(false)}
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
-              aria-label="Finalizar llamada"
-            >
-              <Phone size={22} className="rotate-[135deg]" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

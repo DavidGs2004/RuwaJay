@@ -1,3 +1,4 @@
+import { subscribeSavedSearches, deleteSavedSearch } from '../lib/savedSearchService';
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
@@ -237,8 +238,7 @@ export default function ProfilePage() {
           (ownerId && property.ownerId === ownerId) ||
           (user?.id && property.ownerId === user.id) ||
           (firebaseAuth?.currentUser?.uid && property.ownerId === firebaseAuth.currentUser.uid) ||
-          (currentEmail && property.ownerEmail && property.ownerEmail.toLowerCase() === currentEmail) ||
-          (currentName && property.ownerName && property.ownerName.trim().toLowerCase() === currentName)
+          false
         );
       });
       setMyProperties(filtered);
@@ -248,37 +248,6 @@ export default function ProfilePage() {
   /* ── Visits State & Persistence ── */
   const [visits, setVisits] = useState([]);
   const [visitSubTab, setVisitSubTab] = useState('todas'); // 'todas' | 'recibidas' | 'solicitadas'
-
-  const loadVisits = () => {
-    try {
-      const parsedVisits = JSON.parse(localStorage.getItem('ruwajay_visits') || '[]');
-      const stored = Array.isArray(parsedVisits) ? parsedVisits : [];
-      const now = Date.now();
-
-      // Rule: If an appointment has been pending for more than 7 days (1 week) without being accepted,
-      // mark it as expired ('vencida') so the tenant must schedule a new appointment.
-      const cleaned = stored.filter((v) => v?.id !== 'visit-seed-1').map((v) => {
-        if (v.status === 'pendiente') {
-          const created = new Date(v.createdAt || Date.now()).getTime();
-          const diffDays = (now - created) / (1000 * 60 * 60 * 24);
-          if (diffDays >= 7) {
-            return { ...v, status: 'vencida', expiredAt: new Date().toISOString() };
-          }
-        }
-        return v;
-      });
-
-      localStorage.setItem('ruwajay_visits', JSON.stringify(cleaned));
-      localStorage.setItem('ruwajay_visits_seeded', 'true');
-      setVisits(cleaned);
-    } catch {
-      setVisits([]);
-    }
-  };
-
-  useEffect(() => {
-    loadVisits();
-  }, [activeTab]);
 
   const myPropertyIds = useMemo(() => myProperties.map((p) => p.id), [myProperties]);
   const myPropertySet = useMemo(() => new Set(myPropertyIds), [myPropertyIds]);
@@ -293,36 +262,13 @@ export default function ProfilePage() {
     );
   }, [currentUserId, currentUserPhone, user?.name, myPropertyIds]);
 
-  useEffect(() => {
-    const refreshVisits = () => loadVisits();
-    window.addEventListener('storage', refreshVisits);
-    window.addEventListener('ruwajay:visits-changed', refreshVisits);
-    return () => {
-      window.removeEventListener('storage', refreshVisits);
-      window.removeEventListener('ruwajay:visits-changed', refreshVisits);
-    };
-  }, [user?.id]);
-
   const handleUpdateVisitStatus = async (visitId, newStatus) => {
     try {
       await changeVisitStatus(visitId, newStatus);
       const visitObj = visits.find((v) => v.id === visitId);
-      if (visitObj && (newStatus === 'confirmada' || newStatus === 'aceptada')) {
-        try {
-          const canonicalOwnerId = firebaseAuth?.currentUser?.uid || currentUserId || visitObj.ownerId;
-          const roomId = await getOrCreateConversation(
-            visitObj.tenantId || 'tenant',
-            canonicalOwnerId || 'owner',
-            visitObj.propertyId,
-            visitObj.propertyTitle || 'Vivienda',
-            { ...visitObj, ownerId: canonicalOwnerId }
-          );
-          await setVisitConversationId(visitObj.id, roomId).catch(() => {});
-        } catch { /* chat fallback */ }
-      }
       window.dispatchEvent(new Event('ruwajay:visits-changed'));
     } catch (error) {
-      console.warn('No se pudo actualizar la cita:', error);
+      window.alert(error.message || 'No se pudo actualizar la cita.');
     }
   };
 
@@ -351,11 +297,8 @@ export default function ProfilePage() {
   const handleOpenVisitChat = async (visit) => {
     try {
       const activeUid = firebaseAuth?.currentUser?.uid || currentUserId;
-      const ownsVisitedProperty = myPropertySet.has(visit.propertyId)
-        || visit.ownerId === activeUid
-        || (currentUserName && String(visit.ownerName || '').trim().toLowerCase() === currentUserName);
-      const effectiveOwnerId = ownsVisitedProperty ? activeUid : visit.ownerId;
-      const effectiveTenantId = ownsVisitedProperty ? visit.tenantId : activeUid;
+      const effectiveOwnerId = visit.ownerId;
+      const effectiveTenantId = visit.tenantId;
 
       const roomId = await getOrCreateConversation(
         effectiveTenantId,
@@ -379,8 +322,8 @@ export default function ProfilePage() {
     return visits.filter((v) => {
       if (currentUserId && v.ownerId === currentUserId) return true;
       if (fbUid && v.ownerId === fbUid) return true;
-      if (currentUserPhone && v.ownerPhone && String(v.ownerPhone).replace(/\D/g, '') === currentUserPhone) return true;
-      if (currentUserName && v.ownerName && String(v.ownerName).trim().toLowerCase() === currentUserName) return true;
+
+
       if (v.propertyId && myPropertySet.has(v.propertyId)) return true;
       return false;
     });
@@ -390,7 +333,7 @@ export default function ProfilePage() {
     return visits.filter((v) => {
       if (currentUserId && v.tenantId === currentUserId) return true;
       if (firebaseAuth?.currentUser?.uid && v.tenantId === firebaseAuth.currentUser.uid) return true;
-      if (currentUserPhone && v.tenantPhone && String(v.tenantPhone).replace(/\D/g, '') === currentUserPhone) return true;
+
       return false;
     });
   }, [visits, currentUserId, currentUserPhone]);
@@ -409,21 +352,9 @@ export default function ProfilePage() {
   /* ── Saved Searches State ── */
   const [savedSearches, setSavedSearches] = useState([]);
 
-  useEffect(() => {
-    try {
-      const items = JSON.parse(localStorage.getItem('ruwajay_saved_searches') || '[]');
-      setSavedSearches(items);
-    } catch {
-      setSavedSearches([]);
-    }
-  }, [activeTab]);
-
-  const handleDeleteSavedSearch = (searchId) => {
-    try {
-      const updated = savedSearches.filter((s) => s.id !== searchId);
-      localStorage.setItem('ruwajay_saved_searches', JSON.stringify(updated));
-      setSavedSearches(updated);
-    } catch { /* ignore */ }
+  useEffect(()=>subscribeSavedSearches(user?.id,setSavedSearches),[user?.id]);
+  const handleDeleteSavedSearch = async (id) => {
+    try { await deleteSavedSearch(id); } catch(error) { window.alert(error.message); }
   };
 
   const pwChecks = useMemo(() => getPasswordChecks(newPw), [newPw]);
@@ -450,14 +381,15 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
-  const handleSaveProfile = () => {
-    updateProfile({
+  const handleSaveProfile = async () => {
+    try { await updateProfile({
       name: sanitizeText(editName.trim() || user.name),
       phone: sanitizeText(editPhone.trim()),
       bio: sanitizeText(editBio.trim()),
       avatarId: editAvatarId,
       avatarImage: editAvatarImage,
     });
+    } catch (error) { window.alert(error.message || 'No se pudo guardar el perfil.'); return; }
     setEditingProfile(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 3000);
@@ -515,6 +447,7 @@ export default function ProfilePage() {
       });
       setVerifyBusy(false);
       setVerifyDone(true);
+      window.alert('Solicitud enviada. Tu cuenta seguira sin verificar hasta que se revise el documento.');
       setShowDpiModal(false);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3500);
@@ -550,23 +483,12 @@ export default function ProfilePage() {
     setVerifyDone(true);
   };
 
-  const handleSetPropertyStatus = async (propertyId, newStatus) => {
-    try {
-      await updatePropertyStatus(propertyId, newStatus);
-    } catch (error) {
-      console.warn('Firestore updatePropertyStatus fallback:', error);
-    }
-    try {
-      const localProps = JSON.parse(localStorage.getItem('ruwajay_custom_properties') || '[]');
-      const updated = localProps.map((p) => (p.id === propertyId ? { ...p, status: newStatus } : p));
-      localStorage.setItem('ruwajay_custom_properties', JSON.stringify(updated));
-    } catch { /* ignore */ }
-    setMyProperties((prev) =>
-      prev.map((p) => (p.id === propertyId ? { ...p, status: newStatus } : p))
-    );
+  const handleSetPropertyStatus = async (propertyId, status) => {
+    try { await updatePropertyStatus(propertyId,status); }
+    catch(error) { window.alert(error.message || 'No se pudo actualizar la vivienda.'); }
   };
 
-  const isVerified = user?.verified || verifyDone;
+  const isVerified = Boolean(user?.verified);
 
   /* ── Admin: subscribe to all users, properties, and system updates ── */
   useEffect(() => {
@@ -1102,7 +1024,7 @@ export default function ProfilePage() {
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <h4 className="font-black text-cafe text-sm">{saved.name}</h4>
-                          {saved.notifyEmail && (
+                          {saved.notifyPush && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-forest/10 px-2 py-0.5 text-[10px] font-extrabold text-forest">
                               <Sparkles size={11} /> Alertas activas
                             </span>
@@ -1336,12 +1258,7 @@ export default function ProfilePage() {
                   const daysLeft = Math.max(0, Math.ceil(7 - daysPassed));
 
                   // Determine if current user is owner of the visited property
-                  const isOwnerOfThisVisit =
-                    (currentUserId && v.ownerId === currentUserId) ||
-                    (currentUserPhone && v.ownerPhone && String(v.ownerPhone).replace(/\D/g, '') === currentUserPhone) ||
-                    (currentUserEmail && v.ownerEmail && String(v.ownerEmail).trim().toLowerCase() === currentUserEmail) ||
-                    (currentUserName && v.ownerName && String(v.ownerName).trim().toLowerCase() === currentUserName) ||
-                    (v.propertyId && myPropertySet.has(v.propertyId));
+                  const isOwnerOfThisVisit = Boolean(currentUserId && v.ownerId === currentUserId);
 
                   const visitProperty = myProperties.find((property) => property.id === v.propertyId)
                     || demoProperties.find((property) => property.id === v.propertyId);
@@ -1352,7 +1269,7 @@ export default function ProfilePage() {
                     || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80';
 
                   // Determine target phone for WhatsApp
-                  const targetPhone = isOwnerOfThisVisit ? (v.tenantPhone || '50255551234') : (v.ownerPhone || '50255551234');
+                  const targetPhone = isOwnerOfThisVisit ? (v.tenantPhone || '') : (v.ownerPhone || '');
                   const cleanPhone = String(targetPhone).replace(/\D/g, '');
                   const waGreeting = isOwnerOfThisVisit
                     ? `¡Hola ${v.tenantName || 'inquilino'}! Te escribo respecto a tu solicitud de visita a "${v.propertyTitle}" en RuwaJay para el día ${v.date} a las ${v.time}. ¿Coordinamos los detalles?`

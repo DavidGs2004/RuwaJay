@@ -1,0 +1,23 @@
+RUWAJAY — ENTREGA DE DESPLIEGUES PENDIENTES
+Preparado: 12 de octubre de 2026. Zona horaria: America/Guatemala.
+Responsable de ejecutar: persona encargada del despliegue, por designar.
+Proyecto único autorizado: ruwa-jay.
+Cuenta autorizada para este trabajo: gochoa21.yt@gmail.com.
+
+ESTADO
+Esta carpeta contiene una copia del código local y las instrucciones; no representa un despliegue ejecutado. No se ha creado aquí un respaldo de la base real, aplicado una migración ni publicado servicios.
+La última consulta de CLI solo reconocía garyochoa69@gmail.com; no utilizar, cerrar, reemplazar ni modificar esa cuenta ni su otro desarrollo. La consulta explícita con gochoa21.yt@gmail.com indicó que todavía faltaba registrarla en la CLI. Abrir Firebase en Brave no autoriza automáticamente la terminal.
+
+CONTENIDO
+- proyecto/: código de web, Android, Functions, migración, reglas, índices, configuración, pruebas y documentación.
+- 01_PROCEDIMIENTO.txt: requisitos, respaldo y comandos en orden.
+- 02_PRUEBAS_Y_REVERSION.txt: aceptación y recuperación.
+- 03_REGISTRO_DE_EJECUCION.txt: registro para quien publique.
+- INVENTARIO_SHA256.json: inventario de los 186 archivos originales copiados con tamaño y hash.
+
+IMPORTANTE
+Ejecutar los comandos desde proyecto/, no desde esta carpeta exterior ni desde functions/.
+La copia es una fotografía del código a la fecha de entrega. Si se hacen cambios posteriores en el proyecto original, revisar y actualizar la entrega antes de publicar.
+No se copiaron node_modules, dist, builds/cachés, respaldos privados, .env.local, local.properties ni claves de firma. La configuración pública de Firebase/google-services.json sí está incluida; no acredita permisos administrativos.
+No hay un APK nuevo ni web compilada en esta entrega. El encargado debe compilar el código incluido.
+No publicar solo firestore.rules: las visitas y el chat dependen de las nuevas Functions y de datos/clientes compatibles.

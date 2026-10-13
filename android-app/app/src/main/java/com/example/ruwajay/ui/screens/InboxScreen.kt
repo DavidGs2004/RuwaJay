@@ -52,11 +52,13 @@ fun InboxScreen(
                     id = map["id"] as? String ?: "",
                     propertyId = map["propertyId"] as? String ?: "",
                     ownerId = map["ownerId"] as? String ?: "",
-                    participantName = map["propertyTitle"] as? String ?: "Propietario",
+                    participantName = (if (map["ownerId"] == currentUser.uid) map["seekerName"] else map["ownerName"]) as? String ?: "Usuario",
                     participantOnline = false,
                     participantPhone = "",
                     participantRole = "Vendedor",
-                    unreadCount = if (map["lastSenderId"] != currentUser.uid) 1 else 0,
+                    unreadCount = if (map["lastSenderId"] != null && map["lastSenderId"] != currentUser.uid &&
+                        ((map["lastMessageTimestamp"] as? Timestamp)?.toDate()?.time ?: 0L) >
+                        (((map["readAt"] as? Map<*, *>)?.get(currentUser.uid) as? Timestamp)?.toDate()?.time ?: 0L)) 1 else 0,
                     lastMessage = map["lastMessage"] as? String ?: "",
                     lastMessageTimestamp = dateStr,
                     messages = emptyList()

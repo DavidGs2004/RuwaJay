@@ -1,3 +1,4 @@
+import { saveSearch } from '../../lib/savedSearchService';
 import { useState, useMemo, useEffect } from 'react';
 import { X, Bookmark, Bell, Check, Sparkles, MapPin, SlidersHorizontal } from 'lucide-react';
 
@@ -51,22 +52,21 @@ export default function SaveSearchModal({
 
   if (!isOpen) return null;
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     const newSearch = {
       id: `saved-${Date.now()}`,
       name: searchName.trim() || suggestedName,
       filters: { ...filters },
       searchQuery: searchQuery || '',
-      notifyEmail,
+      notifyPush: notifyEmail,
       matchCount,
       createdAt: new Date().toISOString(),
     };
 
     try {
-      const existing = JSON.parse(localStorage.getItem('ruwajay_saved_searches') || '[]');
-      localStorage.setItem('ruwajay_saved_searches', JSON.stringify([newSearch, ...existing]));
-    } catch { /* ignore */ }
+      await saveSearch(newSearch);
+    } catch (error) { window.alert(error.message || 'No se pudo guardar la busqueda.'); return; }
 
     setSavedSuccess(true);
     onSaveSuccess?.(newSearch);

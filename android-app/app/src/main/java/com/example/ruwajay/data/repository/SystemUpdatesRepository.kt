@@ -19,21 +19,7 @@ fun rememberSystemUpdates(includeInactive: Boolean = false): List<SystemUpdate> 
 
         val listener = query.addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) {
-                // Si la colección aún no tiene docs en Firebase, se provee el comunicado inicial por defecto
-                if (updates.value.isEmpty()) {
-                    updates.value = listOf(
-                        SystemUpdate(
-                            id = "default-1",
-                            title = "Bienvenido a RuwaJay v2.0 - Plataforma Inmobiliaria de Guatemala",
-                            content = "Sistema integral de alquileres con citas programadas, chat verificado entre inquilinos y propietarios, comparador inteligente de presupuestos y panel maestro de administración.",
-                            category = "novedad",
-                            priority = "destacada",
-                            createdBy = "Administrador RuwaJay",
-                            createdAt = System.currentTimeMillis(),
-                            active = true
-                        )
-                    )
-                }
+                updates.value = emptyList()
                 return@addSnapshotListener
             }
 
@@ -43,7 +29,7 @@ fun rememberSystemUpdates(includeInactive: Boolean = false): List<SystemUpdate> 
                 val category = doc.getString("category") ?: "novedad"
                 val priority = doc.getString("priority") ?: "normal"
                 val createdBy = doc.getString("createdBy") ?: "Administrador RuwaJay"
-                val createdAt = doc.getLong("createdAt") ?: (doc.getTimestamp("createdAt")?.seconds?.times(1000) ?: System.currentTimeMillis())
+                val createdAt = when (val value = doc.get("createdAt")) { is Number -> value.toLong(); is com.google.firebase.Timestamp -> value.toDate().time; else -> 0L }
                 val active = doc.getBoolean("active") ?: true
 
                 SystemUpdate(
@@ -58,22 +44,7 @@ fun rememberSystemUpdates(includeInactive: Boolean = false): List<SystemUpdate> 
                 )
             }
 
-            if (list.isEmpty()) {
-                updates.value = listOf(
-                    SystemUpdate(
-                        id = "default-1",
-                        title = "Bienvenido a RuwaJay v2.0 - Plataforma Inmobiliaria de Guatemala",
-                        content = "Sistema integral de alquileres con citas programadas, chat verificado entre inquilinos y propietarios, comparador inteligente de presupuestos y panel maestro de administración.",
-                        category = "novedad",
-                        priority = "destacada",
-                        createdBy = "Administrador RuwaJay",
-                        createdAt = System.currentTimeMillis(),
-                        active = true
-                    )
-                )
-            } else {
-                updates.value = if (includeInactive) list else list.filter { it.active }
-            }
+            updates.value = if (includeInactive) list else list.filter { it.active }
         }
 
         onDispose { listener.remove() }
@@ -97,7 +68,7 @@ fun publishSystemUpdate(
         "category" to category,
         "priority" to priority,
         "createdBy" to adminName,
-        "createdAt" to System.currentTimeMillis(),
+        "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
         "active" to true
     )
 

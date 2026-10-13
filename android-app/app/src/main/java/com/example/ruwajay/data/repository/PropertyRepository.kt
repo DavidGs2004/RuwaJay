@@ -50,8 +50,8 @@ fun rememberProperties(
 fun publishProperty(
     title: String,
     description: String,
-    price: Int,
-    deposit: Int,
+    price: Double,
+    deposit: Double,
     type: String,
     department: String,
     municipality: String,
@@ -60,6 +60,12 @@ fun publishProperty(
     exactAddress: String,
     bedrooms: Int,
     bathrooms: Int,
+    area: Double = 0.0,
+    parking: Int = 0,
+    maintenanceFee: Double = 0.0,
+    amenities: List<String> = emptyList(), rules: List<String> = emptyList(), requirements: List<String> = emptyList(),
+    furnished: Boolean = false, petsAllowed: Boolean = false,
+    propertyId: String? = null, retainedImages: List<String> = emptyList(),
     coordinates: Coordinates? = null,
     imageUris: List<Uri> = emptyList(),
     contentResolver: ContentResolver? = null,
@@ -73,6 +79,7 @@ fun publishProperty(
         return
     }
 
+    if (coordinates == null || price <= 0) { onResult(Result.failure(Exception("Selecciona una ubicacion real y un precio valido."))); return }
     val property = mapOf(
         "ownerId" to user.uid,
         "title" to title.trim(),
@@ -82,13 +89,14 @@ fun publishProperty(
         "currency" to "Q",
         "type" to type,
         "status" to "disponible",
-        "amenities" to emptyList<String>(),
-        "rules" to emptyList<String>(),
-        "requirements" to emptyList<String>(),
+        "amenities" to amenities,
+        "parking" to parking, "maintenanceFee" to maintenanceFee, "furnished" to furnished, "petsAllowed" to petsAllowed,
+        "rules" to rules,
+        "requirements" to requirements,
         "features" to mapOf(
             "bedrooms" to bedrooms,
             "bathrooms" to bathrooms,
-            "area" to 0
+            "area" to area
         ),
         "location" to mapOf(
             "department" to department.trim(),
@@ -101,15 +109,29 @@ fun publishProperty(
             "mapCoordinates" to coordinates?.let { mapOf("lat" to it.lat, "lng" to it.lng) }
         ),
         "coordinates" to coordinates?.let { mapOf("lat" to it.lat, "lng" to it.lng) },
+        "schemaVersion" to 2,
+        "ownerName" to (user.displayName ?: "Propietario"),
+        "ownerEmail" to (user.email ?: ""),
+        "verified" to false,
         "createdAt" to FieldValue.serverTimestamp()
     )
 
-    val propertyReference = firestore.collection("properties").document()
-    uploadPropertyImages(imageUris, contentResolver, propertyReference.id, user.uid)
-        .addOnSuccessListener { imageUrls ->
-            propertyReference.set(property + ("images" to imageUrls))
-                .addOnSuccessListener { onResult(Result.success(Unit)) }
-                .addOnFailureListener { error -> onResult(Result.failure(error)) }
+    val propertyReference = if (propertyId == null) firestore.collection("properties").document() else firestore.collection("properties").document(propertyId)
+    val upload = if (imageUris.isEmpty() && retainedImages.isNotEmpty()) Tasks.forResult(emptyList<String>()) else uploadPropertyImages(imageUris, contentResolver, propertyReference.id, user.uid)
+    upload
+        .addOnSuccessListener { uploadedUrls ->
+            val imageUrls = (retainedImages + uploadedUrls).distinct().take(8)
+            firestore.collection("users").document(user.uid).get().addOnSuccessListener { profile ->
+                propertyReference.get().addOnSuccessListener { existing ->
+                if (existing.exists() && existing.getString("ownerId") != user.uid) { onResult(Result.failure(Exception("No puedes editar esta vivienda."))); return@addOnSuccessListener }
+                val updates = if (existing.exists()) property - "createdAt" - "verified" else property
+                propertyReference.set(existing.data.orEmpty() + updates + mapOf("images" to imageUrls,"thumbnail" to imageUrls.first(),
+                    "ownerName" to (profile.getString("name") ?: user.displayName ?: "Propietario"),
+                    "ownerPhone" to (profile.getString("phone") ?: ""),"ownerPhoto" to (profile.getString("avatarImage") ?: profile.getString("avatar") ?: "")))
+                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { error -> onResult(Result.failure(error)) }
+                }.addOnFailureListener { onResult(Result.failure(it)) }
+            }.addOnFailureListener { onResult(Result.failure(it)) }
         }
         .addOnFailureListener { error -> onResult(Result.failure(error)) }
 }
@@ -120,57 +142,22 @@ private fun uploadPropertyImages(
     propertyId: String,
     userId: String
 ): Task<List<String>> {
-    if (imageUris.isEmpty()) return Tasks.forResult(emptyList())
-    if (contentResolver == null) return Tasks.forException(Exception("No se pudo acceder a las fotografías."))
-    if (BuildConfig.SUPABASE_URL.isBlank() || BuildConfig.SUPABASE_ANON_KEY.isBlank()) {
-        return Tasks.forException(Exception("Supabase Storage no está configurado en la aplicación."))
-    }
-
-    val completion = TaskCompletionSource<List<String>>()
-    Executors.newSingleThreadExecutor().execute {
-        try {
-            val baseUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
-            val bucket = BuildConfig.SUPABASE_PROPERTY_BUCKET.ifBlank { "property-images" }
-            val urls = imageUris.mapIndexed { index, uri ->
-                val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
-                val extension = when (mimeType) {
-                    "image/png" -> "png"
-                    "image/webp" -> "webp"
-                    else -> "jpg"
-                }
-                val objectPath = "properties/$propertyId/$userId/${System.currentTimeMillis()}-$index.$extension"
-                val endpoint = URL("$baseUrl/storage/v1/object/$bucket/$objectPath")
-                val connection = (endpoint.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    connectTimeout = 20_000
-                    readTimeout = 60_000
-                    setRequestProperty("apikey", BuildConfig.SUPABASE_ANON_KEY)
-                    setRequestProperty("Content-Type", mimeType)
-                    setRequestProperty("x-upsert", "false")
-                }
-
-                contentResolver.openInputStream(uri)?.use { input ->
-                    connection.outputStream.use { output -> input.copyTo(output) }
-                } ?: throw Exception("No se pudo leer una de las fotografías.")
-
-                val status = connection.responseCode
-                if (status !in 200..299) {
-                    val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    connection.disconnect()
-                    throw Exception("Supabase rechazó una fotografía ($status). $detail")
-                }
-                connection.inputStream.close()
-                connection.disconnect()
-                "$baseUrl/storage/v1/object/public/$bucket/$objectPath"
-            }
-            completion.setResult(urls)
-        } catch (error: Exception) {
-            completion.setException(error)
+    if (imageUris.isEmpty()) return Tasks.forException(Exception("Sube al menos una fotografia."))
+    if (imageUris.size > 8 || contentResolver == null) return Tasks.forException(Exception("Sube entre 1 y 8 fotografias."))
+    val tasks = imageUris.map { uri ->
+        val mime = contentResolver.getType(uri) ?: "image/jpeg"
+        if (mime !in listOf("image/jpeg","image/png","image/webp")) return Tasks.forException(Exception("Formato de fotografia no permitido."))
+        val reference = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child("properties/$propertyId/$userId/${java.util.UUID.randomUUID()}")
+        val metadata = com.google.firebase.storage.StorageMetadata.Builder().setContentType(mime).build()
+        reference.putFile(uri,metadata).continueWithTask { upload ->
+            if (!upload.isSuccessful) throw upload.exception ?: Exception("No se pudo subir la fotografia.")
+            reference.downloadUrl
+        }.continueWith { result ->
+            if (!result.isSuccessful) throw result.exception ?: Exception("No se pudo obtener la fotografia.")
+            result.result.toString()
         }
     }
-
-    return completion.task
+    return Tasks.whenAllSuccess<String>(tasks)
 }
 
 private fun documentTimestamp(document: com.google.firebase.firestore.DocumentSnapshot): Long {
@@ -188,25 +175,19 @@ private fun propertyFromDocument(document: com.google.firebase.firestore.Documen
             ?: (document.get("coordinates") as? Map<*, *>)
             ?: (document.get("mapCoordinates") as? Map<*, *>)
 
-        val coordinates = rawCoords?.let { coordsMap ->
-            val latVal = coordsMap.number("lat").let { if (it != 0.0) it else coordsMap.number("latitude") }
-            val lngVal = coordsMap.number("lng").let { if (it != 0.0) it else coordsMap.number("longitude").let { if (it != 0.0) it else coordsMap.number("lon") } }
-            if (latVal != 0.0 && lngVal != 0.0) Coordinates(latVal, lngVal) else null
-        } ?: Coordinates(14.6349, -90.5069)
-
-        val rawImages = document.stringList("images").ifEmpty {
+        val coordinates = com.example.ruwajay.data.model.persistedCoordinates(rawCoords)
+        val normalizedImages = com.example.ruwajay.data.model.persistedImageUrls(document.get("images"))
+        val rawImages = normalizedImages.ifEmpty {
             val singleImg = document.string("image").ifBlank { document.string("imageUrl") }
             if (singleImg.isNotBlank()) listOf(singleImg) else emptyList()
         }
-        val images = if (rawImages.isNotEmpty()) rawImages else listOf(
-            "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80"
-        )
+        val images = rawImages
 
         val title = document.stringOr("title", document.stringOr("titulo", document.stringOr("name", "Propiedad sin título")))
-        val price = document.number("price").let { if (it > 0) it else document.number("precio") }.toInt().let { if (it > 0) it else 3500 }
-        val bedrooms = features.number("bedrooms").let { if (it > 0) it else features.number("habitaciones") }.toInt().coerceAtLeast(1)
-        val bathrooms = features.number("bathrooms").let { if (it > 0) it else features.number("banos") }.toInt().coerceAtLeast(1)
-        val area = features.number("area").toInt()
+        val price = document.number("price").let { if (it > 0) it else document.number("precio") }
+        val bedrooms = features.number("bedrooms").let { if (it > 0) it else features.number("habitaciones") }.toInt()
+        val bathrooms = features.number("bathrooms").let { if (it > 0) it else features.number("banos") }.toInt()
+        val area = features.number("area")
 
         val addressStr = location.stringOr("exactAddress", location.stringOr("address", location.stringOr("direccion", "Guatemala")))
         val zoneStr = location.stringOr("zone", location.stringOr("zona", "Zona 10"))
@@ -224,7 +205,7 @@ private fun propertyFromDocument(document: com.google.firebase.firestore.Documen
             features = PropertyFeatures(
                 bedrooms = bedrooms,
                 bathrooms = bathrooms,
-                area = area
+                area = area, parking = document.number("parking").toInt()
             ),
             location = Location(
                 address = addressStr,
@@ -236,12 +217,16 @@ private fun propertyFromDocument(document: com.google.firebase.firestore.Documen
                 exactAddress = addressStr,
                 mapCoordinates = coordinates
             ),
-            ownerId = document.stringOr("ownerId", "owner-1"),
+            ownerId = document.string("ownerId"),
+            ownerName = document.string("ownerName"), ownerPhone = document.string("ownerPhone"), ownerPhoto = document.string("ownerPhoto"),
+            ownerEmail = document.string("ownerEmail"), verified = document.getBoolean("verified") ?: false,
+            furnished = document.getBoolean("furnished") ?: false, patio = document.getBoolean("patio") ?: false, petsAllowed = document.getBoolean("petsAllowed") ?: false,
             images = images,
-            amenities = document.stringList("amenities").ifEmpty { listOf("Parqueo", "Seguridad 24/7") },
+            amenities = document.stringList("amenities"),
             rules = document.stringList("rules"),
             requirements = document.stringList("requirements"),
-            deposit = document.number("deposit").toInt().takeIf { it > 0 }
+            maintenanceFee = document.number("maintenanceFee"),
+            deposit = (document.get("deposit") as? Number)?.toDouble()
         )
     } catch (_: Exception) {
         null
@@ -281,7 +266,7 @@ fun updatePropertyStatus(
     FirebaseFirestore.getInstance().collection("properties").document(propertyId)
         .update("status", newStatus)
         .addOnSuccessListener { onResult() }
-        .addOnFailureListener { }
+        .addOnFailureListener { error -> android.util.Log.e("RuwaJay", "Operacion no guardada", error) }
 }
 
 fun deleteProperty(
@@ -291,7 +276,7 @@ fun deleteProperty(
     FirebaseFirestore.getInstance().collection("properties").document(propertyId)
         .delete()
         .addOnSuccessListener { onResult() }
-        .addOnFailureListener { }
+        .addOnFailureListener { error -> android.util.Log.e("RuwaJay", "Operacion no guardada", error) }
 }
 
 fun updateUserRole(
@@ -302,7 +287,7 @@ fun updateUserRole(
     FirebaseFirestore.getInstance().collection("users").document(userId)
         .update("role", newRole)
         .addOnSuccessListener { onResult() }
-        .addOnFailureListener { }
+        .addOnFailureListener { error -> android.util.Log.e("RuwaJay", "Operacion no guardada", error) }
 }
 
 fun toggleUserSuspension(
@@ -313,7 +298,7 @@ fun toggleUserSuspension(
     FirebaseFirestore.getInstance().collection("users").document(userId)
         .update("suspended", suspended)
         .addOnSuccessListener { onResult() }
-        .addOnFailureListener { }
+        .addOnFailureListener { error -> android.util.Log.e("RuwaJay", "Operacion no guardada", error) }
 }
 
 

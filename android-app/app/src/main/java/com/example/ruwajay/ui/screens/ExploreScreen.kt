@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -49,14 +51,28 @@ import kotlinx.coroutines.delay
 import org.osmdroid.util.GeoPoint
 
 @Composable
-fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
+fun ExploreScreen(onPropertyClick: (String) -> Unit = {}, savedSearchId: String? = null) {
     var searchText by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("todos") }
     var viewMode by remember { mutableStateOf("lista") }
     var showCalculator by remember { mutableStateOf(false) }
-    var maxPriceFilter by remember { mutableStateOf<Int?>(null) }
+    var maxPriceFilter by remember { mutableStateOf<Double?>(null) }
     var comparedPropertyIds by remember { mutableStateOf(setOf<String>()) }
     var showCompareDialog by remember { mutableStateOf(false) }
+    var departmentFilter by remember { mutableStateOf("") }
+    var zoneFilter by remember { mutableStateOf("") }
+    var bedroomsFilter by remember { mutableStateOf("") }
+    var bathroomsFilter by remember { mutableStateOf("") }
+    var minPriceFilter by remember { mutableStateOf("") }
+    var petsFilter by remember { mutableStateOf(false) }
+    var furnishedFilter by remember { mutableStateOf(false) }
+    var parkingFilter by remember { mutableStateOf(false) }
+    var verifiedFilter by remember { mutableStateOf(false) }
+    var patioFilter by remember { mutableStateOf(false) }
+    var securityFilter by remember { mutableStateOf(false) }
+    var waterFilter by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var searchStatus by remember { mutableStateOf<String?>(null) }
     
     val firebaseUser = FirebaseAuth.getInstance().currentUser
     val firestore = remember { FirebaseFirestore.getInstance() }
@@ -74,6 +90,22 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
         onDispose { listener.remove() }
     }
 
+    LaunchedEffect(savedSearchId) {
+        if(savedSearchId!=null && firebaseUser!=null) firestore.collection("users").document(firebaseUser.uid).collection("saved_searches").document(savedSearchId).get()
+            .addOnSuccessListener {snapshot->
+                val criteria=snapshot.get("filters") as? Map<*, *> ?: emptyMap<Any,Any>()
+                searchText=snapshot.getString("searchQuery")?:""
+                selectedFilter=if(criteria["visitAvailable"]==true)"disponible" else (criteria["type"] as? String)?.takeIf{it.isNotBlank()}?:"todos"
+                maxPriceFilter=criteria["priceMax"].toString().toDoubleOrNull()?.takeIf{it>0}
+                minPriceFilter=criteria["priceMin"]?.toString()?:""
+                departmentFilter=(criteria["department"] as? String)?.takeUnless{it=="Todos"}?:""
+                zoneFilter=(criteria["zone"] as? String)?.takeUnless{it.startsWith("Todas")||it.startsWith("Todos")}?:""
+                bedroomsFilter=criteria["bedrooms"]?.toString()?:"";bathroomsFilter=criteria["bathrooms"]?.toString()?:""
+                patioFilter=criteria["patio"]==true;securityFilter=criteria["security"]==true;waterFilter=criteria["waterGuaranteed"]==true;
+                petsFilter=criteria["petsAllowed"]==true;furnishedFilter=criteria["furnished"]==true;parkingFilter=criteria["parking"]==true;verifiedFilter=criteria["verified"]==true
+            }.addOnFailureListener{searchStatus=it.message}
+    }
+
     // Feedback de carga inicial
     var isInitialLoading by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
@@ -87,7 +119,8 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
         val matchesSearch = searchText.isEmpty() ||
                 prop.title.contains(searchText, ignoreCase = true) ||
                 prop.location.zone.contains(searchText, ignoreCase = true) ||
-                prop.location.city.contains(searchText, ignoreCase = true)
+                prop.location.city.contains(searchText, ignoreCase = true) ||
+                prop.location.approximateAddress.orEmpty().contains(searchText,true) || prop.location.department.orEmpty().contains(searchText,true)
         val matchesFilter = when (selectedFilter) {
             "todos" -> true
             "disponible", "reservada", "alquilada" -> prop.status == selectedFilter
@@ -95,7 +128,16 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
         }
         val matchesMaxPrice = maxPriceFilter == null || prop.price <= maxPriceFilter!!
         
-        matchesSearch && matchesFilter && matchesMaxPrice
+        val location="${prop.location.city} ${prop.location.zone} ${prop.location.approximateAddress} ${prop.location.department}".lowercase()
+        matchesSearch && matchesFilter && matchesMaxPrice &&
+            (departmentFilter.isBlank() || prop.location.department.equals(departmentFilter,true)) &&
+            (zoneFilter.isBlank() || location.contains(zoneFilter.substringBefore('(').trim().lowercase())) &&
+            (prop.features.bedrooms >= (bedroomsFilter.toDoubleOrNull()?:0.0)) &&
+            (prop.features.bathrooms >= (bathroomsFilter.toDoubleOrNull()?:0.0)) &&
+            (prop.price >= (minPriceFilter.toDoubleOrNull()?:0.0)) &&
+            (!petsFilter||prop.petsAllowed) && (!furnishedFilter||prop.furnished) && (!parkingFilter||prop.features.parking>0) && (!verifiedFilter||prop.verified) && (!patioFilter||prop.patio) &&
+            (!securityFilter||prop.amenities.any{it.contains("seguridad",true)||it.contains("garita",true)}) &&
+            (!waterFilter||prop.amenities.any{it.contains("agua",true)||it.contains("cisterna",true)})
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -178,6 +220,36 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                Row {
+                    TextButton(onClick={showAdvanced=!showAdvanced}){Text("Filtros")}
+                    TextButton(onClick={
+                        if(firebaseUser==null) {searchStatus="Inicia sesion para guardar busquedas.";return@TextButton}
+                        if(minPriceFilter.isNotBlank()&&minPriceFilter.toDoubleOrNull()==null){searchStatus="Ingresa un precio minimo valido.";return@TextButton}
+                        val criteria=mapOf("type" to if(selectedFilter in listOf("casa","apartamento"))selectedFilter else "", "priceMax" to (maxPriceFilter?.toString()?:""),"priceMin" to minPriceFilter,
+                            "department" to departmentFilter,"zone" to zoneFilter,"bedrooms" to bedroomsFilter,"bathrooms" to bathroomsFilter,
+                            "petsAllowed" to petsFilter,"furnished" to furnishedFilter,"parking" to parkingFilter,"verified" to verifiedFilter,
+                            "visitAvailable" to (selectedFilter=="disponible"),"patio" to patioFilter,"security" to securityFilter,"waterGuaranteed" to waterFilter)
+                        firestore.collection("users").document(firebaseUser.uid).collection("saved_searches").add(mapOf("name" to searchText.ifBlank{"Mi busqueda"},"searchQuery" to searchText,"filters" to criteria,"notifyPush" to true,"createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()))
+                            .addOnSuccessListener{searchStatus="Busqueda guardada."}.addOnFailureListener{searchStatus=it.message}
+                    }){Text("Guardar busqueda")}
+                }
+                searchStatus?.let{Text(it,style=MaterialTheme.typography.bodySmall)}
+                if(showAdvanced) Column(Modifier.heightIn(max=280.dp).verticalScroll(rememberScrollState())) {
+                    OutlinedTextField(value=departmentFilter,onValueChange={departmentFilter=it},label={Text("Departamento")})
+                    OutlinedTextField(value=zoneFilter,onValueChange={zoneFilter=it},label={Text("Zona o municipio")})
+                    Row {
+                        OutlinedTextField(value=minPriceFilter,onValueChange={minPriceFilter=it},label={Text("Precio minimo")},modifier=Modifier.weight(1f))
+                        OutlinedTextField(value=maxPriceFilter?.toString()?:"",onValueChange={maxPriceFilter=it.toDoubleOrNull()},label={Text("Precio maximo")},modifier=Modifier.weight(1f))
+                    }
+                    Row {
+                        OutlinedTextField(value=bedroomsFilter,onValueChange={bedroomsFilter=it},label={Text("Habitaciones")},modifier=Modifier.weight(1f))
+                        OutlinedTextField(value=bathroomsFilter,onValueChange={bathroomsFilter=it},label={Text("Banos")},modifier=Modifier.weight(1f))
+                    }
+                    Row {Checkbox(checked=petsFilter,onCheckedChange={petsFilter=it});Text("Mascotas");Checkbox(checked=furnishedFilter,onCheckedChange={furnishedFilter=it});Text("Amueblada")}
+                    Row {Checkbox(checked=patioFilter,onCheckedChange={patioFilter=it});Text("Patio");Checkbox(checked=securityFilter,onCheckedChange={securityFilter=it});Text("Seguridad")}
+                    Row {Checkbox(checked=waterFilter,onCheckedChange={waterFilter=it});Text("Agua o cisterna")}
+                    Row {Checkbox(checked=parkingFilter,onCheckedChange={parkingFilter=it});Text("Parqueo");Checkbox(checked=verifiedFilter,onCheckedChange={verifiedFilter=it});Text("Verificada")}
+                }
                 // Barra de búsqueda con elevación
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -351,7 +423,7 @@ fun ExploreScreen(onPropertyClick: (String) -> Unit = {}) {
             RentCalculatorDialog(
                 onDismiss = { showCalculator = false },
                 onApplyFilter = { max ->
-                    maxPriceFilter = max
+                    maxPriceFilter = max.toDouble()
                     showCalculator = false
                 }
             )
@@ -392,13 +464,14 @@ fun LoadingState() {
 
 @Composable
 fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, onPropertyClick: (String) -> Unit) {
+    val gps = com.example.ruwajay.ui.components.rememberGpsPosition()
     val guatemalaCity = GeoPoint(14.6349, -90.5069)
     var selectedPropertyId by remember { mutableStateOf<String?>(null) }
     val selectedProperty = remember(selectedPropertyId, properties) {
         properties.find { it.id == selectedPropertyId }
     }
 
-    val markers = properties.map { prop ->
+    val markers = properties.filter { it.location.mapCoordinates != null }.map { prop ->
         OsmMarker(
             id = prop.id,
             position = GeoPoint(prop.location.coordinates.lat, prop.location.coordinates.lng),
@@ -409,7 +482,9 @@ fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, on
 
     Box(modifier = Modifier.fillMaxSize()) {
         OsmMapView(
-            center = guatemalaCity,
+            center = gps.point ?: guatemalaCity,
+            userPosition = gps.point,
+            showTopBadges = false,
             zoom = 12.0,
             markers = markers,
             onMarkerClick = { id ->
@@ -417,6 +492,7 @@ fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, on
             }
         )
 
+        TextButton(onClick=gps.request,modifier=Modifier.align(Alignment.TopStart)) { Text("Usar mi ubicacion") }
         AnimatedVisibility(
             visible = selectedProperty != null,
             enter = fadeIn() + slideInVertically(initialOffsetY = { it }),

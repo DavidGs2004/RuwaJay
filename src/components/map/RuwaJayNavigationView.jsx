@@ -716,13 +716,13 @@ export default function RuwaJayNavigationView({
         });
       }
       endpoints.push(
-        { provider: 'osrm', url: `https://router.project-osrm.org/route/v1/${osrmProfile}/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=true` },
+        ...(mode === 'driving' ? [{ provider: 'osrm', url: `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=true` }] : []),
         { provider: 'osrm', url: `https://routing.openstreetmap.de/routed-${routerProfile}/route/v1/${osrmProfile}/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=true` },
       );
 
       for (const endpoint of endpoints) {
         try {
-          const res = await fetch(endpoint.url);
+          const res = await fetch(endpoint.url, { signal: AbortSignal.timeout(15000) });
           if (!res.ok) continue;
           const data = await res.json();
 

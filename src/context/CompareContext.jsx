@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { subscribeToProperties } from '../lib/propertyService';
 
 const CompareContext = createContext(null);
 const MAX_COMPARE = 3;
@@ -21,6 +22,10 @@ export function CompareProvider({ children }) {
 
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [compareNotice, setCompareNotice] = useState(null);
+  useEffect(()=>subscribeToProperties(properties=>{
+    const current=new Map(properties.map(property=>[property.id,property]));
+    setComparedProperties(previous=>previous.map(property=>current.get(property.id)).filter(Boolean));
+  },console.error,{includeCachedEmpty:false}),[]);
 
   useEffect(() => {
     try {

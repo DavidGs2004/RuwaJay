@@ -1,0 +1,31 @@
+REGISTRO A COMPLETAR POR LA PERSONA ENCARGADA
+Estado inicial: PENDIENTE. Paquete preparado, sin despliegue ni respaldo real creado.
+
+Responsable / contacto:
+Fecha y zona horaria:
+Proyecto: ruwa-jay
+Cuenta usada: gochoa21.yt@gmail.com
+Ruta/versión del paquete y comprobación de hashes:
+Permisos y facturación verificados:
+Ventana de mantenimiento y mecanismo para pausar escrituras:
+Respaldo oficial Firestore / base / operación / resultado:
+Respaldo Auth y claims (ubicación privada):
+Respaldo Storage/Supabase (ubicación privada):
+Versiones publicadas anteriores conservadas:
+Prueba de recuperación / evidencia:
+ADC de la cuenta correcta verificada:
+Diagnóstico / plan / incidencias / número de escrituras:
+Migración necesaria (sí/no y justificación):
+Resultado y reporte de migración:
+Despliegue índices / estado READY:
+Despliegue Functions / región / Scheduler:
+Reglas Firestore y Storage publicadas:
+Hosting / versión / URL:
+Android / versión / tipo debug o release / firma / distribución:
+Supabase / políticas revisadas / SQL aplicado (si corresponde):
+Pruebas locales ejecutadas:
+Matriz web/Android / evidencias / fallos:
+Reversión realizada (si corresponde):
+Pendientes y decisión de reabrir servicio:
+
+No escribir contraseñas, tokens, claves privadas ni contenido de respaldos en este registro compartido.

@@ -1,0 +1,82 @@
+PROCEDIMIENTO PARA LA PERSONA ENCARGADA
+Todos los comandos se ejecutan manualmente en PowerShell desde proyecto/.
+No existe un script que publique automáticamente todo sin revisión.
+
+1. ACCESO Y REQUISITOS
+Instalar Node.js 22 y npm. Para Android/emuladores: Java 21 y SDK Android 37. Usar una ruta sin acentos para las pruebas Android si la ruta original produce errores.
+Leer bitacora.txt y docs/INTEGRACION.md de la copia.
+Registrar la cuenta adicional desde una terminal interactiva, seleccionando exclusivamente gochoa21.yt@gmail.com:
+  npx firebase login:add
+  npx firebase login:list
+No ejecutar login:use, logout ni cambiar la cuenta predeterminada del otro desarrollo. Todos los comandos de producción siguientes especifican cuenta y proyecto.
+Instalar dependencias del paquete:
+  npm ci
+  npm ci --prefix functions
+Comprobar acceso:
+  npx firebase firestore:databases:list --project ruwa-jay --account gochoa21.yt@gmail.com
+Si falla con 403 o cuenta no encontrada, resolver el acceso con el propietario y detener los despliegues. No recurrir a la otra cuenta.
+Comprobar Firestore, Storage, Functions, Scheduler, FCM, permisos y facturación. Cualquier activación de plan o cargos debe acordarse con el propietario.
+
+2. CONFIGURACIÓN
+Web y google-services.json apuntan a ruwa-jay; verificar que no haya variables de entorno que sustituyan ese proyecto.
+Configurar VITE_FIREBASE_VAPID_KEY para push web en un archivo local que no se comparta. Configurar WEB_ORIGIN en Functions al dominio HTTPS real; el valor por defecto es https://ruwa-jay.web.app.
+Revisar proveedores/dominos de Authentication, SHA de Android para Google Sign-In y App Links con certificado de la versión firmada.
+Configurar Mapbox si se usará; es opcional. Mantener accesibles las fotografías históricas de Supabase.
+
+3. RESPALDO ANTES DE ESCRIBIR
+Acordar mantenimiento y pausar escrituras de clientes; las capturas por recorrido no son una instantánea atómica mientras hay escrituras.
+Exportar oficialmente la base Firestore completa a un bucket autorizado, registrar base, ruta, operación, fecha y resultado final. Verificar plan y costes antes de exportar. Referencia: https://firebase.google.com/docs/firestore/manage-data/export-import
+Respaldar por separado usuarios de Authentication y claims, archivos Storage/Supabase y versiones actuales PUBLICADAS de reglas, índices, Functions, Hosting y clientes. Los archivos locales nuevos no sustituyen las versiones antiguas publicadas.
+Probar la recuperación en un proyecto de pruebas autorizado antes de producción. Una importación puede dejar documentos adicionales; preparar la limpieza/reconciliación de documentos creados por la migración durante una reversión.
+No hay un restaurador JSON implementado en esta entrega. El serializador del migrador trata explícitamente Timestamp, pero no todos los tipos especiales de Firestore: revisar GeoPoint, referencias y bytes si existen. No usar este JSON como única garantía de recuperación.
+Preparar ADC del operador para firebase-admin; el login de Firebase CLI no lo configura. Confirmar que ADC pertenece a la cuenta autorizada antes de ejecutar el script: --project fija destino pero no el dueño de las credenciales.
+Sin variables de emuladores y con ADC correcta, crear captura y diagnóstico SOLO de lectura (nombres nuevos; nunca reutilizarlos):
+  node functions/scripts/migrate-data.js --project ruwa-jay --backup .artifacts/db-backup-20261012-01.json --report .artifacts/db-audit-20261012-01.json
+El informe puede contener incidencias: no autoriza a escribir ni garantiza reversión.
+Guardar respaldos fuera de Git y conservar otra copia privada fuera del equipo.
+
+4. PLAN DE MIGRACIÓN
+Revisar titulares/UID reales, administradores y claims, fechas, horarios y slots duplicados, legitimidad de visitas confirmadas, salas y remitentes, fotos temporales, coordenadas y audios inexistentes.
+Crear .artifacts/identity-mapping.json con decisiones verificadas: identities, properties, adminDecisions, confirmedVisitIds, archiveRooms y acceptMissingAudio cuando corresponda. No inferir identidad por nombres o correos.
+  node functions/scripts/migrate-data.js --input .artifacts/db-backup-20261012-01.json --mapping .artifacts/identity-mapping.json --report .artifacts/db-plan-20261012-01.json
+Exigir cero incidencias y revisar todas las rutas previstas. El script admite hasta 450 escrituras; para más, diseñar y probar una migración por etapas antes de continuar. Probar también efectos de triggers y notificaciones durante la migración.
+Si se decide que no hace falta migración, documentar por qué los datos actuales cumplen el contrato y las reservas tienen visit_slots compatibles.
+
+5. VALIDACIÓN LOCAL
+  npm test
+  npm run build
+  npm run test:rules
+  npm run test:storage
+  npm run test:integration
+  npm run test:browser
+Los emuladores usan demo-ruwajay. No probar con emuladores conectados al proyecto real. La bitácora registra pruebas anteriores; esta entrega no las ejecutó nuevamente.
+
+6. ÍNDICES Y FUNCIONES
+Solo con respaldo, plan revisado, configuración y ventana de mantenimiento preparados:
+  npx firebase deploy --project ruwa-jay --account gochoa21.yt@gmail.com --only firestore:indexes,functions
+Esperar construcción de índices y revisar logs/estado antes de continuar.
+Funciones esperadas: createVisit, changeVisitStatus, openConversation, messageNotification, visitCreatedNotification, visitStatusNotification, expireVisits, propertySearchNotification, favoritePriceNotification, profileMetadataUpdated.
+Confirmar que la programación de expireVisits y su región us-central1 están correctas. No aceptar eliminaciones inesperadas de otras funciones.
+
+7. APLICAR MIGRACIÓN SOLO SI CORRESPONDE
+Con escrituras pausadas y diagnóstico aprobado; este comando SÍ modifica Firestore:
+  node functions/scripts/migrate-data.js --project ruwa-jay --input .artifacts/db-backup-20261012-01.json --mapping .artifacts/identity-mapping.json --backup .artifacts/db-backup-before-apply-20261012-01.json --report .artifacts/db-apply-report-20261012-01.json --apply
+El script valida UID contra Auth, hace otra captura, comprueba que no cambió la base y rechaza más de 450 escrituras. Si falla, leer el error y conservar el respaldo nuevo; no forzar la ejecución.
+
+8. REGLAS Y WEB, EN LA MISMA VENTANA COORDINADA CON ANDROID
+Compilar la web con la configuración de producción, sin modo emulador:
+  npm run build
+Publicar reglas y web compatibles cuando Functions, índices y datos estén listos:
+  npx firebase deploy --project ruwa-jay --account gochoa21.yt@gmail.com --only firestore:rules,storage,hosting
+Confirmar en la consola que Hosting sirve la nueva versión y que las reglas activas son las entregadas. No terminar aquí sin verificar Android.
+
+9. ANDROID
+Desde proyecto/android-app, configurar ANDROID_HOME/SDK y Java 21:
+  .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+APK de prueba esperado: app/build/outputs/apk/debug/app-debug.apk. Es debug: distribuirlo solo como prueba.
+Para publicación formal, el encargado debe configurar la firma privada autorizada, revisar versionCode (actual 3), versionName (2.5.0), SHA y App Links, y generar la versión firmada. Esta entrega no incluye keystore ni firma release configurada.
+Distribuir un cliente compatible dentro de la ventana; los APK antiguos pueden dejar de reservar/abrir conversaciones con las reglas nuevas.
+
+10. SUPABASE Y CIERRE
+Revisar todas las políticas reales antes de ejecutar manualmente supabase/storage_lockdown.sql en el proyecto Supabase correcto. Es una tarea separada de Firebase. Solo aplicar cuando los clientes necesarios ya suban a Firebase Storage; conservar lectura de URLs antiguas.
+Ejecutar 02_PRUEBAS_Y_REVERSION.txt, registrar resultados en 03_REGISTRO_DE_EJECUCION.txt y actualizar la bitácora. No declarar push real probado por una prueba de emulador.

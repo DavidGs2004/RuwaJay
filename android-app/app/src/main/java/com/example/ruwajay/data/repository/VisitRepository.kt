@@ -31,92 +31,32 @@ class VisitRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
-    fun observeUserVisits(onChange: (List<VisitRequest>) -> Unit): ListenerRegistration? {
-        val user = auth.currentUser ?: run {
-            onChange(emptyList())
-            return null
+    fun observeUserVisits(onError: (Exception) -> Unit = {}, onChange: (List<VisitRequest>) -> Unit): ListenerRegistration? {
+        val user = auth.currentUser ?: run { onChange(emptyList()); return null }
+        var owner = emptyList<VisitRequest>()
+        var tenant = emptyList<VisitRequest>()
+        fun emit() = onChange((owner + tenant).distinctBy { it.id }.sortedByDescending { it.createdAtIso })
+        val a = firestore.collection("visits").whereEqualTo("ownerId", user.uid).addSnapshotListener { snap, error ->
+            if (error != null) onError(error) else { owner = snap?.documents?.mapNotNull { docToVisit(it.id,it.data) }.orEmpty(); emit() }
         }
-
-        return firestore.collection("visits")
-            .whereIn("ownerId", listOf(user.uid))
-            .addSnapshotListener { ownerSnap, _ ->
-                val ownerList = ownerSnap?.documents?.mapNotNull { docToVisit(it.id, it.data) }.orEmpty()
-
-                firestore.collection("visits")
-                    .whereIn("tenantId", listOf(user.uid))
-                    .addSnapshotListener { tenantSnap, _ ->
-                        val tenantList = tenantSnap?.documents?.mapNotNull { docToVisit(it.id, it.data) }.orEmpty()
-                        val combined = (ownerList + tenantList)
-                            .distinctBy { it.id }
-                            .sortedByDescending { it.createdAtIso }
-
-                        onChange(combined)
-                    }
-            }
-    }
-
-    fun createVisit(
-        propertyId: String,
-        propertyTitle: String,
-        propertyAddress: String,
-        ownerId: String,
-        ownerName: String,
-        visitDate: String,
-        visitTime: String,
-        notes: String,
-        onResult: (Result<String>) -> Unit
-    ) {
-        val user = auth.currentUser
-        if (user == null) {
-            onResult(Result.failure(Exception("Debes iniciar sesión para agendar una visita.")))
-            return
+        val b = firestore.collection("visits").whereEqualTo("tenantId", user.uid).addSnapshotListener { snap, error ->
+            if (error != null) onError(error) else { tenant = snap?.documents?.mapNotNull { docToVisit(it.id,it.data) }.orEmpty(); emit() }
         }
-
-        val visitId = "visit_${System.currentTimeMillis()}"
-        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        val nowIso = isoFormat.format(Date())
-
-        val visitData = mapOf(
-            "id" to visitId,
-            "propertyId" to propertyId,
-            "propertyTitle" to propertyTitle,
-            "propertyAddress" to propertyAddress,
-            "ownerId" to if (ownerId.isNotBlank()) ownerId else "owner-1",
-            "ownerName" to if (ownerName.isNotBlank()) ownerName else "Propietario",
-            "tenantId" to user.uid,
-            "tenantName" to (user.displayName ?: "Inquilino"),
-            "tenantEmail" to (user.email ?: ""),
-            "tenantPhone" to (user.phoneNumber ?: ""),
-            "visitDate" to visitDate,
-            "visitTime" to visitTime,
-            "notes" to notes,
-            "status" to "pendiente",
-            "createdAtIso" to nowIso,
-            "createdAt" to FieldValue.serverTimestamp()
-        )
-
-        firestore.collection("visits").document(visitId).set(visitData)
-            .addOnSuccessListener {
-                onResult(Result.success(visitId))
-            }
-            .addOnFailureListener {
-                onResult(Result.failure(it))
-            }
+        return object : ListenerRegistration { override fun remove() { a.remove(); b.remove() } }
     }
-
+    fun createVisit(propertyId: String, propertyTitle: String, propertyAddress: String, ownerId: String, ownerName: String,
+        visitDate: String, visitTime: String, notes: String, onResult: (Result<String>) -> Unit) {
+        com.google.firebase.functions.FirebaseFunctions.getInstance("us-central1").getHttpsCallable("createVisit")
+            .call(mapOf("propertyId" to propertyId,"date" to visitDate,"time" to visitTime,"notes" to notes))
+            .addOnSuccessListener { response ->
+                val id = (response.getData() as? Map<*, *>)?.get("id") as? String
+                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta invalida.")))
+            }.addOnFailureListener { onResult(Result.failure(it)) }
+    }
     fun updateVisitStatus(visitId: String, newStatus: String, onResult: (Result<Unit>) -> Unit) {
-        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-        val nowIso = isoFormat.format(Date())
-
-        firestore.collection("visits").document(visitId).update(
-            mapOf(
-                "status" to newStatus,
-                "updatedAtIso" to nowIso,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-        )
-            .addOnSuccessListener { onResult(Result.success(Unit)) }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+        com.google.firebase.functions.FirebaseFunctions.getInstance("us-central1").getHttpsCallable("changeVisitStatus")
+            .call(mapOf("visitId" to visitId,"status" to newStatus))
+            .addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 
     private fun docToVisit(id: String, data: Map<String, Any>?): VisitRequest? {
@@ -133,8 +73,8 @@ class VisitRepository(
                 tenantName = data["tenantName"] as? String ?: "",
                 tenantPhone = data["tenantPhone"] as? String ?: "",
                 tenantEmail = data["tenantEmail"] as? String ?: "",
-                visitDate = data["visitDate"] as? String ?: "",
-                visitTime = data["visitTime"] as? String ?: "",
+                visitDate = data["date"] as? String ?: data["visitDate"] as? String ?: "",
+                visitTime = data["time"] as? String ?: data["visitTime"] as? String ?: "",
                 notes = data["notes"] as? String ?: "",
                 status = data["status"] as? String ?: "pendiente",
                 createdAtIso = data["createdAtIso"] as? String ?: "",

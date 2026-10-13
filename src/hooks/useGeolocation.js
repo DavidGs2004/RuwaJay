@@ -47,7 +47,7 @@ export function useGeolocation() {
             ? 'Ubicación no disponible'
             : 'Tiempo de espera agotado'
         );
-        setPermissionState(err.code === 1 ? 'denied' : permissionState);
+        if (err.code === 1) setPermissionState('denied');
         setLoading(false);
       },
       {
@@ -56,7 +56,7 @@ export function useGeolocation() {
         maximumAge: 0, // never center the map with a stale cached position
       }
     );
-  }, [permissionState]);
+  }, []);
 
   const setManualPosition = useCallback((lat, lng) => {
     setPosition({ lat, lng, accuracy: null, manual: true });

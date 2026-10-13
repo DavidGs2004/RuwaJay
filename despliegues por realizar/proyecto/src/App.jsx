@@ -1,0 +1,131 @@
+import NotificationCenter from './components/ui/NotificationCenter';
+import { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
+import { FavoritesProvider } from './context/FavoritesContext';
+import { CompareProvider } from './context/CompareContext';
+import { ChatProvider } from './context/ChatContext';
+import Header from './components/layout/Header';
+import MobileNav from './components/layout/MobileNav';
+import Footer from './components/layout/Footer';
+import MobileAppBanner from './components/ui/MobileAppBanner';
+import MobileAppConnectModal from './components/ui/MobileAppConnectModal';
+
+// Pages
+import HomePage from './pages/HomePage';
+import ExplorePage from './pages/ExplorePage';
+import PropertyDetailPage from './pages/PropertyDetailPage';
+import RoutePage from './pages/RoutePage';
+import ChatPage from './pages/ChatPage';
+import LoginPage from './pages/LoginPage';
+import ProfilePage from './pages/ProfilePage';
+import PublishPage from './pages/PublishPage';
+import ResetPasswordPage from './pages/ResetPasswordPage'; // <--- Importamos la nueva página
+import RuwaJayLoader from './components/ui/RuwaJayLoader';
+import PropertyCompareModal from './components/property/PropertyCompareModal';
+import ChatNotificationToast from './components/chat/ChatNotificationToast';
+import ErrorBoundary from './components/ui/ErrorBoundary';
+
+function ScrollToTop() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname, search]);
+
+  return null;
+}
+
+function SuspendedSignOut() {
+  const { logout } = useAuth();
+  return <button onClick={logout}>Cerrar sesión</button>;
+}
+
+function RuwaJayRoutes() {
+  const { user, isInitializing, isPostAuthLoading } = useAuth();
+  const location = useLocation();
+  const isChatRoute = location.pathname === '/chat';
+  const [mobileAppModalOpen, setMobileAppModalOpen] = useState(false);
+
+  if (isInitializing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF5EE]">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-forest/20 border-t-forest" aria-label="Verificando sesión" />
+      </div>
+    );
+  }
+
+  if (isPostAuthLoading) return <RuwaJayLoader />;
+  if(user?.suspended || user?.status === 'suspended') return <div className="p-12 text-center">
+    <p>Tu cuenta está suspendida. Contacta al administrador.</p>
+    <SuspendedSignOut />
+  </div>;
+
+  // Rutas accesibles sin haber iniciado sesión
+  if (!user) {
+    return (
+      <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-crema font-sans text-cafe antialiased">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          {/* Ruta pública para restablecer contraseña desde el enlace del correo */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Capturar la URL por defecto que manda Firebase en los correos */}
+          <Route path="/__/auth/action" element={<ResetPasswordPage />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex min-h-screen w-full min-w-0 flex-col overflow-x-clip ${isChatRoute ? 'bg-[#FAF8F5]' : 'bg-crema'} font-sans text-cafe antialiased`}>
+      {!isChatRoute && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
+      {!isChatRoute && <Header />}
+      <div className="min-w-0 flex-1">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/explorar" element={<ExplorePage />} />
+          <Route path="/propiedad/:id" element={<PropertyDetailPage />} />
+          <Route path="/ruta" element={<RoutePage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/perfil" element={<ProfilePage />} />
+          <Route path="/publicar" element={<PublishPage />} />
+          <Route path="/publicar/:editId" element={<PublishPage />} />
+          {/* Si ya está en sesión e intenta entrar aquí, lo redirige al home */}
+          <Route path="/reset-password" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+      {!isChatRoute && <Footer />}
+      {!isChatRoute && <MobileNav />}
+      <PropertyCompareModal />
+      <ChatNotificationToast /><NotificationCenter />
+      <MobileAppConnectModal
+        isOpen={mobileAppModalOpen}
+        onClose={() => setMobileAppModalOpen(false)}
+        targetPath={location.pathname}
+      />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <FavoritesProvider>
+        <CompareProvider>
+          <ChatProvider>
+            <Router>
+              <ScrollToTop />
+              <ErrorBoundary>
+                <RuwaJayRoutes />
+              </ErrorBoundary>
+            </Router>
+          </ChatProvider>
+        </CompareProvider>
+      </FavoritesProvider>
+    </AuthProvider>
+  );
+}

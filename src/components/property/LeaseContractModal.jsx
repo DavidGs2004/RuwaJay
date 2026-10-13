@@ -1,4 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { firestore } from '../../lib/firebase';
+import { subscribeToUserVisits } from '../../lib/visitService';
+import { getOrCreateConversation } from '../../lib/chatService';
 import { X, Printer, Copy, Check, FileText, ShieldCheck, Scale, Calendar, User, Home, Download } from 'lucide-react';
 import { formatPrice } from '../../data/properties';
 
@@ -20,6 +24,10 @@ export default function LeaseContractModal({
 }) {
   const [activeTab, setActiveTab] = useState('preview'); // 'preview' | 'edit'
   const [copied, setCopied] = useState(false);
+  const [visits,setVisits] = useState([]);
+  const [selectedVisit,setSelectedVisit] = useState('');
+  const [room,setRoom] = useState(null);
+  const [saveStatus,setSaveStatus] = useState('');
 
   // Extract user verified DPI if available
   const userCui = user?.dpiData?.cui || '';
@@ -32,22 +40,48 @@ export default function LeaseContractModal({
     month: new Date().toLocaleString('es-GT', { month: 'long' }),
     year: new Date().getFullYear(),
     ownerName: owner?.name || 'María Elena López',
-    ownerCui: '1234 56789 0101',
+    ownerCui: '',
     ownerAddress: 'Ciudad de Guatemala',
     tenantName: user?.name || 'Inquilino Arrendatario',
-    tenantCui: userCui || '2345 67890 0101',
+    tenantCui: userCui || '',
     tenantAddress: userAddress,
     hasGuarantor: false,
     guarantorName: 'Fiador Mancomunado',
-    guarantorCui: '3456 78901 0101',
+    guarantorCui: '',
     propertyAddress: property?.address?.exact || property?.address?.approximate || 'Zona 10, Ciudad de Guatemala',
     propertyDepartment: property?.address?.department || 'Guatemala',
-    monthlyRent: property?.price || 4500,
-    depositAmount: property?.deposit || property?.price || 4500,
-    maintenanceFee: 350,
+    monthlyRent: property?.price || 0,
+    depositAmount: property?.deposit || property?.price || 0,
+    maintenanceFee: Number(property?.maintenanceFee) || 0,
     durationMonths: 12,
     startDate: new Date().toISOString().split('T')[0],
   });
+
+  useEffect(()=>subscribeToUserVisits(user?.id,items=>setVisits(items.filter(v=>v.propertyId===property?.id && ['confirmada','aceptada'].includes(v.status)))),[user?.id,property?.id]);
+  const visit=visits.find(v=>v.id===selectedVisit)||visits[0];
+  useEffect(()=>{
+    setRoom(null);
+    if(!isOpen||!visit) return;
+    let active=true,unsubscribe=()=>{};
+    getOrCreateConversation(visit.tenantId,visit.ownerId,visit.propertyId).then(id=>{
+      if(!active)return;
+      setRoom({id,participants:[visit.tenantId,visit.ownerId],ownerId:visit.ownerId});
+      setContractData(previous=>({...previous,ownerName:visit.ownerName,tenantName:visit.tenantName}));
+      unsubscribe=onSnapshot(doc(firestore,'lease_drafts',id),snapshot=>{
+        if(snapshot.exists())setContractData(previous=>({...previous,...snapshot.data().terms}));
+      },error=>setSaveStatus(error.message));
+    }).catch(error=>{if(active)setSaveStatus(error.message);});
+    return()=>{active=false;unsubscribe();};
+  },[isOpen,visit?.id]);
+  const saveDraft=async()=>{
+    try {
+      const terms={...contractData,monthlyRent:Number(contractData.monthlyRent),depositAmount:Number(contractData.depositAmount),
+        maintenanceFee:Number(contractData.maintenanceFee),durationMonths:Number(contractData.durationMonths)};
+      await setDoc(doc(firestore,'lease_drafts',room.id),{participants:room.participants,conversationId:room.id,
+        ownerId:room.ownerId,propertyId:property.id,terms,updatedAt:serverTimestamp()});
+      setSaveStatus('Borrador guardado y compartido con el interesado.');
+    }catch(error){setSaveStatus(error.message||'No se pudo guardar el borrador.');}
+  };
 
   const handlePrint = () => {
     window.print();
@@ -63,10 +97,20 @@ export default function LeaseContractModal({
   };
 
   if (!isOpen || !property) return null;
+  const signingDate = new Date(`${contractData.startDate || new Date().toISOString().slice(0,10)}T12:00:00-06:00`);
 
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto bg-black/60 p-2 sm:p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
+        <div className="p-4 border-b print:hidden">
+          <p className="text-sm">Borrador sin firma. Las condiciones guardadas se comparten entre web y app.</p>
+          {visits.length>1 && <select value={visit?.id || ''} onChange={event=>setSelectedVisit(event.target.value)} className="p-2 border rounded">
+            {visits.map(v=><option key={v.id} value={v.id}>{v.tenantName} - {v.date}</option>)}
+          </select>}
+          {room?.ownerId===user?.id && <button onClick={saveDraft} className="p-2 rounded bg-forest text-white">Guardar borrador compartido</button>}
+          {!visit && <p className="text-xs">Para compartir el borrador necesitas una visita confirmada.</p>}
+          {saveStatus && <p role="status" className="text-sm">{saveStatus}</p>}
+        </div>
         {/* Header (Hidden on print) */}
         <div className="flex items-center justify-between border-b border-border bg-[#FDFBF7] px-5 py-4 print:hidden">
           <div className="flex items-center gap-3">
@@ -275,8 +319,8 @@ export default function LeaseContractModal({
 
             {/* Introductory clause */}
             <p className="mb-4 text-justify">
-              En la ciudad de <strong>{contractData.city}</strong>, departamento de <strong>{contractData.propertyDepartment}</strong>,
-              el día <strong>{contractData.day}</strong> de <strong>{contractData.month}</strong> del año <strong>{contractData.year}</strong>,
+              En la ciudad de <strong>{(property.address?.municipality || property.location?.municipality || 'Por completar')}</strong>, departamento de <strong>{contractData.propertyDepartment}</strong>,
+              el día <strong>{signingDate.getDate()}</strong> de <strong>{signingDate.toLocaleDateString('es-GT',{month:'long'})}</strong> del año <strong>{signingDate.getFullYear()}</strong>,
               comparecemos por una parte: <strong>{contractData.ownerName}</strong>, mayor de edad, con domicilio en {contractData.ownerAddress},
               quien se identifica con el Código Único de Identificación —CUI— del Documento Personal de Identificación —DPI— número{' '}
               <strong>{contractData.ownerCui}</strong>, extendido por el Registro Nacional de las Personas —RENAP— de la República de Guatemala,

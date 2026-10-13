@@ -42,7 +42,7 @@ class AuthRepository(
                     "email" to (user.email ?: email.trim()),
                     "role" to role,
                     "phone" to phone,
-                    "createdAt" to System.currentTimeMillis()
+                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                 )
 
                 firestore.collection("users").document(user.uid).set(profile)
@@ -84,7 +84,7 @@ class AuthRepository(
                             "email" to (user.email ?: ""),
                             "photoURL" to (user.photoUrl?.toString() ?: ""),
                             "role" to "seeker",
-                            "createdAt" to System.currentTimeMillis()
+                            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                         )
                         userRef.set(profile)
                             .addOnSuccessListener { onResult(Result.success(Unit)) }
