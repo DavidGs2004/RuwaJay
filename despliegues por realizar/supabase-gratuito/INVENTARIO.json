@@ -1,0 +1,1020 @@
+{
+  "date": "2026-10-13",
+  "files": [
+    {
+      "path": "android-app/.gitignore",
+      "bytes": 240,
+      "sha256": "9c8db52985e5456a85e490b6d799ac3222704d7e42c773e31ad032b034c300bd"
+    },
+    {
+      "path": "android-app/app/.gitignore",
+      "bytes": 6,
+      "sha256": "5c3174b74edc6f2b9e0743594b8bd3c7f31e4f4405758cc9872b3fe1de1d28b4"
+    },
+    {
+      "path": "android-app/app/build.gradle.kts",
+      "bytes": 3339,
+      "sha256": "e24faf2993deca2443c2a31e49a32062a92d34578fe30db899fe0f85c47eb03b"
+    },
+    {
+      "path": "android-app/app/google-services.json",
+      "bytes": 1673,
+      "sha256": "4c3b1b90e946c43077fe9a7ba27948994de472a0bb1937433d19513e4d04e3fb"
+    },
+    {
+      "path": "android-app/app/proguard-rules.pro",
+      "bytes": 624,
+      "sha256": "427b2815868b97fc3be4123696094f491a87b23404fe24115b024a4f0dc911ad"
+    },
+    {
+      "path": "android-app/app/src/androidTest/java/com/example/ruwajay/ExampleInstrumentedTest.kt",
+      "bytes": 688,
+      "sha256": "79697ef5fcd7f009ea6fc8498be47ce9d41be8a7d5c4ac7b3871849d1c183189"
+    },
+    {
+      "path": "android-app/app/src/main/AndroidManifest.xml",
+      "bytes": 2852,
+      "sha256": "bce748a55b66e4cd3bf76266f29e8d0d74335d260f02be04288c6bc8507844c2"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/Chat.kt",
+      "bytes": 785,
+      "sha256": "a2311bd98d316e3aa23140946ab92e2f6eea6778a0291cdcf6bd166f3846ecab"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/Owner.kt",
+      "bytes": 311,
+      "sha256": "1bd77ab488847d8fef2dcac013016b1b0c05c2483c9ad290dd1290d6ebe991c7"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/Property.kt",
+      "bytes": 1385,
+      "sha256": "c25e4026856509c9cf45acfc298988e24f2dd5e46cc1d479f2906dfbec260bd3"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/Review.kt",
+      "bytes": 362,
+      "sha256": "b4ba209d4d6e6477bcac0c79c50209dec9b9723d3734b72bacc3dafe08be2125"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/SharedContract.kt",
+      "bytes": 786,
+      "sha256": "e8a53d7397a27727347370e0aef8cd997e52bd56dc1e213dad89a1168fabe710"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/model/SystemUpdate.kt",
+      "bytes": 462,
+      "sha256": "26eefc0e910ba9d7180538df705295dd926f945f5d2267bea8ca4c6bc47eb157"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/AuthRepository.kt",
+      "bytes": 4588,
+      "sha256": "c86df9aa4f3ea803e073a80f8e5f1af6981861bd91bc9639620ae047567ad7d2"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/ChatRepository.kt",
+      "bytes": 4262,
+      "sha256": "0856f736e423da423041d50e109c30886289c1458c4b1d92b5309ddbd082094b"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/MockDataRepository.kt",
+      "bytes": 10664,
+      "sha256": "617ca3fb0769352351009446d81a1ba463bb71b50158b1b55cb27b7f5d93f6af"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/NotificationRepository.kt",
+      "bytes": 1953,
+      "sha256": "598cadd274374eb27641b1a50d1eb096e13b2272f1178aa5d7c9d91119e6e9e5"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/PropertyRepository.kt",
+      "bytes": 12608,
+      "sha256": "7f5c9df002c2fd7a8c5ca94ef90504cd0ad87c26aaff62a1570647e7c7273ec8"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/RouteRepository.kt",
+      "bytes": 2974,
+      "sha256": "411991e303ced70b2b9a80f0ad124cb50a3696db4c1aaa7c4b1b2ef12a02d5dd"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/RuwaBackend.kt",
+      "bytes": 6019,
+      "sha256": "8cbdac44cef49ad3c402af66d885d22cd8a5d634ff48bd8de236191712c01041"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/SystemUpdatesRepository.kt",
+      "bytes": 3862,
+      "sha256": "d62485f4ae1f54d034c630841f294f76d0b3f372825c23d7198a1f844b5ad632"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/data/repository/VisitRepository.kt",
+      "bytes": 4448,
+      "sha256": "9f23373439baaebcf7f0120b06642f4727155a9decd6c5071117fa36d8b5b087"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/MainActivity.kt",
+      "bytes": 6393,
+      "sha256": "9b45167d94d5d9bb894f9a286ac29bbd66a6c86db0ac0d9f18773cc63a39679e"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/RuwaMessagingService.kt",
+      "bytes": 1731,
+      "sha256": "81c3722c34d13b80ffbb304c74efa76978f6e3f38087f53962fa86bdbfa1365d"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/BottomNavBar.kt",
+      "bytes": 4276,
+      "sha256": "a87879f61b3816858e3aaa3de926a164c7d4d0c2226c62bfd20b6df5feacc213"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/GpsPosition.kt",
+      "bytes": 2615,
+      "sha256": "a996b39ebf546809008d710e8a04bcb906cb384017509cf189ec8a6568bc318f"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/OsmLocationPickerMap.kt",
+      "bytes": 23704,
+      "sha256": "b180fd4ede2d768c3318480bff75562c380b9fef1fae5afaad3f1fcf9e59906f"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/OsmMapView.kt",
+      "bytes": 23690,
+      "sha256": "02e1b8bc70138a96ceecb767342487f22fe4fefdef2d1620f3736950310f918f"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCard.kt",
+      "bytes": 17313,
+      "sha256": "2f8bdb0474f37111ab4db34e0ca1b673c683ca5ba2fc4cd43bd826c69d72ae9a"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCompareDialog.kt",
+      "bytes": 12755,
+      "sha256": "68cd628b892d2110c4dea52b029d257cc799212dfab891b6a8dff3f5b1d5ca56"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyReviews.kt",
+      "bytes": 18834,
+      "sha256": "7dc3b36426605c408ec3b4fa730dba9ba812786134c2f2ba8735ca44592115e2"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/RentCalculatorDialog.kt",
+      "bytes": 8951,
+      "sha256": "62d8ec1de0342af60cc21eb77d41d25446c0185ed5cd07c93418ff3fd02d40a4"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/components/SharedLeaseDraft.kt",
+      "bytes": 5504,
+      "sha256": "03754805cda00386d764e788fdc63102656bdad94aac9a81babf262de0db0641"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/navigation/AppNavigation.kt",
+      "bytes": 7984,
+      "sha256": "c2d0d4a4092bdb03b81be5146ac1358eebf30a56261dc3529ebb9689f55aa979"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/navigation/Screen.kt",
+      "bytes": 893,
+      "sha256": "61f81c19c87bb0fe709ec16b30a8bf5dfdfca2995172a842da7d7e1e2f0e224e"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/AccountTools.kt",
+      "bytes": 7773,
+      "sha256": "515a58d71d14e7e1ed2c0287fd6cde7eef04ab432497c2310639d1ca07be381a"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ChatScreen.kt",
+      "bytes": 10875,
+      "sha256": "10aa8d1a70e35bf797762acae76e73325019674d74790f05c6428ae3af908007"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ExploreScreen.kt",
+      "bytes": 32289,
+      "sha256": "f1d53bb7e51b4f9792b361ff437806d6f295c28d889b2549d1e93cae817fac09"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/HomeScreen.kt",
+      "bytes": 23741,
+      "sha256": "47d66871d08fef8ccd095dabde4637a79b855635bfa4f99f9d595c536d1548f2"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/InboxScreen.kt",
+      "bytes": 8636,
+      "sha256": "8b1d694e30c378f8c0ea28b238762dea60371d08502a833fbc838039da331fb6"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/LoginScreen.kt",
+      "bytes": 25691,
+      "sha256": "8d5d58e06d6a45f32e3b697a0cb46c71672849d4f1099815feedbc1c8aa95e42"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ProfileScreen.kt",
+      "bytes": 25905,
+      "sha256": "e7c85fd32c07b19bd15da692b75cbc1559830a4523e61f84a2cc80f8780eae4d"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/PropertyDetailScreen.kt",
+      "bytes": 24863,
+      "sha256": "afa716de820e58bad3caf101019ba521e187663427bc0f1ae422458ecaecb65a"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/PublishScreen.kt",
+      "bytes": 19288,
+      "sha256": "6193322cbdb90c47f840e46833ceeba2b321c63480f492e0faa8b3ccde3e0a21"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/RouteScreen.kt",
+      "bytes": 4843,
+      "sha256": "290bfed010751767f7920c946a423bdb8c1cc810f7ac1d791aa4a3d0a8c07ac6"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Color.kt",
+      "bytes": 1868,
+      "sha256": "8fbdc02aeb13b8956f8918c72ee16526c4d2fe1a0602881a501a3788198d8d5e"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Theme.kt",
+      "bytes": 2146,
+      "sha256": "3969405f046e2257a5744683bda763ae9ef6fd9348abd300ba9a498290cb1610"
+    },
+    {
+      "path": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Type.kt",
+      "bytes": 1758,
+      "sha256": "5196dd3a4192ba2e16e4d8b6fb1ec694e6107d59955c71c5b760b29d26a5f404"
+    },
+    {
+      "path": "android-app/app/src/main/keepRules/rules.keep",
+      "bytes": 429,
+      "sha256": "9e920813dbf36db3bdcc279837aac74db4c80647585a84d3e3f0c23d700105f2"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/hero_banner.jpg",
+      "bytes": 813805,
+      "sha256": "561433ca70ad7e2d40927dfb7a12bef7e1f619ac83436be236fd09f7553a1e11"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/ic_launcher_background.xml",
+      "bytes": 5776,
+      "sha256": "38381d0d0a64770d992c98e5b5e492555690af40e2fc6ee59e5a1c2a7c0fdcde"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "bytes": 1731,
+      "sha256": "6e3c1bb64d9bec079cf0030d867c58b064d2fb19ca6c5a691543c43134f64a2a"
+    },
+    {
+      "path": "android-app/app/src/main/res/drawable/ic_logo.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "bytes": 258,
+      "sha256": "71c11a863499bfb1014c5851e42f258e72c49ad7ad5dae025db5eafca75b6c48"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "bytes": 258,
+      "sha256": "71c11a863499bfb1014c5851e42f258e72c49ad7ad5dae025db5eafca75b6c48"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/colors.xml",
+      "bytes": 447,
+      "sha256": "d4ab350a793ef3ddcf70023613f8276ec384a80b9e4691ae5bffb8bb32aee676"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/strings.xml",
+      "bytes": 72,
+      "sha256": "9f83dfc3d73a64f5a5a09d1934d7f0c919a5197242c023b8e05ddb436f8f995c"
+    },
+    {
+      "path": "android-app/app/src/main/res/values/themes.xml",
+      "bytes": 153,
+      "sha256": "0f99d175d203f5654347345fc7e8bc218796acc1d02ccfa0d11e806bd2953369"
+    },
+    {
+      "path": "android-app/app/src/main/res/xml/backup_rules.xml",
+      "bytes": 490,
+      "sha256": "facaaef2162be6dd86544a819278042729ed481c38933a410651b81424da7ea7"
+    },
+    {
+      "path": "android-app/app/src/main/res/xml/data_extraction_rules.xml",
+      "bytes": 569,
+      "sha256": "940f48fb2ba4d9ec5a55671126796fefa71661c0a5d7b434dc1e9be23da41690"
+    },
+    {
+      "path": "android-app/app/src/test/java/com/example/ruwajay/ExampleUnitTest.kt",
+      "bytes": 359,
+      "sha256": "3c87924c9834d1bbb09a52165cb091b24303af67fcec8db1499bb3f0838c1b3e"
+    },
+    {
+      "path": "android-app/app/src/test/java/com/example/ruwajay/SharedContractTest.kt",
+      "bytes": 1299,
+      "sha256": "0d5d5cb094b0c5b16c24a7146840b51f116260574910438f46aec5ceac57cb66"
+    },
+    {
+      "path": "android-app/build.gradle.kts",
+      "bytes": 275,
+      "sha256": "3e6db2e6c3108ffa35fc85adca726efc467bce48cd411213b418a34be2bca99e"
+    },
+    {
+      "path": "android-app/gradle/gradle-daemon-jvm.properties",
+      "bytes": 1177,
+      "sha256": "30299b8d38ea0f14e4be6b26e258ba9f4c9ef183e765f3fed07f5dabaf14b17e"
+    },
+    {
+      "path": "android-app/gradle/libs.versions.toml",
+      "bytes": 3778,
+      "sha256": "39fd7c829a1a924fcf16f75b595646f70faa56c9bca87b4789bcc5a8bde32960"
+    },
+    {
+      "path": "android-app/gradle/wrapper/gradle-wrapper.jar",
+      "bytes": 45457,
+      "sha256": "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3"
+    },
+    {
+      "path": "android-app/gradle/wrapper/gradle-wrapper.properties",
+      "bytes": 378,
+      "sha256": "503f66cc4cde5faba7601f8c0efda41d38e4fbd490fb30f6559f623bda40df97"
+    },
+    {
+      "path": "android-app/gradle.properties",
+      "bytes": 1325,
+      "sha256": "e57bf446480af2df43d33db7da42458a5c7ebb5063b3e10b5607ca25e09d5b53"
+    },
+    {
+      "path": "android-app/gradlew",
+      "bytes": 8979,
+      "sha256": "8cd81d7a40a14119b8e9e64647e02822b3511e9e4a536ab92c88daa3b0e170bc"
+    },
+    {
+      "path": "android-app/gradlew.bat",
+      "bytes": 2937,
+      "sha256": "1d297e00bd21de3ace22b4d7f2de1f9dfa858883d66bbf7c1ccbecccec8f4f3b"
+    },
+    {
+      "path": "android-app/settings.gradle.kts",
+      "bytes": 646,
+      "sha256": "8b1012a91536b90fe788667dcede4e50f6ec399cc4788bd67da80548cf3e6794"
+    },
+    {
+      "path": "docs/INTEGRACION.md",
+      "bytes": 12777,
+      "sha256": "f18e67c10f0d10b37dd5cd7dd6cd1fe9bd8005fcf26ea42b32cfbb308427fb25"
+    },
+    {
+      "path": "functions/domain.js",
+      "bytes": 3349,
+      "sha256": "9d4f35c9a8edb231329d716e4dc730330a993f8c1b86613089be1c2853453993"
+    },
+    {
+      "path": "functions/index.js",
+      "bytes": 14206,
+      "sha256": "3ea91e534667c774fff9649ee796e895fa8a8cfc148f7d892a2b49ed0b1d703e"
+    },
+    {
+      "path": "functions/package-lock.json",
+      "bytes": 109810,
+      "sha256": "5f8b7d7c6d6d6902be3893d14db17359f13d11fd479c3e5af0b7c5836862a3bf"
+    },
+    {
+      "path": "functions/package.json",
+      "bytes": 283,
+      "sha256": "07453253a121eae64e9478241c5e372b43fa50f3a11a0ad41d5e0a084f75e6c8"
+    },
+    {
+      "path": "functions/scripts/backup-codec.js",
+      "bytes": 2814,
+      "sha256": "05d11975506b4994c936acd1fee7124edcd6cd223e6662fbb56a2a810bbdaf72"
+    },
+    {
+      "path": "functions/scripts/backup-codec.test.js",
+      "bytes": 1535,
+      "sha256": "6ff0180a03c4436a3cc6a760f848b1cfd928741e5f6819afa13367ffeea7ca70"
+    },
+    {
+      "path": "functions/scripts/migrate-data.js",
+      "bytes": 9522,
+      "sha256": "bfa25ff4c230cc0f0a8a7847be2765d6e24bd0787e2ed3e2701eb062700c6c85"
+    },
+    {
+      "path": "public/Banners/Bannder1.png",
+      "bytes": 2708527,
+      "sha256": "e8819d64499e91fd08a7af974f5fb0ea83c9566237f7c72308ccfe9bd06b7cac"
+    },
+    {
+      "path": "public/Banners/Banner2.png",
+      "bytes": 2274393,
+      "sha256": "791a83510b72053c99e682957b786f63c0c9609b638697afc6b91b2729fdb01d"
+    },
+    {
+      "path": "public/Banners/Banner3.png",
+      "bytes": 2684570,
+      "sha256": "b8478ba229d1a473bce763d553f69ab85d877bfe91e7c5f53cee72e61625781f"
+    },
+    {
+      "path": "public/Banners/Banner4.png",
+      "bytes": 2602960,
+      "sha256": "f7a60559c5d67fe3f0a628a20d6c4dd7ffb0078121b56ab7d9fcd055c46148f2"
+    },
+    {
+      "path": "public/Banners/Banner5.png",
+      "bytes": 2429042,
+      "sha256": "94da0bd774fca2ac6eec1ddb9db164a1551b3b0972b3b675ec6fc34eead8d236"
+    },
+    {
+      "path": "public/Casas/cat-acogedora.jpg",
+      "bytes": 1011150,
+      "sha256": "74205efa7ee9105dbe00fd73ec5b9c1d6badc995a7c0081c4aea68e4da771b76"
+    },
+    {
+      "path": "public/Casas/cat-familiar.jpg",
+      "bytes": 1157673,
+      "sha256": "c08036feee01869d405ea65783f05927df52abc1b7095dbd38bc01f6ad183416"
+    },
+    {
+      "path": "public/Casas/cat-urbana.jpg",
+      "bytes": 1113335,
+      "sha256": "ec58ae81e4092eb5519ce3aacca6fb114d767c57649487deaf15b1df2b81cca0"
+    },
+    {
+      "path": "public/Casas/hero-banner-new.jpg",
+      "bytes": 813805,
+      "sha256": "561433ca70ad7e2d40927dfb7a12bef7e1f619ac83436be236fd09f7553a1e11"
+    },
+    {
+      "path": "public/Casas/hero-bg.jpg",
+      "bytes": 1132400,
+      "sha256": "ab183c2bd8a8b76c79e31d3d7e9b685ca4d65908a1a07cb7b1b6e4de2eb6e8d8"
+    },
+    {
+      "path": "public/firebase-messaging-sw.js",
+      "bytes": 708,
+      "sha256": "1f4d5e5d27ec482675561e87262256d25d532034247d9403183d2078dea32d2f"
+    },
+    {
+      "path": "public/logo/logo.png",
+      "bytes": 1573375,
+      "sha256": "52f3b89e89ac2456a0292c85076a5416c0d6ae511b463871daf6eff4e5a7f920"
+    },
+    {
+      "path": "public/manifest.json",
+      "bytes": 492,
+      "sha256": "d342c24707718e7595bc0adf57a30aa9931181a154cda0fab06231030de53693"
+    },
+    {
+      "path": "scripts/dev.mjs",
+      "bytes": 1877,
+      "sha256": "f544eee3267a56915aa1693d3d7b1a1b7f5ebe37f0422c56b52777bb5fae340b"
+    },
+    {
+      "path": "scripts/run-emulators.mjs",
+      "bytes": 1363,
+      "sha256": "2c104e9f00d45f590b7ca4178145798d307d1054f463c5ecfb528925bcce5985"
+    },
+    {
+      "path": "src/App.jsx",
+      "bytes": 5408,
+      "sha256": "85099bb25b48eb6f0f5448e7f60b2971ed94c47f0bc56e2fa5e732018ccc9934"
+    },
+    {
+      "path": "src/assets/hero.png",
+      "bytes": 13057,
+      "sha256": "881ffbcaafc212e49addad08846a5b82761355fa20624253af3477ba33262c5c"
+    },
+    {
+      "path": "src/assets/typescript.svg",
+      "bytes": 1304,
+      "sha256": "c1f92be30cbb7159085e05cedd9dd3da54d04f72ad54f6df314739e61845917e"
+    },
+    {
+      "path": "src/assets/vite.svg",
+      "bytes": 8710,
+      "sha256": "2f1f6c6f90a0ef7422cbb4cfafcd8ad329c507a18afdc34cc21fa72179b9c54a"
+    },
+    {
+      "path": "src/components/chat/ChatNotificationToast.jsx",
+      "bytes": 3325,
+      "sha256": "c84fb077ef50d4d7207be031840d831d871ae0bd7d0ef5a3d1bcfbd43994a08e"
+    },
+    {
+      "path": "src/components/chat/PrivateMedia.jsx",
+      "bytes": 1105,
+      "sha256": "7942114e3ef91a90124929ffa38f2e49e983ccce041f6208fdb66370de9f612a"
+    },
+    {
+      "path": "src/components/layout/Footer.jsx",
+      "bytes": 6992,
+      "sha256": "f4ac9081afd531c19881efe0faa94d2e544300580156742879d3548bdf44f785"
+    },
+    {
+      "path": "src/components/layout/Header.jsx",
+      "bytes": 58344,
+      "sha256": "dabec69c0c5e6f2651edcc62a60b1d77242c0afccb196c2a6df1da5f9d58fe38"
+    },
+    {
+      "path": "src/components/layout/MobileNav.jsx",
+      "bytes": 3605,
+      "sha256": "b0b1e80b86e8da4a2801e729eb2b41021dd2efe899fb0ffbc19c1691242321dc"
+    },
+    {
+      "path": "src/components/map/MapView.jsx",
+      "bytes": 9364,
+      "sha256": "828bac3d69f30456c9b0449a80c4881fce6d453018cf979485758df2cf3ce35e"
+    },
+    {
+      "path": "src/components/map/PropertyLocationPickerMap.jsx",
+      "bytes": 19666,
+      "sha256": "8a5330acc518beb6862cddbbfeef13936ca0ca2585e0b37bb4b133d24503f409"
+    },
+    {
+      "path": "src/components/map/RuwaJayNavigationView.jsx",
+      "bytes": 96832,
+      "sha256": "5e17aa71ed88110f052be0585fc512e5bf5810e72459b80e51a16a61d5afe528"
+    },
+    {
+      "path": "src/components/map/WazeNavigationView.jsx",
+      "bytes": 183,
+      "sha256": "05665d642eb434a24c87666a959cabe0ca487a63b0efde160aa822b9a8086895"
+    },
+    {
+      "path": "src/components/property/EditPropertyModal.jsx",
+      "bytes": 24590,
+      "sha256": "a756133c1a99e5383e5e3ca7817e53c4c8a40b2c9867d80b616a09a306251d80"
+    },
+    {
+      "path": "src/components/property/LeaseContractModal.jsx",
+      "bytes": 24233,
+      "sha256": "6e5ed25022c33e0725ae025920d437c7236fe3617cfa11cfd023e2b10d1e8387"
+    },
+    {
+      "path": "src/components/property/PropertyCard.jsx",
+      "bytes": 9649,
+      "sha256": "888af665da96c2e71243a99cedb7fb443f4c67779d5e913d49eaa98006228d33"
+    },
+    {
+      "path": "src/components/property/PropertyCompareModal.jsx",
+      "bytes": 49485,
+      "sha256": "d9fec7969d153616ce3baff29bb9ca7c65131d7cf60b53530920d5059ef34940"
+    },
+    {
+      "path": "src/components/property/PropertyLightbox.jsx",
+      "bytes": 6571,
+      "sha256": "a9c1f925fa66ab2d2258008b075abf547805f2ae595125e08b2e3214b26df8a5"
+    },
+    {
+      "path": "src/components/property/PropertyReviews.jsx",
+      "bytes": 17040,
+      "sha256": "460dfbbba36f87774004ada2ad372e69b4dd4f24538f1d5b8fe01f99d15419dd"
+    },
+    {
+      "path": "src/components/property/RentAffordabilityModal.jsx",
+      "bytes": 25032,
+      "sha256": "120746d0f4bdbb882a7fa72fcd4ed47aae59120dc719554fdfc1c390520ae568"
+    },
+    {
+      "path": "src/components/property/SaveSearchModal.jsx",
+      "bytes": 8761,
+      "sha256": "ea2873698369770e1de072fdd2a2a2fc7c7277b57c4bcee077f30eb5f2054bd6"
+    },
+    {
+      "path": "src/components/ui/ErrorBoundary.jsx",
+      "bytes": 2552,
+      "sha256": "81f4ed344bcb1440a3235a0d9a39d37894a8a3f300809989c3a23b116d92cac7"
+    },
+    {
+      "path": "src/components/ui/MobileAppBanner.jsx",
+      "bytes": 2671,
+      "sha256": "3915ab80ec43e768ccb8f2b1e9c45d9e3f7659008d5c3c0b87e5a25442fb7cdb"
+    },
+    {
+      "path": "src/components/ui/MobileAppConnectModal.jsx",
+      "bytes": 5781,
+      "sha256": "89efdd6c28df7ec9a7a5d0c9e089b7aac5042421d43a15583fcd8a08d61ba81d"
+    },
+    {
+      "path": "src/components/ui/NotificationCenter.jsx",
+      "bytes": 1850,
+      "sha256": "cb7f4c6b4e9de16ab6435c9eac89226e52a426011280c6641e8161d23ce017f4"
+    },
+    {
+      "path": "src/components/ui/RuwaDatePicker.jsx",
+      "bytes": 24600,
+      "sha256": "1635dff14f5a476ad7a982403287944a623b959c9ded8fbf0715162c41eee544"
+    },
+    {
+      "path": "src/components/ui/RuwaJayLoader.jsx",
+      "bytes": 3232,
+      "sha256": "e94e30b8264d5e3459c80d9fc392fe2ec8d8e9aed43924d783b858ba4576a201"
+    },
+    {
+      "path": "src/components/ui/RuwaJayLogo.jsx",
+      "bytes": 821,
+      "sha256": "3fbbe42636e9e22d128b93c3bb0a9963a8e4f0603ffbfbfb1adf9ff166534925"
+    },
+    {
+      "path": "src/components/ui/RuwaSelect.jsx",
+      "bytes": 11775,
+      "sha256": "bf4f456c2c0268091e1c74d0d30bb66e0117bfcbd4f4308b3aa4b2bd13ce49be"
+    },
+    {
+      "path": "src/components/ui/SystemUpdatesModal.jsx",
+      "bytes": 7144,
+      "sha256": "b7741847d53b2a0c853fd2f9a3b081dbae3234ecee2dc6d236212643d8d32cba"
+    },
+    {
+      "path": "src/context/AuthContext.jsx",
+      "bytes": 15275,
+      "sha256": "4185d3e616937d37493bbf090eecac0bb51bf47acea7ae36e9edb5d72ec102c2"
+    },
+    {
+      "path": "src/context/ChatContext.jsx",
+      "bytes": 5548,
+      "sha256": "61e1463efd8da1f4897cd2718351f588760638c48d2661bc24133436631dd0a4"
+    },
+    {
+      "path": "src/context/CompareContext.jsx",
+      "bytes": 3850,
+      "sha256": "c409b7fd330930836eca8536afb9c0428df12a134297298bdf99d7d4064ef708"
+    },
+    {
+      "path": "src/context/FavoritesContext.jsx",
+      "bytes": 3785,
+      "sha256": "d222c86635b79d90c1dcb04f99dddc33952d426917926232860c2ddc962acf9d"
+    },
+    {
+      "path": "src/counter.ts",
+      "bytes": 283,
+      "sha256": "3ff80cd8aef4f18b6c5fde2ffb547e9f35011a706c35ba2ba2dfa4edff7447df"
+    },
+    {
+      "path": "src/data/avatars.js",
+      "bytes": 549,
+      "sha256": "d5d6d96f50f460de1591b294509d4afbf2bd0f0d8d271b0c76393995ec54b265"
+    },
+    {
+      "path": "src/data/guatemalaLocations.js",
+      "bytes": 16290,
+      "sha256": "189da82340b03086d4bc9e4a8bf2aa9a53a26940e39a8571ceb57ade010be5d6"
+    },
+    {
+      "path": "src/data/properties.js",
+      "bytes": 28116,
+      "sha256": "be319d7d08cec412589a2c51a5c08e8f1c5605365fdede98ba5c5c36c1bfadf9"
+    },
+    {
+      "path": "src/hooks/useGeolocation.js",
+      "bytes": 2092,
+      "sha256": "eee6ef7d16b48efb0386ba8e1a34a3f74625e94dcd686dff2cd78a47012e8e6d"
+    },
+    {
+      "path": "src/index.css",
+      "bytes": 22250,
+      "sha256": "d29caf55b153b5cbc672a2795568f2f360b782e394e5d5dfdea02a23ca8068a1"
+    },
+    {
+      "path": "src/lib/adminService.js",
+      "bytes": 1989,
+      "sha256": "72c0c60d92d44c7bc5cbd7dfbf0e8c1c0afee0d60cb852ca67c51566dbee43eb"
+    },
+    {
+      "path": "src/lib/backendService.js",
+      "bytes": 2793,
+      "sha256": "e2c55714567843ec6488f727d4217f1e43e2607c835c22c1ffa93132e5fc2759"
+    },
+    {
+      "path": "src/lib/chatService.js",
+      "bytes": 3646,
+      "sha256": "0dd4fb62709e41dc4ca748d47c3489734840f68a075646a22892b8152e816cac"
+    },
+    {
+      "path": "src/lib/contracts.js",
+      "bytes": 1819,
+      "sha256": "b4fe259b585356a143aaebdf8c97d20e62ddcfbc93f7d1d7c72e0f4ccca88729"
+    },
+    {
+      "path": "src/lib/firebase.js",
+      "bytes": 2209,
+      "sha256": "cce8bc1341440c840bac52d79e276fe9b2e7cb850ebb6dc5cf183bafbadc0207"
+    },
+    {
+      "path": "src/lib/mediaService.js",
+      "bytes": 1379,
+      "sha256": "a3fc7337c0e4b554de937b00422195491f80c3daa696ed73631aabe55075b5f3"
+    },
+    {
+      "path": "src/lib/notificationService.js",
+      "bytes": 2339,
+      "sha256": "ce1766756c3a1505efbb67d974b99db97bf2b02c5e74c9783bd8040018a38265"
+    },
+    {
+      "path": "src/lib/propertyService.js",
+      "bytes": 9150,
+      "sha256": "4d34678bcd1c04c27bc3054acb2833c6ee3d91acde7d754a759fda9df8943378"
+    },
+    {
+      "path": "src/lib/realtimeService.js",
+      "bytes": 3340,
+      "sha256": "59a195b580840e48c876e8e18c5a4876e47c852f206bdd85ffc41e174b48b06d"
+    },
+    {
+      "path": "src/lib/savedSearchService.js",
+      "bytes": 834,
+      "sha256": "f92d936840a447dd8a22576f1ee3a45f545f8c784858e82094ef8e89aa075487"
+    },
+    {
+      "path": "src/lib/supabaseStorage.js",
+      "bytes": 828,
+      "sha256": "4debf8271498bdd350416b6a667a03c08052f3610ff78e2d4f38cffa3b501fa4"
+    },
+    {
+      "path": "src/lib/visitService.js",
+      "bytes": 1582,
+      "sha256": "2435adad34401d3a48925ee0072feacfbbba2d89305cdb3318ba91ca239cc681"
+    },
+    {
+      "path": "src/main.jsx",
+      "bytes": 599,
+      "sha256": "aaafffd5f1c0147cac0174d504887126356a88e44be31dc7ca971e3ef4e5545e"
+    },
+    {
+      "path": "src/main.ts",
+      "bytes": 2524,
+      "sha256": "a216cbb73ee143499fcfec799ba35275141e7079031c69c374fe097c929f477d"
+    },
+    {
+      "path": "src/pages/ChatPage.jsx",
+      "bytes": 42261,
+      "sha256": "16cfc8ae82826f5475a54ea072c01a6d9ae7e615c4d7337ae55660bb95876099"
+    },
+    {
+      "path": "src/pages/ExplorePage.jsx",
+      "bytes": 41976,
+      "sha256": "45cbd3ce121eb79e8d0e25def6e1807ab2bc7e00926b3c494d127c92e1e59312"
+    },
+    {
+      "path": "src/pages/HomePage.jsx",
+      "bytes": 11467,
+      "sha256": "b3a07fcae4b2be910f20266c3698dae34defe705fa5fd22ba8a398f418bbf58e"
+    },
+    {
+      "path": "src/pages/LoginPage.jsx",
+      "bytes": 26701,
+      "sha256": "bae93f21e6aad435306b3d455d4565908c429ad4c77a68c3d45b931091580007"
+    },
+    {
+      "path": "src/pages/ProfilePage.jsx",
+      "bytes": 157964,
+      "sha256": "dac9699ddae904bf5a5ea72d3bac9ab9d67e06653edfb46f5243abb91c0f357e"
+    },
+    {
+      "path": "src/pages/PropertyDetailPage.jsx",
+      "bytes": 57594,
+      "sha256": "09d5757ec5fda9dc43033a0d6885e151f328bb871c550e2f05d6253df9e60b3c"
+    },
+    {
+      "path": "src/pages/PublishPage.jsx",
+      "bytes": 78930,
+      "sha256": "545c4f22d7d0ca97c878448c715c8808862d2536aa6e710eb3512c39bf3bc347"
+    },
+    {
+      "path": "src/pages/ResetPasswordPage.jsx",
+      "bytes": 6476,
+      "sha256": "3fd0256e8e9545c40613e03f1953e2b5540340b2ccea5f7f2ef8a2c540ebfadd"
+    },
+    {
+      "path": "src/pages/RoutePage.jsx",
+      "bytes": 20082,
+      "sha256": "5bb49dc87b0cf59caa8b78ce6cae4e6967f357cf626ab0e2ab2e16b63c285486"
+    },
+    {
+      "path": "src/style.css",
+      "bytes": 5356,
+      "sha256": "4e3bbb3a4d0f859c86ab65ecdf005b63981aea898a5355821762f83c79aedd31"
+    },
+    {
+      "path": "src/utils/security.js",
+      "bytes": 4770,
+      "sha256": "fdf79d92b98bf6824e32f11456587010283eeb4f694e61f2cfebb26f4178ead7"
+    },
+    {
+      "path": "supabase/config.toml",
+      "bytes": 265,
+      "sha256": "098f4d690dbc85f40137d3d34113051af4344d277701170adeb926559d9c61cd"
+    },
+    {
+      "path": "supabase/cron_setup.sql",
+      "bytes": 759,
+      "sha256": "f5e76fb94de4d69fca82bd2e2ab33432bc19202ad2ed8082811c0c2ecd010f71"
+    },
+    {
+      "path": "supabase/functions/ruwajay-api/index.ts",
+      "bytes": 1949,
+      "sha256": "61419e08782688e72cf525b2817277c4c51fddb90a7fdae50dee58d6f91992b8"
+    },
+    {
+      "path": "supabase/functions/_shared/errors.js",
+      "bytes": 857,
+      "sha256": "864b0bacea9cb4f2f599b16b505301fd19ed70dd39fc5785aa230142138584ec"
+    },
+    {
+      "path": "supabase/functions/_shared/firestore.js",
+      "bytes": 8119,
+      "sha256": "5099168de8353a892ae84d1c9d04e95f53e3dc8fa0444910b55807117f793de1"
+    },
+    {
+      "path": "supabase/functions/_shared/google.js",
+      "bytes": 5200,
+      "sha256": "83323c97dff3eb47618f4cb9cd9f96ed4a9da3d00b0b54ef4326d83e30e6e53b"
+    },
+    {
+      "path": "supabase/functions/_shared/handler.js",
+      "bytes": 3729,
+      "sha256": "1b9f3a096561cb980f0960de4ea28701383fe19e64d36be1048152e2f7f6b144"
+    },
+    {
+      "path": "supabase/functions/_shared/service.js",
+      "bytes": 24063,
+      "sha256": "bb9a406e4e57dafd0a96ce53ffa8cd72b3f6498b97aa5c02d1191a0a30063b0c"
+    },
+    {
+      "path": "supabase/functions/_shared/storage.js",
+      "bytes": 2034,
+      "sha256": "7b37f2e826fec8393493bde28263ca7de8b2eeabd8df109363b127991e44d34b"
+    },
+    {
+      "path": "supabase/storage_lockdown.sql",
+      "bytes": 278,
+      "sha256": "da44f11758e27f9d1a832a3caed594b2ca98fb9f2ac2b25645a838a93ccc01ad"
+    },
+    {
+      "path": "supabase/storage_setup.sql",
+      "bytes": 2351,
+      "sha256": "42f0fecf4c615743f7441dbfbf4c8294aa2bf27573a42b5a6f14c5532982b9fb"
+    },
+    {
+      "path": "tests/backend.unit.test.js",
+      "bytes": 5156,
+      "sha256": "168c9c7ab13a3c86e7d5b49ec8dd1bce3843499a9ed358a1edb9b1f26ffc7c75"
+    },
+    {
+      "path": "tests/browser/shared-project.spec.js",
+      "bytes": 7524,
+      "sha256": "7738ca469c915f90a1f24eee9cc1aa448df68e60c6133a05ebfe6662bfcf76a8"
+    },
+    {
+      "path": "tests/contracts.test.js",
+      "bytes": 2836,
+      "sha256": "662c67d56f6f95c6f820aa5213dc5066a4695fc1455e89245d9d6466535decd1"
+    },
+    {
+      "path": "tests/firestore.rules.test.js",
+      "bytes": 4673,
+      "sha256": "3ac0b41a2b0b46c0a6a82c4e20cdfc282be803280b2116442eaca65a74080f2c"
+    },
+    {
+      "path": "tests/integration.test.js",
+      "bytes": 4458,
+      "sha256": "7cf8964db73e5e331f9964e79c710bac88db1caa3bfce0f1bd46b0e0ed497071"
+    },
+    {
+      "path": "tests/storage.rules.test.js",
+      "bytes": 2831,
+      "sha256": "c98a589aecf970da8975b115ab192a3b1aa19f966d11d9321555383b259e5179"
+    },
+    {
+      "path": "tests/supabase.backend.test.js",
+      "bytes": 9611,
+      "sha256": "d2be0185b85c059b9e520334a565c84713df2a89334d5d0bc3e11027b0423c3c"
+    },
+    {
+      "path": ".env.example",
+      "bytes": 853,
+      "sha256": "88f8211284f71f0db4888cca25cd3938671e53a3e2216d2f8ce90e2eb9a1d82f"
+    },
+    {
+      "path": ".firebaserc",
+      "bytes": 55,
+      "sha256": "e6aa59c0674be2f4fdac76e2544c478c2431466aec07818cc2fe1b5c7e27644d"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 610,
+      "sha256": "29237907f7294a80e90b848cadc53e10cfd71e8463752f2febd83b70a75e69c1"
+    },
+    {
+      "path": "firebase.json",
+      "bytes": 950,
+      "sha256": "724f3f4fe333cbd985cff8342767f0ee5326ed9cdd4a54738b2cba11c8bc2f63"
+    },
+    {
+      "path": "firestore.indexes.json",
+      "bytes": 2294,
+      "sha256": "8bdbf1add0a335e382a889c07ee6a58685709c3be2e96154a83614f046c4e6af"
+    },
+    {
+      "path": "firestore.rules",
+      "bytes": 9480,
+      "sha256": "567a5a36e4e6d5ecd628d8da88089e9f8f9b547cd9283400b8784d60bfc5869f"
+    },
+    {
+      "path": "storage.rules",
+      "bytes": 2290,
+      "sha256": "d5619c27ac7ae1ad9d04b2089c58c41778333c06cd5eecc0e7cdab494af2722a"
+    },
+    {
+      "path": "package.json",
+      "bytes": 1661,
+      "sha256": "3979f309f205955270a64b58b3fb31f6ddb8d664c4784024d432c2e34dce624c"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 398265,
+      "sha256": "09a9f48906061388eee75157e95ae9da675690e2ba2b4fac86dbd6d8c1bc5733"
+    },
+    {
+      "path": "index.html",
+      "bytes": 1591,
+      "sha256": "3e705fc7d4c9d65deeb2e03339be1cdb4a36402c6d2b0f434b0d4dcbcb92bca4"
+    },
+    {
+      "path": "vite.config.js",
+      "bytes": 1303,
+      "sha256": "e1f28a4af5b47ce381036d7516c0086d9c7ece9785ac8056ffc0a891b0413e70"
+    },
+    {
+      "path": "tsconfig.json",
+      "bytes": 584,
+      "sha256": "6933bb7f71023b4b79ab72f3167f884d63c278088e36357e019171dcebf14487"
+    },
+    {
+      "path": "playwright.config.js",
+      "bytes": 759,
+      "sha256": "b8b4570f95a2f4fbac53279ba2fb5cee640495e483e9a0e20b507f62901b9333"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1849,
+      "sha256": "5d3fd7387455c9f0a08e99d307faa7e129d6ad40291e718d0fed7cfd41167e20"
+    },
+    {
+      "path": "bitacora.txt",
+      "bytes": 58124,
+      "sha256": "3178c77fd2822afd7a6694e4e92582e23def20fbdeb82429af82fe8ad4aba862"
+    },
+    {
+      "path": "releases/ruwajay-debug-2.6.0.apk",
+      "bytes": 45325246,
+      "sha256": "3c37b3c29ee773fec6f37b51012732c1f1aa2a18664b256f0bc644114abbc60e"
+    }
+  ]
+}

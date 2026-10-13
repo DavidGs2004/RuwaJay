@@ -1,3 +1,4 @@
+import PrivateMedia from '../components/chat/PrivateMedia';
 import { fetchPropertyById } from '../lib/propertyService';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
@@ -694,12 +695,12 @@ export default function ChatPage() {
                         {/* Image if attached */}
                         {msg.image && (
                           <div className="mb-2 overflow-hidden rounded-xl">
-                            <img src={msg.image} alt="Adjunto" className="max-h-60 w-full object-cover rounded-xl" />
+                            <PrivateMedia src={msg.image} alt="Adjunto" className="max-h-60 w-full object-cover rounded-xl" />
                           </div>
                         )}
 
-                        {msg.type === 'image' && msg.mediaUrl && <img src={msg.mediaUrl} alt="Adjunto" className="max-h-60 rounded-xl" />}
-                        {msg.type === 'audio' && msg.mediaUrl ? <audio controls src={msg.mediaUrl} className="max-w-full" /> :
+                        {msg.type === 'image' && msg.mediaUrl && <PrivateMedia src={msg.mediaUrl} alt="Adjunto" className="max-h-60 rounded-xl" />}
+                        {msg.type === 'audio' && msg.mediaUrl ? <PrivateMedia type="audio" src={msg.mediaUrl} className="max-w-full" /> :
                           <p className="text-sm break-words whitespace-pre-wrap">{msg.text}</p>}
                         {msg.isVoice && !msg.mediaUrl && <span className="text-xs">Audio antiguo sin archivo disponible</span>}
 

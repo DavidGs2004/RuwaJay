@@ -26,3 +26,16 @@ test('Property uploads require identity and an image content type',async()=>{
   await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(),'properties/house/tenant/a.jpg'),new Uint8Array([1]),{contentType:'image/jpeg'}));
   await assertFails(uploadBytes(ref(env.authenticatedContext('tenant').storage(),'properties/house/tenant/a.txt'),new Uint8Array([1]),{contentType:'text/plain'}));
 });
+
+test('Suspension blocks private downloads and every authenticated upload path',async()=>{
+  const path='chat/room/tenant/suspension.jpg';
+  await assertSucceeds(uploadBytes(ref(env.authenticatedContext('tenant').storage(),path),new Uint8Array([1]),{contentType:'image/jpeg'}));
+  for(const suspension of [{suspended:true},{status:'suspended'}]) {
+    await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'users','tenant'),{name:'Tenant',role:'seeker',...suspension});});
+    const storage=env.authenticatedContext('tenant').storage();
+    await assertFails(getBytes(ref(storage,path)));
+    for(const prefix of ['chat/room/tenant','profiles/tenant','verification/tenant','properties/house/tenant']) {
+      await assertFails(uploadBytes(ref(storage,prefix+'/blocked.jpg'),new Uint8Array([1]),{contentType:'image/jpeg'}));
+    }
+  }
+});

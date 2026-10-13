@@ -116,22 +116,15 @@ fun publishProperty(
         "createdAt" to FieldValue.serverTimestamp()
     )
 
+    if (retainedImages.size + imageUris.size > 8) { onResult(Result.failure(Exception("Puedes conservar y subir hasta ocho fotografías en total."))); return }
     val propertyReference = if (propertyId == null) firestore.collection("properties").document() else firestore.collection("properties").document(propertyId)
     val upload = if (imageUris.isEmpty() && retainedImages.isNotEmpty()) Tasks.forResult(emptyList<String>()) else uploadPropertyImages(imageUris, contentResolver, propertyReference.id, user.uid)
     upload
         .addOnSuccessListener { uploadedUrls ->
             val imageUrls = (retainedImages + uploadedUrls).distinct().take(8)
-            firestore.collection("users").document(user.uid).get().addOnSuccessListener { profile ->
-                propertyReference.get().addOnSuccessListener { existing ->
-                if (existing.exists() && existing.getString("ownerId") != user.uid) { onResult(Result.failure(Exception("No puedes editar esta vivienda."))); return@addOnSuccessListener }
-                val updates = if (existing.exists()) property - "createdAt" - "verified" else property
-                propertyReference.set(existing.data.orEmpty() + updates + mapOf("images" to imageUrls,"thumbnail" to imageUrls.first(),
-                    "ownerName" to (profile.getString("name") ?: user.displayName ?: "Propietario"),
-                    "ownerPhone" to (profile.getString("phone") ?: ""),"ownerPhoto" to (profile.getString("avatarImage") ?: profile.getString("avatar") ?: "")))
-                    .addOnSuccessListener { onResult(Result.success(Unit)) }
-                    .addOnFailureListener { error -> onResult(Result.failure(error)) }
-                }.addOnFailureListener { onResult(Result.failure(it)) }
-            }.addOnFailureListener { onResult(Result.failure(it)) }
+            RuwaBackend.invoke("saveProperty",mapOf("property" to ((property - "createdAt") + mapOf("id" to propertyReference.id,"images" to imageUrls,"thumbnail" to imageUrls.first()))),user.uid)
+                .addOnSuccessListener { onResult(Result.success(Unit)) }
+                .addOnFailureListener { onResult(Result.failure(it)) }
         }
         .addOnFailureListener { error -> onResult(Result.failure(error)) }
 }
@@ -147,15 +140,7 @@ private fun uploadPropertyImages(
     val tasks = imageUris.map { uri ->
         val mime = contentResolver.getType(uri) ?: "image/jpeg"
         if (mime !in listOf("image/jpeg","image/png","image/webp")) return Tasks.forException(Exception("Formato de fotografia no permitido."))
-        val reference = com.google.firebase.storage.FirebaseStorage.getInstance().reference.child("properties/$propertyId/$userId/${java.util.UUID.randomUUID()}")
-        val metadata = com.google.firebase.storage.StorageMetadata.Builder().setContentType(mime).build()
-        reference.putFile(uri,metadata).continueWithTask { upload ->
-            if (!upload.isSuccessful) throw upload.exception ?: Exception("No se pudo subir la fotografia.")
-            reference.downloadUrl
-        }.continueWith { result ->
-            if (!result.isSuccessful) throw result.exception ?: Exception("No se pudo obtener la fotografia.")
-            result.result.toString()
-        }
+        RuwaBackend.upload("property",uri,contentResolver,propertyId=propertyId,mime=mime,expectedUid=userId)
     }
     return Tasks.whenAllSuccess<String>(tasks)
 }
@@ -189,10 +174,10 @@ private fun propertyFromDocument(document: com.google.firebase.firestore.Documen
         val bathrooms = features.number("bathrooms").let { if (it > 0) it else features.number("banos") }.toInt()
         val area = features.number("area")
 
-        val addressStr = location.stringOr("exactAddress", location.stringOr("address", location.stringOr("direccion", "Guatemala")))
-        val zoneStr = location.stringOr("zone", location.stringOr("zona", "Zona 10"))
-        val cityStr = location.stringOr("municipality", location.stringOr("city", location.stringOr("ciudad", "Ciudad de Guatemala")))
-        val deptStr = location.stringOr("department", location.stringOr("departamento", "Guatemala"))
+        val addressStr = location.stringOr("exactAddress", location.stringOr("address", location.stringOr("direccion", "")))
+        val zoneStr = location.stringOr("zone", location.stringOr("zona", ""))
+        val cityStr = location.stringOr("municipality", location.stringOr("city", location.stringOr("ciudad", "")))
+        val deptStr = location.stringOr("department", location.stringOr("departamento", ""))
 
         Property(
             id = document.id,
@@ -201,7 +186,7 @@ private fun propertyFromDocument(document: com.google.firebase.firestore.Documen
             currency = document.stringOr("currency", "Q"),
             type = document.stringOr("type", "casa"),
             status = document.stringOr("status", "disponible"),
-            description = document.stringOr("description", document.stringOr("descripcion", "Hermosa propiedad disponible en alquiler.")),
+            description = document.stringOr("description", document.stringOr("descripcion", "")),
             features = PropertyFeatures(
                 bedrooms = bedrooms,
                 bathrooms = bathrooms,
@@ -263,8 +248,7 @@ fun updatePropertyStatus(
     newStatus: String,
     onResult: () -> Unit = {}
 ) {
-    FirebaseFirestore.getInstance().collection("properties").document(propertyId)
-        .update("status", newStatus)
+    RuwaBackend.invoke("updatePropertyStatus",mapOf("propertyId" to propertyId,"status" to newStatus))
         .addOnSuccessListener { onResult() }
         .addOnFailureListener { error -> android.util.Log.e("RuwaJay", "Operacion no guardada", error) }
 }

@@ -1,3 +1,4 @@
+import PrivateMedia from '../components/chat/PrivateMedia';
 import { subscribeSavedSearches, deleteSavedSearch } from '../lib/savedSearchService';
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
@@ -1355,7 +1356,7 @@ export default function ProfilePage() {
                           {/* Date and Location */}
                           <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs font-semibold text-text-secondary mb-3">
                             <span className="flex items-center gap-1">
-                              <MapPin size={14} className="text-terracota" /> {v.propertyZone || 'Guatemala'}
+                              <MapPin size={14} className="text-terracota" /> {v.propertyZone || 'Ubicación no indicada'}
                             </span>
                             <span className="flex items-center gap-1 text-forest font-bold">
                               <Calendar size={14} /> {v.date}
@@ -1581,7 +1582,7 @@ export default function ProfilePage() {
                       {/* Info */}
                       <div className="min-w-0 flex-1">
                         <h4 className="break-words text-sm font-extrabold text-cafe">{property.title}</h4>
-                        <p className="mt-0.5 break-words text-xs text-text-muted">{property.zone || property.municipality || 'Guatemala'}</p>
+                        <p className="mt-0.5 break-words text-xs text-text-muted">{property.zone || property.municipality || 'Ubicación no indicada'}</p>
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
                           <span className="text-sm font-black text-forest">Q{Number(property.price || 0).toLocaleString()}/mes</span>
                           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
@@ -2034,7 +2035,7 @@ export default function ProfilePage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-cafe truncate">{prop.title || 'Propiedad'}</p>
                       <p className="text-xs text-text-muted truncate">
-                        {prop.address?.approximate || prop.address?.zone || 'Guatemala'} • Q {prop.price}
+                        {prop.address?.approximate || prop.address?.zone || 'Ubicación no indicada'} • Q {prop.price}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2271,7 +2272,7 @@ export default function ProfilePage() {
                         <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20">
                           <span className="text-[10px] font-extrabold uppercase text-text-muted block">Lugar de Emisión</span>
                           <span className="font-extrabold text-cafe truncate block">
-                            {user?.dpiData?.municipality || 'Guatemala'}, {user?.dpiData?.department || 'Guatemala'}
+                            {user?.dpiData?.municipality || 'Ubicación no indicada'}, {user?.dpiData?.department || 'Ubicación no indicada'}
                           </span>
                         </div>
                         {user?.dpiData?.emergencyName && (
@@ -2719,7 +2720,7 @@ export default function ProfilePage() {
                 <div className="flex justify-between items-center py-1 border-b border-dorado/15">
                   <span className="text-text-muted font-bold">Lugar de Emisión:</span>
                   <span className="font-bold text-cafe">
-                    {user?.dpiData?.municipality || 'Guatemala'}, {user?.dpiData?.department || 'Guatemala'}
+                    {user?.dpiData?.municipality || 'Ubicación no indicada'}, {user?.dpiData?.department || 'Ubicación no indicada'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-1 border-b border-dorado/15">
@@ -2745,7 +2746,7 @@ export default function ProfilePage() {
                       </button>
                     </div>
                     <div className="relative overflow-hidden rounded-xl border border-dorado/20 bg-black/5 max-h-40 flex items-center justify-center">
-                      <img
+                      <PrivateMedia
                         src={user.dpiData.documentPhoto}
                         alt="Documento DPI"
                         className={`w-full max-h-40 object-contain transition-all duration-300 ${blurDpiPhoto ? 'blur-md select-none pointer-events-none' : 'blur-0'}`}

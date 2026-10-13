@@ -1,3 +1,4 @@
+import { callBackend, usesServerOperations } from '../lib/backendService';
 import { uploadProfileImage, uploadVerificationDocument } from '../lib/mediaService';
 import { disableNotifications } from '../lib/notificationService';
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
@@ -249,6 +250,7 @@ export function AuthProvider({ children }) {
     if (patch.avatarImage && !/^https:\/\//.test(patch.avatarImage)) {
       patch.avatarImage = await uploadProfileImage(patch.avatarImage);
     }
+    if(usesServerOperations){await callBackend('updateProfile',{profile:patch},{expectedUid:account.uid});return;}
     await setDoc(doc(firestore, 'users', account.uid), patch, { merge: true });
   };
   const changePassword = async (currentPassword, newPassword) => {

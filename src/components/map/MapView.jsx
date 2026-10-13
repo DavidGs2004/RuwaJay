@@ -147,7 +147,7 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
             : null;
 
           const thumbnail = prop.thumbnail || (Array.isArray(prop.images) && prop.images[0]) || '/Casas/hero-banner-new.jpg';
-          const approxAddress = prop.address?.approximate || prop.location?.approximateAddress || prop.location?.zone || 'Guatemala';
+          const approxAddress = prop.address?.approximate || prop.location?.approximateAddress || prop.location?.zone || 'Ubicación no indicada';
 
           return (
             <Marker

@@ -1,3 +1,5 @@
+import { callBackend, usesServerOperations } from './backendService';
+import { uploadPropertyImagesToSupabase } from './supabaseStorage';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { firebaseAuth, firebaseWebEnabled, firestore } from './firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -17,7 +19,7 @@ export function normalizeFirebaseProperty(snapshot) {
   const location = data.location || {};
   const images = imageUrls(data.images);
   const thumbnail = imageUrls([data.thumbnail])[0] || images[0] || '';
-  const approximate = data.address?.approximate || location.approximateAddress || data.approximateAddress || location.address || 'Guatemala';
+  const approximate = data.address?.approximate || location.approximateAddress || data.approximateAddress || location.address || '';
 
   return {
     ...data,
@@ -35,9 +37,9 @@ export function normalizeFirebaseProperty(snapshot) {
     address: {
       approximate,
       exact: data.address?.exact || location.exactAddress || location.address || data.exactAddress || approximate,
-      department: data.address?.department || location.department || data.department || 'Guatemala',
-      municipality: data.address?.municipality || location.municipality || location.city || data.municipality || 'Guatemala',
-      zone: data.address?.zone || location.zone || data.zone || 'Centro',
+      department: data.address?.department || location.department || data.department || '',
+      municipality: data.address?.municipality || location.municipality || location.city || data.municipality || '',
+      zone: data.address?.zone || location.zone || data.zone || '',
     },
     coordinates: coordinatesOrNull(data.coordinates || location.mapCoordinates),
     images: imageUrls(data.images),
@@ -90,6 +92,7 @@ export async function publishPropertyToFirebase(property) {
   }
 
   property = persistedProperty(property);
+  if(usesServerOperations){await callBackend('saveProperty',{property},{expectedUid:firebaseAuth.currentUser.uid});return true;}
   const propertyRef = doc(firestore, 'properties', property.id);
   await setDoc(propertyRef, {
     ...property,
@@ -106,9 +109,9 @@ export async function publishPropertyToFirebase(property) {
       area: Number(property.area) || 0,
     },
     location: {
-      department: property.address?.department || property.department || 'Guatemala',
-      municipality: property.address?.municipality || property.municipality || 'Guatemala',
-      zone: property.address?.zone || property.zone || 'Centro',
+      department: property.address?.department || property.department || '',
+      municipality: property.address?.municipality || property.municipality || '',
+      zone: property.address?.zone || property.zone || '',
       approximateAddress: property.address?.approximate || property.approximateAddress || '',
       exactAddress: property.address?.exact || property.exactAddress || '',
       address: property.address?.exact || property.exactAddress || property.address?.approximate || property.approximateAddress || '',
@@ -121,10 +124,12 @@ export async function publishPropertyToFirebase(property) {
 }
 
 export async function updatePropertyStatus(propertyId,status) {
+  if(usesServerOperations){await callBackend('updatePropertyStatus',{propertyId,status});return;}
   await updateDoc(doc(firestore,'properties',propertyId),{status});
 }
 export async function updatePropertyToFirebase(property) {
   const data = persistedProperty(property);
+  if(usesServerOperations){await callBackend('saveProperty',{property:data},{expectedUid:firebaseAuth.currentUser.uid});return true;}
   await setDoc(doc(firestore,'properties',property.id),{
     ...data, features:{bedrooms:Number(property.bedrooms)||0,bathrooms:Number(property.bathrooms)||0,area:Number(property.area)||0,parking:Number(property.parking)||0},
     updatedAt:serverTimestamp(),
@@ -160,6 +165,7 @@ export async function fetchPropertyById(propertyId) {
 export async function uploadPropertyImages(files, propertyId, ownerId, onProgress = () => {}) {
   if (!firebaseAuth?.currentUser || firebaseAuth.currentUser.uid !== ownerId || !storage) throw new Error('Debes iniciar sesi?n.');
   if (!files?.length || files.length > 8) throw new Error('Sube entre 1 y 8 fotograf?as.');
+  if(usesServerOperations)return uploadPropertyImagesToSupabase(files,propertyId,ownerId,onProgress);
   let finished = 0;
   return Promise.all(files.map(async file => {
     if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 8*1024*1024) throw new Error('Fotograf?a inv?lida o mayor de 8 MB.');

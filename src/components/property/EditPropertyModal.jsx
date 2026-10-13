@@ -290,8 +290,8 @@ export default function EditPropertyModal({ property, isOpen, onClose, onSaved }
             </div>
             <PropertyLocationPickerMap
               coordinates={formData.coordinates}
-              department={property.department || property.address?.department || 'Guatemala'}
-              zone={property.zone || property.address?.zone || 'Zona 10'}
+              department={property.department || property.address?.department || ''}
+              zone={property.zone || property.address?.zone || ''}
               onLocationSelected={(coords) => {
                 setFormData((prev) => ({
                   ...prev,

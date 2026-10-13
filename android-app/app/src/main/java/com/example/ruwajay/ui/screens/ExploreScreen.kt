@@ -471,10 +471,11 @@ fun ExploreMapView(properties: List<com.example.ruwajay.data.model.Property>, on
         properties.find { it.id == selectedPropertyId }
     }
 
-    val markers = properties.filter { it.location.mapCoordinates != null }.map { prop ->
+    val markers = properties.mapNotNull { prop ->
+        val coordinates = prop.location.mapCoordinates ?: return@mapNotNull null
         OsmMarker(
             id = prop.id,
-            position = GeoPoint(prop.location.coordinates.lat, prop.location.coordinates.lng),
+            position = GeoPoint(coordinates.lat, coordinates.lng),
             title = prop.title,
             snippet = "Q ${prop.price}"
         )

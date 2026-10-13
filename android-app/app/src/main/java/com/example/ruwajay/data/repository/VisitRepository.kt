@@ -46,16 +46,14 @@ class VisitRepository(
     }
     fun createVisit(propertyId: String, propertyTitle: String, propertyAddress: String, ownerId: String, ownerName: String,
         visitDate: String, visitTime: String, notes: String, onResult: (Result<String>) -> Unit) {
-        com.google.firebase.functions.FirebaseFunctions.getInstance("us-central1").getHttpsCallable("createVisit")
-            .call(mapOf("propertyId" to propertyId,"date" to visitDate,"time" to visitTime,"notes" to notes))
+        RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId,"date" to visitDate,"time" to visitTime,"notes" to notes))
             .addOnSuccessListener { response ->
-                val id = (response.getData() as? Map<*, *>)?.get("id") as? String
+                val id = response["id"] as? String
                 if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta invalida.")))
             }.addOnFailureListener { onResult(Result.failure(it)) }
     }
     fun updateVisitStatus(visitId: String, newStatus: String, onResult: (Result<Unit>) -> Unit) {
-        com.google.firebase.functions.FirebaseFunctions.getInstance("us-central1").getHttpsCallable("changeVisitStatus")
-            .call(mapOf("visitId" to visitId,"status" to newStatus))
+        RuwaBackend.invoke("changeVisitStatus", mapOf("visitId" to visitId,"status" to newStatus))
             .addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 

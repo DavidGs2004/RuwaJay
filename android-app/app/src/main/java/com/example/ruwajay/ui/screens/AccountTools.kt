@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.ruwajay.data.repository.VisitRepository
 import com.example.ruwajay.data.repository.VisitRequest
+import com.example.ruwajay.data.repository.RuwaBackend
 import com.example.ruwajay.data.repository.NotificationRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -19,6 +20,7 @@ import com.google.firebase.firestore.FieldValue
 @Composable
 fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Unit, onSearchClick: (String) -> Unit) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    val context = androidx.compose.ui.platform.LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
     val visitsRepo = remember { VisitRepository() }
     var visits by remember(uid) { mutableStateOf<List<VisitRequest>>(emptyList()) }
@@ -33,11 +35,11 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
     val profilePhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if(uri!=null) {
             busy=true
-            val ref=com.google.firebase.storage.FirebaseStorage.getInstance().reference.child("profiles/$uid/${java.util.UUID.randomUUID()}")
-            ref.putFile(uri).continueWithTask {upload->if(!upload.isSuccessful)throw upload.exception?:Exception("No se pudo subir la foto.");ref.downloadUrl}
-                .addOnSuccessListener {url->db.collection("users").document(uid).update("avatarImage",url.toString())
-                    .addOnSuccessListener{busy=false}.addOnFailureListener{busy=false;error=it.message}}
-                .addOnFailureListener{busy=false;error=it.message}
+            RuwaBackend.upload("profile",uri,context.contentResolver,expectedUid=uid)
+                .continueWithTask { upload ->
+                    if(!upload.isSuccessful) throw upload.exception ?: Exception("No se pudo subir la foto.")
+                    RuwaBackend.invoke("updateProfile",mapOf("profile" to mapOf("avatarImage" to upload.result)),uid)
+                }.addOnSuccessListener { busy=false }.addOnFailureListener { busy=false;error=it.message }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -101,7 +103,7 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
                 OutlinedTextField(value=name,onValueChange={name=it},label={Text("Nombre")})
                 OutlinedTextField(value=phone,onValueChange={phone=it},label={Text("Telefono")})
                 OutlinedTextField(value=bio,onValueChange={bio=it},label={Text("Biografia")})
-                Button(enabled=!busy,onClick={busy=true;db.collection("users").document(uid).update(mapOf("name" to name.trim(),"phone" to phone.trim(),"bio" to bio.trim()))
+                Button(enabled=!busy,onClick={busy=true;RuwaBackend.invoke("updateProfile",mapOf("profile" to mapOf("name" to name.trim(),"phone" to phone.trim(),"bio" to bio.trim())),uid)
                     .addOnSuccessListener{busy=false;section=""}.addOnFailureListener{busy=false;error=it.message}}){Text("Guardar perfil")}
             }
         }

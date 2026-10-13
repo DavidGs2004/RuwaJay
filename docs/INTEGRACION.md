@@ -1,31 +1,65 @@
-# Integración de web y Android
+# Integración de web y Android — Supabase Free + Firebase Spark
 
-Estos cambios están preparados en el repositorio. No se han publicado reglas, funciones, web, APK ni migraciones en el proyecto real. **No publicar solo las reglas:** las visitas y la apertura de conversaciones requieren las nuevas funciones del servidor.
+## Estado y cuentas
 
-## Fuente de datos y comportamiento
+El usuario eligió Supabase para evitar Blaze. El inicio de sesión en Supabase y el despliegue quedan para su compañero, al final. No se abrió sesión Supabase ni se publicaron el nuevo servidor, reglas o clientes. No se habilitó facturación ni se migraron documentos reales.
 
-- Identidad: Firebase Authentication. Los identificadores locales, nombres y correos no conceden permisos.
-- Firestore: `users`, `properties`, `visits`, `visit_slots`, `conversations/{id}/messages`, `lease_drafts`, `system_updates`, `verification_requests` y subcolecciones de usuarios `favorites`, `saved_searches`, `devices`, `notifications`.
-- Visitas: fechas `date` en `YYYY-MM-DD`, horas `time` en `HH:mm`, zona horaria Guatemala. `createVisit` reserva el horario en una transacción. `changeVisitStatus` valida quién puede confirmar, rechazar o cancelar. La confirmación crea el chat. Una tarea del servidor vence solicitudes pendientes de más de siete días.
-- Chat: identificador `v2_{tenantUid}_{ownerUid}_{propertyId}`; mensajes `type: text|image|audio|location`, `mediaUrl`, `senderId`, `senderName`, `createdAt`. El mensaje y su resumen se guardan juntos. `readAt.{uid}` registra lectura por participante. Las conversaciones existentes se conservan hasta migrarlas.
-- Fotos: nuevas cargas mediante Firebase Storage. Las URL HTTPS existentes de Supabase permanecen utilizables. Una URL `blob:localhost` no contiene el archivo y requiere volver a subir la fotografía.
-- Perfil y reseñas: Firestore compartido. El servidor actualiza nombres, contactos y fotos copiados en propiedades, visitas y conversaciones cuando cambia el perfil. Una solicitud de verificación no verifica automáticamente a la persona.
-- Contratos: borradores privados en `lease_drafts/{conversationId}`. El propietario guarda condiciones y ambos participantes las consultan. La web permite imprimir la plantilla; Android comparte el resumen. No hay firma electrónica ni contrato firmado almacenado.
-- Notificaciones: avisos persistentes por usuario y envío mediante FCM para mensajes, visitas, búsquedas coincidentes y reducción de precios de favoritos. El usuario activa permisos por dispositivo. Los eventos de mensajería migrados no generan avisos históricos.
-- Mapas: sin inventar coordenadas de viviendas. Android utiliza GPS y rutas viales; puede abrir navegación externa. Con Mapbox configurado usa su proveedor de rutas; el respaldo OSRM no incluye tráfico en vivo.
-- Llamadas: se retiró el modal que simulaba una llamada. El botón abre el marcador telefónico cuando hay un teléfono. `active_calls` queda cerrado: el repositorio recibido no contiene un cliente WebRTC real. Implementar llamadas internas exige una decisión explícita y un servicio TURN para dispositivos detrás de redes restringidas.
+En Firebase CLI, garyochoa69@gmail.com continúa como cuenta predeterminada y gochoa21.yt@gmail.com como adicional. Usar siempre --account gochoa21.yt@gmail.com y --project ruwa-jay; no ejecutar logout ni login:use. El 13/10/2026 se desplegaron solamente índices de Firestore: cinco READY, reglas publicadas sin cambios. Firebase tiene facturación deshabilitada, Functions API desactivada y ningún bucket Storage.
 
-## Configuración antes de desplegar
+## Arquitectura preparada
 
-1. Confirmar que Android (`google-services.json`) y web utilizan el mismo proyecto de Firebase. La configuración predeterminada corresponde a `ruwa-jay`.
-2. Habilitar proveedores de Authentication y dominios autorizados; comprobar certificados SHA de Android para Google Sign-In.
-3. Confirmar disponibilidad y permisos de Cloud Functions, Firestore, Cloud Storage, Cloud Messaging y Cloud Scheduler, y revisar el plan/facturación del proyecto. No aceptar cargos desde este repositorio sin revisar la consola.
-4. Configurar la clave pública Web Push en `VITE_FIREBASE_VAPID_KEY`. Definir `WEB_ORIGIN` para Functions con el origen HTTPS real. Android no necesita VAPID.
-5. Mapbox opcional: `VITE_MAPBOX_ACCESS_TOKEN` para web y `MAPBOX_ACCESS_TOKEN` en `android-app/local.properties` o entorno de compilación Android. Los tokens deben tener restricciones apropiadas en el proveedor. Para producción se recomienda un proveedor con capacidad y disponibilidad acordes al tráfico esperado.
-6. Revisar `supabase/storage_lockdown.sql` y todas las políticas reales antes de cerrar las cargas anónimas antiguas. El SQL no elimina archivos.
-7. Configurar App Links del dominio real con `/.well-known/assetlinks.json`, applicationId y certificados de la compilación firmada. Los enlaces de esquema `ruwajay://...` ya están presentes; la verificación HTTPS depende del dominio y certificado reales.
+- Firebase Auth sigue siendo la identidad en web y Android. El gateway verifica firma RS256, audiencia, emisor y caducidad del token del proyecto ruwa-jay; también comprueba el perfil y suspensión. No modifica roles de Firebase para integrarlos con Supabase Auth.
+- Firestore conserva usuarios, viviendas, visitas, reservas, conversaciones/mensajes, favoritos, búsquedas, dispositivos y notificaciones, contratos y solicitudes de verificación. Los clientes conservan listeners de lectura en tiempo real.
+- supabase/functions/ruwajay-api es el servidor HTTP. Valida reservas y estados, crea conversaciones tras confirmación del propietario, guarda mensaje/resumen juntos, actualiza viviendas y perfiles y propaga sus metadatos. Las mutaciones tienen requestId y comprobación de reintento; las credenciales Firebase y Supabase se usan únicamente en el servidor.
+- Supabase Storage: property-images y profile-images son públicos; chat-media y verification son privados. El gateway autentica subidas y comprueba dueño/participantes antes de emitir enlaces privados de cinco minutos. Firestore guarda referencias estables supabase://, nunca enlaces firmados caducables. Los clientes renuevan el enlace privado. Las fotos de perfil públicas se usan en tarjetas y conversaciones.
+- Fotos existentes HTTPS de Supabase permanecen; archivos públicos históricos no se vuelven privados automáticamente. Una URL blob: no permite recuperar la foto. No se inventan coordenadas, fotos, identidades ni grabaciones.
+- server_jobs registra avisos, búsquedas/favoritos y propagación de perfiles en la misma transacción de la mutación. Se procesa tras solicitudes y con Cron cada cinco minutos; reintenta fallos con espera. Avisos se conservan en Firestore y FCM usa la API HTTP v1; la entrega push real sigue por comprobar.
+- Mantenimiento de visitas corre por páginas de 100, una vez por hora. Solo vence visitas schemaVersion 2 con fecha de creación válida y más de siete días; libera únicamente su propia reserva. Las históricas requieren revisión. Se limpian hasta 100 comprobantes de reintentos caducados por hora. Con más de 100 visitas pendientes, recorrer todas tarda varias horas.
+- Propagación/avisos consultan páginas de 200, con límite de 10.000 resultados por proceso. Consultas transaccionales de historial fallan de forma explícita si llegan a 500 resultados para evitar reservas duplicadas por truncamiento. Ajustar estos procesos si el volumen aumenta; revisar trabajos con intentos repetidos.
+- Contratos son borradores compartidos y plantilla imprimible, sin firma electrónica. Llamadas abren el marcador; no hay WebRTC. Mapas funcionan sin Mapbox; OSRM no ofrece tráfico en vivo. Autenticación especial, notificaciones, ubicación y audio físicos requieren aceptación en dispositivos reales.
+
+No desplegar el directorio functions en Firebase: se conserva para regresiones de emuladores, helpers y migración. El backend Python del comando npm run dev no sustituye este gateway; usar npm run dev:frontend con la URL preparada.
+
+## Configuración que hará el compañero al final
+
+1. Confirmar acceso y el proyecto Supabase de destino. Las fotografías históricas apuntan a yrwrvmcmxqmvkwmsuegc.supabase.co, pero no se comprobó acceso al panel ni configuración actual. No crear otro proyecto ni borrar archivos por suposición. Confirmar plan Free sin activar Pro/Blaze.
+2. Revisar y respaldar configuración de buckets/políticas. Ejecutar supabase/storage_setup.sql en el proyecto confirmado. Conserva archivos; las políticas restrictivas bloquean escritura directa desde anon/authenticated y lectura directa de buckets privados. Coordinar clientes antiguos que usaban subidas anónimas. storage_lockdown.sql solo inspecciona el estado.
+3. Crear una cuenta de servicio exclusiva de ruwa-jay. Dar permisos de datos necesarios (roles/datastore.user) y envío FCM (roles/firebasecloudmessaging.admin), sin Owner/Editor global. Guardar su JSON como RUWA_FIREBASE_SERVICE_ACCOUNT en secretos de la función. No reutilizar tokens OAuth de las cuentas del operador. Mantener la clave fuera de repositorio, web, APK y chat.
+4. Generar RUWA_CRON_SECRET aleatorio de al menos 32 caracteres y guardarlo como secreto servidor. SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY son variables integradas de la función; no copiarlas a los clientes. Agregar RUWA_EXTRA_ORIGINS únicamente si hay dominios propios HTTPS, separados por comas.
+5. Una vez autorizado el acceso, usar la CLI oficial en el equipo del compañero. Desde esta raíz: npx supabase login; npx supabase projects list. Confirmar el project-ref antes de cualquier mutación. Preparar un archivo privado .env.server.local con los secretos, sin placeholders reales publicados.
+
+```powershell
+# SOLO el compañero, después de verificar acceso/proyecto/plan y guardar secretos:
+npx supabase secrets set --env-file .env.server.local --project-ref PROJECT_REF_CONFIRMADO
+npx supabase functions deploy ruwajay-api --project-ref PROJECT_REF_CONFIRMADO --no-verify-jwt
+```
+
+verify_jwt=false es intencional: el token es Firebase, y la función lo verifica dentro del handler. No retirar esa validación. El endpoint /health devuelve proyecto/versión y es público; /scheduled exige el secreto Cron.
+
+6. Crear en Supabase Vault los secretos ruwajay_api_url (URL completa terminada en /functions/v1/ruwajay-api) y ruwajay_cron_secret (igual a RUWA_CRON_SECRET); ejecutar supabase/cron_setup.sql una vez. Revisar cron.job y evitar trabajos duplicados; no pegar valores secretos en archivos versionados. Revisar ejecuciones fallidas de Cron y trabajos pendientes en Firestore.
+7. Web: crear .env.local con VITE_SUPABASE_URL, o VITE_RUWA_BACKEND_URL completo. Android: usar la misma URL como SUPABASE_URL o RUWA_BACKEND_URL en local.properties/entorno y recompilar. No hace falta anon key para este gateway. La clave pública VAPID es opcional para habilitar push web; comprobar proveedores Firebase y SHA Android/Google Sign-In.
+8. Sin URL configurada, el cliente de producción devuelve un error de servicio no configurado; no intenta subir a Firebase Storage ni llamar Functions de pago. No publicar el build sin la configuración y aceptación remota.
+
+La documentación oficial describe [configuración y validación de JWT](https://supabase.com/docs/guides/functions/function-configuration), [Cron con Vault](https://supabase.com/docs/guides/functions/schedule-functions), [roles Firestore](https://docs.cloud.google.com/iam/docs/roles-permissions/firestore) y [permisos FCM](https://docs.cloud.google.com/iam/docs/roles-permissions/firebasecloudmessaging). Free tiene cuotas y limitaciones; no garantiza operación ilimitada ni disponibilidad continua. Revisar [el plan](https://supabase.com/pricing) y [los límites de funciones](https://supabase.com/docs/guides/functions/limits) antes de publicar. No activar un plan de pago para resolver cuotas sin decisión del usuario.
+
+## Datos reales y publicación coordinada
+
+La captura privada .artifacts/live-audit-2026-10-13T13-54-09-877Z contiene 128 documentos Firestore y 16 usuarios Auth. No es una exportación oficial/atómica ni una restauración ensayada. No contiene respaldo de archivos Supabase. El diagnóstico tiene diez incidencias: dos conversaciones con participantes por verificar, cuatro audios sin archivo, un titular no validado, una vivienda que necesita fotos nuevas y dos confirmaciones históricas sin verificar. La migración propuesta no se aplicó.
+
+Antes de publicar: resolver esas decisiones con información real, respaldar archivos/configuración y preparar mantenimiento/reversión. Desplegar y comprobar el gateway, buckets y Cron; esperar índices READY. Coordinar migración revisada, reglas y clientes compatibles. Las nuevas reglas de visitas/chat requieren el servidor activo. Clientes antiguos que escriben directamente no generan automáticamente los avisos de este gateway: deben actualizarse o incluirse en el plan de transición.
+
+```powershell
+# Después de comprobar servidor, datos, clientes y configuración pública:
+npm run build
+npx firebase deploy --project ruwa-jay --account gochoa21.yt@gmail.com --only firestore:rules,hosting
+# Si cambian índices, desplegarlos por separado y esperar a que estén READY.
+```
+
+No agregar functions ni storage al comando para esta arquitectura. Probar con usuarios diferentes en web y teléfono: fotos/perfil, reservas concurrentes, confirmación, mensajes, audio privado, suspensión, cambio de cuenta, favoritos, contratos y FCM en primer/segundo plano. Publicar Android firmado con certificados y App Links del dominio real. Un APK debug no es una versión de tienda.
 
 ## Auditoría y migración
+
+El serializador ahora conserva Timestamp, GeoPoint, referencias con proyecto/base y bytes, y rechaza objetos no soportados. Esto no sustituye una exportación oficial ni una prueba de reversión.
 
 El script usa Firebase Admin con credenciales del operador mediante Application Default Credentials; `firebase login` por sí solo no configura ADC. Realizar ese inicio de sesión en la computadora del operador, sin enviar contraseñas ni archivos de claves al chat. Antes de aplicar una migración, pausar las escrituras de usuarios y revisar el respaldo.
 
@@ -45,21 +79,13 @@ El modo `--apply` requiere proyecto, respaldo de entrada y **otra ruta de respal
 
 Los respaldos pueden contener información privada: mantenerlos fuera de Git (`.artifacts` está ignorado). Revisar por separado los tokens administrativos existentes y revocar las credenciales de respaldo que estaban incrustadas en la versión anterior.
 
-## Orden de publicación
-
-1. Probar los cambios en un proyecto de pruebas y resolver el diagnóstico de los datos reales.
-2. Preparar respaldo, ventana de mantenimiento y reversión con las versiones anteriores de reglas/clientes. Reconciliar reservas existentes: las funciones nuevas necesitan los documentos `visit_slots`.
-3. Publicar índices y funciones; esperar a que los índices estén listos.
-4. Aplicar la migración revisada, reglas de Firestore y Storage, web y versión Android compatibles dentro de la ventana acordada.
-5. Verificar cuentas, propiedades, fotos, favoritos, visitas, chat, audios, lectura, contratos, perfil, reseñas y permisos en ambos sentidos.
-6. Probar FCM en teléfono/navegador reales, en primer plano y segundo plano; comprobar cambio de cuenta y cierre de sesión. El emulador no demuestra entrega push real.
-
 ## Validación local
 
 ```powershell
-npm ci
-npm ci --prefix functions
 npm test
+npm run test:backend:unit
+npm run test:supabase
+npx deno check supabase/functions/ruwajay-api/index.ts
 npm run build
 npm run test:rules
 npm run test:storage
@@ -67,13 +93,6 @@ npm run test:integration
 npm run test:browser
 ```
 
-Los comandos con emuladores usan exclusivamente `demo-ruwajay`. Requieren Java 21 y Node compatible. Configurar `JAVA_HOME` y el PATH correspondiente. La prueba de navegador usa Edge/Chrome instalado; en otros entornos instalar Chromium con Playwright. El modo `VITE_FIREBASE_EMULATORS=true` funciona únicamente en desarrollo; un build de producción no se conecta a emuladores.
+Gateway: Auth/Firestore reales de emuladores demo-ruwajay, archivos/push simulados. Unitarias: JWT, cuenta de servicio ligada al proyecto, rutas privadas y límites. La prueba de navegador actual usa el servidor legado en emuladores; no valida una instalación Supabase remota. La compilación Android 2.6.0 y sus cuatro unitarias pasaron en copia ASCII de este proyecto. No se verificó envío FCM, política SQL de un proyecto real ni archivos reales con Supabase.
 
-Android: Java 21, SDK 37 y `ANDROID_HOME` configurado:
-
-```powershell
-cd android-app
-.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
-```
-
-En esta máquina, la ruta `Ruwajay Compañeros` provoca problemas de carga de clases de prueba en Windows. Se validó una copia del mismo código en una ruta temporal sin caracteres especiales. Para compilar aquí puede usarse `-Pandroid.overridePathCheck=true`; para ejecutar pruebas es preferible una ruta sin acentos. Los APK de depuración no son una publicación firmada de producción.
+Android requiere Java 21/SDK 37. En Windows, compilar una copia sin acentos si Gradle no puede ejecutar pruebas desde Ruwajay Compañeros. No copiar local.properties, claves ni respaldos privados a la entrega.

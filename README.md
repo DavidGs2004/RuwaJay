@@ -1,42 +1,32 @@
 # RuwaJay
 
-Plataforma de vivienda en Guatemala: web React/Vite y app Android Kotlin/Compose.
+Plataforma de vivienda en Guatemala: web React/Vite y Android Kotlin/Compose.
 
-Ambos clientes utilizan Firebase Authentication y Cloud Firestore. Las nuevas cargas de fotografias y audio utilizan Firebase Storage. Las URL HTTPS antiguas de Supabase se conservan. Cloud Functions valida reservas, abre conversaciones y genera notificaciones.
+La integración actual conserva Firebase Authentication, Firestore, Hosting y FCM en Spark. Supabase Free ejecuta el servidor y almacena fotos, documentos y audio. No requiere desplegar Cloud Functions ni Firebase Storage. Ambas aplicaciones llaman al mismo servidor con su sesión Firebase; no se crean nuevas cuentas de usuarios en Supabase.
 
-## Estado de la integracion
+El código está preparado localmente. El inicio de sesión, configuración y despliegue de Supabase quedaron para el compañero por indicación del usuario. Todavía no se publicó esta integración ni se migraron datos reales. Consulta [las instrucciones de integración y despliegue](docs/INTEGRACION.md).
 
-Los cambios locales requieren configurar y desplegar servicios antes de utilizarlos en produccion. No se han migrado ni modificado los datos reales. Consulta [la configuracion, migracion y validacion](docs/INTEGRACION.md).
+## Desarrollo y comprobación
 
-## Desarrollo web
+Copiar .env.example a .env.local y configurar la URL del servidor ya desplegado. No colocar secretos de servidor en clientes.
 
 ```powershell
 npm ci
-npm ci --prefix functions
-npm run dev
-```
-
-## Validacion
-
-```powershell
+npm run dev:frontend
 npm test
+npm run test:backend:unit
+npm run test:supabase
 npm run build
-npm run test:rules
-npm run test:integration
-npm run test:browser
 ```
 
-Las pruebas con emuladores se ejecutan contra `demo-ruwajay`, sin acceder a la base real. Requieren Java 21. Las pruebas de navegador usan Edge o Chrome instalado, o Chromium de Playwright.
+Las pruebas del gateway usan Auth/Firestore de demo-ruwajay y un almacenamiento simulado. Requieren Java 21; no demuestran un despliegue Supabase real. test:integration y test:browser conservan el servidor Functions de emuladores como regresión de la implementación anterior. Ese servidor no se despliega en Spark.
 
 ## Android
 
-Configura Java 21, SDK 37 y `ANDROID_HOME`, abre `android-app` en Android Studio o ejecuta:
+Configurar Java 21, SDK 37, ANDROID_HOME y la misma URL pública de Supabase en android-app/local.properties. Desde android-app:
 
 ```powershell
-cd android-app
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
 ```
 
-Las rutas con caracteres especiales pueden impedir las pruebas en Windows. Consulta las instrucciones de integracion.
-
-No se incluyen enlaces de descarga o afirmaciones de publicacion en tiendas que no hayan sido verificados.
+La versión actual es 2.6.0 (versionCode 5). La ruta con acentos puede impedir pruebas Gradle en Windows; compilar una copia en ruta ASCII. Un APK debug sin URL del servidor configurada sirve para inspección, pero necesita recompilarse tras el despliegue para probar las operaciones remotas.

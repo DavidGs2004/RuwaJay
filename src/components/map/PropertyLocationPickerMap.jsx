@@ -1,3 +1,4 @@
+import { coordinatesOrNull } from '../../lib/contracts';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -74,15 +75,16 @@ function MapFlyController({ target, zoom = 16 }) {
 
 export default function PropertyLocationPickerMap({
   coordinates,
-  department = 'Guatemala',
-  zone = 'Zona 10 (Zona Viva / Oakland)',
+  department = '',
+  zone = '',
   onLocationSelected,
   onAddressResolved,
 }) {
-  // Coordinates state: default to Guatemala City (Zone 10)
+  const selectedCoordinates = coordinatesOrNull(coordinates);
+  // The initial camera center is not a selected property location.
   const [currentCoords, setCurrentCoords] = useState(() => {
-    if (coordinates?.lat && coordinates?.lng) {
-      return { lat: Number(coordinates.lat), lng: Number(coordinates.lng) };
+    if (coordinatesOrNull(coordinates)) {
+      return coordinatesOrNull(coordinates);
     }
     const defaultCoords = getCoordinatesForLocation(department, zone);
     return {
@@ -114,19 +116,18 @@ export default function PropertyLocationPickerMap({
 
   // Sync when initial coordinates prop changes from outside (e.g. edit mode loaded)
   useEffect(() => {
-    if (coordinates?.lat && coordinates?.lng) {
-      const newLat = Number(coordinates.lat);
-      const newLng = Number(coordinates.lng);
+    if (coordinatesOrNull(coordinates)) {
+      const { lat: newLat, lng: newLng } = coordinatesOrNull(coordinates);
       if (Math.abs(newLat - currentCoords.lat) > 0.0001 || Math.abs(newLng - currentCoords.lng) > 0.0001) {
         setCurrentCoords({ lat: newLat, lng: newLng });
         setFlyTarget({ lat: newLat, lng: newLng });
       }
     }
-  }, [coordinates?.lat, coordinates?.lng]);
+  }, [selectedCoordinates?.lat, selectedCoordinates?.lng]);
 
   // When user changes department or zone dropdowns, fly map to that area if no custom click has occurred yet
   useEffect(() => {
-    if (!coordinates?.lat) {
+    if (!coordinatesOrNull(coordinates)) {
       const zoneCoords = getCoordinatesForLocation(department, zone);
       if (zoneCoords?.lat && zoneCoords?.lng) {
         setCurrentCoords({ lat: zoneCoords.lat, lng: zoneCoords.lng });
@@ -416,8 +417,8 @@ export default function PropertyLocationPickerMap({
           <MapEventsHandler onMapClick={(lat, lng) => handleSelectLocation(lat, lng, true)} />
 
           {/* Draggable Property Marker */}
-          <Marker
-            position={[currentCoords.lat, currentCoords.lng]}
+          {selectedCoordinates && <Marker
+            position={[selectedCoordinates.lat, selectedCoordinates.lng]}
             icon={markerIcon}
             draggable={true}
             eventHandlers={{
@@ -441,7 +442,7 @@ export default function PropertyLocationPickerMap({
                 </span>
               </div>
             </Popup>
-          </Marker>
+          </Marker>}
         </MapContainer>
 
         {/* Top Floating Helper Badge */}
@@ -460,17 +461,17 @@ export default function PropertyLocationPickerMap({
             </div>
             <div className="min-w-0">
               <p className="text-xs font-black text-cafe truncate">
-                {isReverseGeocoding ? 'Identificando dirección...' : (detectedAddress || 'Ubicación seleccionada')}
+                {isReverseGeocoding ? 'Identificando dirección...' : (selectedCoordinates ? detectedAddress || 'Ubicación seleccionada' : 'Selecciona la ubicación de la vivienda')}
               </p>
               <p className="text-[10px] font-semibold text-text-muted">
-                Lat: {currentCoords.lat.toFixed(5)} • Lng: {currentCoords.lng.toFixed(5)}
+                {selectedCoordinates ? 'Lat: ' + selectedCoordinates.lat.toFixed(5) + ' • Lng: ' + selectedCoordinates.lng.toFixed(5) : 'Haz clic en el mapa, busca una dirección o usa GPS'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 flex items-center gap-1">
-              <CheckCircle2 size={11} /> Mapeado
+              {selectedCoordinates ? <><CheckCircle2 size={11} /> Mapeado</> : 'Pendiente'}
             </span>
           </div>
         </div>

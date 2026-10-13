@@ -37,9 +37,9 @@ fun PublishScreen(propertyId: String? = null) {
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var deposit by remember { mutableStateOf("") }
-    var department by remember { mutableStateOf("Guatemala") }
-    var municipality by remember { mutableStateOf("Guatemala") }
-    var zone by remember { mutableStateOf("Zona 10") }
+    var department by remember { mutableStateOf("") }
+    var municipality by remember { mutableStateOf("") }
+    var zone by remember { mutableStateOf("") }
     var approximateAddress by remember { mutableStateOf("") }
     var exactAddress by remember { mutableStateOf("") }
     var bedrooms by remember { mutableStateOf("") }
@@ -67,7 +67,7 @@ fun PublishScreen(propertyId: String? = null) {
     LaunchedEffect(existing?.id) {
         if(existing!=null) {
             title=existing.title; description=existing.description;price=existing.price.toString();deposit=(existing.deposit?:0.0).toString()
-            department=existing.location.department?:"Guatemala";municipality=existing.location.city;zone=existing.location.zone
+            department=existing.location.department?:"";municipality=existing.location.city;zone=existing.location.zone
             approximateAddress=existing.location.approximateAddress?:"";exactAddress=existing.location.exactAddress?:""
             bedrooms=existing.features.bedrooms.toString();bathrooms=existing.features.bathrooms.toString();propertyType=existing.type
             area=existing.features.area.toString();parking=existing.features.parking.toString();maintenance=existing.maintenanceFee.toString()
@@ -183,7 +183,7 @@ fun PublishScreen(propertyId: String? = null) {
                     )
 
                     OsmLocationPickerMap(
-                        initialPoint = pickedGeoPoint ?: GeoPoint(14.6349,-90.5069),
+                        initialPoint = pickedGeoPoint,
                         onLocationSelected = { geoPoint ->
                             pickedGeoPoint = geoPoint
                         },

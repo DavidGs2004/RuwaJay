@@ -36,3 +36,10 @@ android-app/android-app
 .artifacts/
 **/.artifacts/
 
+
+# Local credentials and Supabase CLI cache
+android-app/local.properties
+supabase/.temp/
+supabase/.branches/
+.env.*
+!.env.example

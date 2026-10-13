@@ -1,0 +1,7 @@
+project_id = "ruwajay"
+
+[functions.ruwajay-api]
+# Firebase JWTs are verified inside the handler (signature, issuer and audience).
+# Supabase's legacy JWT verifier does not validate Firebase tokens.
+verify_jwt = false
+entrypoint = "./functions/ruwajay-api/index.ts"

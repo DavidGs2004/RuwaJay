@@ -1,5 +1,5 @@
 import { collection, query, orderBy, onSnapshot, doc, writeBatch, serverTimestamp, updateDoc, where } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
+import { callBackend, usesServerOperations } from './backendService';
 import { firebaseAuth, firestore, functions } from './firebase';
 import { conversationId, timestampMillis } from './contracts';
 import { uploadChatMedia } from './mediaService';
@@ -22,7 +22,7 @@ export function subscribeToConversation(roomId, userId, onUpdate, onError = cons
 }
 export async function getOrCreateConversation(seekerId, ownerId, propertyId) {
   if (!firebaseAuth?.currentUser) throw new Error('Debes iniciar sesi?n.');
-  return (await httpsCallable(functions,'openConversation')({seekerId,ownerId,propertyId})).data.id;
+  return (await callBackend('openConversation',{seekerId,ownerId,propertyId})).id;
 }
 export async function sendMessageToFirestore(roomId, _senderId, senderName, text, extras = {}) {
   const account = firebaseAuth?.currentUser;
@@ -31,6 +31,7 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
   const media = extras.media || extras.image;
   const type = extras.type || (media ? (extras.isVoice ? 'audio' : 'image') : 'text');
   const mediaUrl = media ? await uploadChatMedia(roomId, media) : null;
+  if(usesServerOperations)return(await callBackend('sendMessage',{roomId,type,text:text||'',...(mediaUrl?{mediaUrl}:{}),...(type==='location'?{latitude:extras.latitude,longitude:extras.longitude}:{})},{expectedUid:account.uid})).id;
   const messageRef = doc(collection(firestore,'conversations',roomId,'messages'));
   const batch = writeBatch(firestore);
   batch.set(messageRef,{ senderId:account.uid, senderName, text:text || (type==='audio'?'Audio':type==='image'?'Foto':''),

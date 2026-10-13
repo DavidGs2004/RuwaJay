@@ -31,27 +31,27 @@ export default function LeaseContractModal({
 
   // Extract user verified DPI if available
   const userCui = user?.dpiData?.cui || '';
-  const userAddress = user?.dpiData?.legalAddress || 'Ciudad de Guatemala';
+  const userAddress = user?.dpiData?.legalAddress || '';
 
   // Form states
   const [contractData, setContractData] = useState({
-    city: 'Guatemala',
+    city: property?.address?.municipality || '',
     day: new Date().getDate(),
     month: new Date().toLocaleString('es-GT', { month: 'long' }),
     year: new Date().getFullYear(),
-    ownerName: owner?.name || 'María Elena López',
+    ownerName: owner?.name || property?.ownerName || '',
     ownerCui: '',
-    ownerAddress: 'Ciudad de Guatemala',
+    ownerAddress: owner?.legalAddress || '',
     tenantName: user?.name || 'Inquilino Arrendatario',
     tenantCui: userCui || '',
     tenantAddress: userAddress,
     hasGuarantor: false,
     guarantorName: 'Fiador Mancomunado',
     guarantorCui: '',
-    propertyAddress: property?.address?.exact || property?.address?.approximate || 'Zona 10, Ciudad de Guatemala',
-    propertyDepartment: property?.address?.department || 'Guatemala',
+    propertyAddress: property?.address?.exact || property?.address?.approximate || '',
+    propertyDepartment: property?.address?.department || '',
     monthlyRent: property?.price || 0,
-    depositAmount: property?.deposit || property?.price || 0,
+    depositAmount: property?.deposit ?? property?.price ?? 0,
     maintenanceFee: Number(property?.maintenanceFee) || 0,
     durationMonths: 12,
     startDate: new Date().toISOString().split('T')[0],

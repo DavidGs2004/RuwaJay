@@ -201,7 +201,7 @@ function PropertyDetailContent({ property }) {
       propertyTitle: property.title,
       propertyImage: currentImages[0] || property.thumbnail || '',
       propertyPrice: property.price,
-      propertyZone: property.address?.approximate || 'Guatemala',
+      propertyZone: property.address?.approximate || 'Ubicación no indicada',
       ownerId: property.ownerId || owner.id || 'owner-custom',
       ownerName: property.ownerName || owner.name || 'Propietario RuwaJay',
       ownerEmail: property.ownerEmail || owner.email || '',
@@ -343,7 +343,7 @@ function PropertyDetailContent({ property }) {
         <div className="flex flex-wrap items-center gap-4 mt-3">
           <span className="flex min-w-0 items-start gap-1.5 text-sm font-medium text-text-secondary">
             <MapPin size={16} className="mt-0.5 shrink-0 text-terracota" strokeWidth={2.5} />
-            <span className="min-w-0 break-words">{property.address?.approximate || property.approximateAddress || property.zone || 'Guatemala'}</span>
+            <span className="min-w-0 break-words">{property.address?.approximate || property.approximateAddress || property.zone || 'Ubicación no indicada'}</span>
           </span>
           {distance !== null && (
             <span className="text-sm font-bold text-azul-ruta">
@@ -573,7 +573,7 @@ function PropertyDetailContent({ property }) {
                 </h3>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-text-secondary">
-                    {property.address?.exact || property.exactAddress || property.address?.approximate || property.location?.exactAddress || 'Guatemala'}
+                    {property.address?.exact || property.exactAddress || property.address?.approximate || property.location?.exactAddress || 'Ubicación no indicada'}
                   </p>
                   <Link
                     to={`/ruta?property=${property.id}`}
@@ -590,11 +590,7 @@ function PropertyDetailContent({ property }) {
                   }>
                     <MapView
                       properties={[property]}
-                      focusCoordinates={{
-                        lat: Number(property.coordinates?.lat ?? property.location?.mapCoordinates?.lat ?? 14.6349),
-                        lng: Number(property.coordinates?.lng ?? property.location?.mapCoordinates?.lng ?? -90.5069),
-                        zoom: 14
-                      }}
+                      focusCoordinates={property.coordinates ? { ...property.coordinates, zoom: 14 } : null}
                     />
                   </Suspense>
                 </div>

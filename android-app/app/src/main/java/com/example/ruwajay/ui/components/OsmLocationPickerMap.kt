@@ -73,7 +73,7 @@ data class GeocodedAddress(
 @Composable
 fun OsmLocationPickerMap(
     modifier: Modifier = Modifier,
-    initialPoint: GeoPoint = GeoPoint(14.5975, -90.5106), // Default Guatemala City Zone 10
+    initialPoint: GeoPoint? = null,
     onLocationSelected: (GeoPoint) -> Unit = {},
     onAddressResolved: (GeocodedAddress) -> Unit = {}
 ) {
@@ -81,7 +81,12 @@ fun OsmLocationPickerMap(
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var selectedPoint by remember { mutableStateOf(initialPoint) }
+    var selectedPoint by remember { mutableStateOf(initialPoint ?: GeoPoint(14.6349, -90.5069)) }
+    var hasSelection by remember { mutableStateOf(initialPoint != null) }
+    LaunchedEffect(initialPoint) {
+        hasSelection = initialPoint != null
+        initialPoint?.let { selectedPoint = it }
+    }
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<Pair<String, GeoPoint>>>(emptyList()) }
@@ -117,6 +122,10 @@ fun OsmLocationPickerMap(
             controller.setZoom(16.0)
             controller.setCenter(selectedPoint)
         }
+    }
+
+    LaunchedEffect(mapView, initialPoint) {
+        initialPoint?.let { mapView.controller.setCenter(it) }
     }
 
     // Function to perform Reverse Geocoding via Nominatim
@@ -172,6 +181,7 @@ fun OsmLocationPickerMap(
 
     // Function to update point
     fun updatePoint(newPoint: GeoPoint, moveCamera: Boolean = true) {
+        hasSelection = true
         selectedPoint = newPoint
         onLocationSelected(newPoint)
         resolveAddress(newPoint)
@@ -264,7 +274,7 @@ fun OsmLocationPickerMap(
     }
 
     // Redraw Map Overlays on selectedPoint change
-    DisposableEffect(mapView, selectedPoint) {
+    DisposableEffect(mapView, selectedPoint, hasSelection) {
         mapView.onResume()
         mapView.overlays.clear()
 
@@ -283,21 +293,23 @@ fun OsmLocationPickerMap(
         mapView.overlays.add(MapEventsOverlay(mapEventsReceiver))
 
         // 2. Interactive Red Pin Marker
-        val marker = Marker(mapView).apply {
-            position = selectedPoint
-            title = "Ubicación de la Vivienda"
-            snippet = detectedAddress
-            isDraggable = true
-            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-            setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
-                override fun onMarkerDrag(m: Marker?) {}
-                override fun onMarkerDragStart(m: Marker?) {}
-                override fun onMarkerDragEnd(m: Marker?) {
-                    m?.position?.let { updatePoint(it, moveCamera = false) }
-                }
-            })
+        if (hasSelection) {
+            val marker = Marker(mapView).apply {
+                position = selectedPoint
+                title = "Ubicación de la Vivienda"
+                snippet = detectedAddress
+                isDraggable = true
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
+                    override fun onMarkerDrag(m: Marker?) {}
+                    override fun onMarkerDragStart(m: Marker?) {}
+                    override fun onMarkerDragEnd(m: Marker?) {
+                        m?.position?.let { updatePoint(it, moveCamera = false) }
+                    }
+                })
+            }
+            mapView.overlays.add(marker)
         }
-        mapView.overlays.add(marker)
         mapView.invalidate()
 
         onDispose {
@@ -488,7 +500,7 @@ fun OsmLocationPickerMap(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    if (isGeocoding) "Identificando dirección..." else detectedAddress,
+                                    if (!hasSelection) "Selecciona la ubicación de la vivienda" else if (isGeocoding) "Identificando dirección..." else detectedAddress,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = BrandCafe,
@@ -496,7 +508,7 @@ fun OsmLocationPickerMap(
                                 )
                             }
                             Text(
-                                "Lat: ${String.format("%.5f", selectedPoint.latitude)} • Lng: ${String.format("%.5f", selectedPoint.longitude)}",
+                                if (hasSelection) "Lat: ${String.format("%.5f", selectedPoint.latitude)} • Lng: ${String.format("%.5f", selectedPoint.longitude)}" else "Toca el mapa, busca una dirección o usa GPS",
                                 fontSize = 10.sp,
                                 color = BrandTextMuted,
                                 fontWeight = FontWeight.SemiBold
@@ -504,7 +516,7 @@ fun OsmLocationPickerMap(
                         }
                         if (isGeocoding) {
                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = BrandForest)
-                        } else {
+                        } else if (hasSelection) {
                             Icon(Icons.Default.CheckCircle, null, tint = BrandJade, modifier = Modifier.size(18.dp))
                         }
                     }

@@ -44,7 +44,7 @@ export default function RoutePage() {
   if(!origin) return <main className="p-10 text-center"><p>{locationError || 'Necesitamos tu ubicacion para calcular una ruta real.'}</p><button onClick={requestPosition} disabled={locationLoading}>Usar mi ubicacion</button></main>;
 
   const currentDestTitle = activeRouteInfo?.customDestName || property.title;
-  const currentDestAddress = activeRouteInfo?.customDestAddress || property.address?.exact || property.exactAddress || property.address?.approximate || 'Guatemala';
+  const currentDestAddress = activeRouteInfo?.customDestAddress || property.address?.exact || property.exactAddress || property.address?.approximate || 'Ubicación no indicada';
 
   const rawDistKm = calculateDistance(origin.lat, origin.lng, destination.lat, destination.lng);
 
@@ -132,7 +132,7 @@ export default function RoutePage() {
             <p className="mt-2 flex min-w-0 items-start gap-1.5 text-base font-bold text-white/95 sm:text-lg">
               <MapPin size={20} className="mt-0.5 shrink-0 text-dorado" />
               <span className="min-w-0 break-words">
-                {property.address?.exact || property.exactAddress || property.address?.approximate || 'Guatemala'}
+                {property.address?.exact || property.exactAddress || property.address?.approximate || 'Ubicación no indicada'}
               </span>
             </p>
           </div>

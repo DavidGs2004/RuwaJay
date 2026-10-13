@@ -24,10 +24,11 @@ android {
         applicationId = "com.example.ruwajay"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
-        versionName = "2.5.0"
+        versionCode = 5
+        versionName = "2.6.0"
 
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"${localSetting("MAPBOX_ACCESS_TOKEN")}\"")
+        buildConfigField("String", "RUWA_BACKEND_URL", "\"${localSetting("RUWA_BACKEND_URL")}\"")
         buildConfigField("String", "SUPABASE_URL", "\"${localSetting("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localSetting("SUPABASE_ANON_KEY")}\"")
         buildConfigField("String", "SUPABASE_PROPERTY_BUCKET", "\"${localSetting("SUPABASE_PROPERTY_BUCKET").ifBlank { "property-images" }}\"")

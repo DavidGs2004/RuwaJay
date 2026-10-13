@@ -117,8 +117,8 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                         Column(Modifier.padding(12.dp).widthIn(max=300.dp)) {
                             val type=message["type"] as? String ?: "text"
                             val media=message["mediaUrl"] as? String ?: message["image"] as? String
-                            if((type=="image"||message["image"]!=null)&&media!=null) AsyncImage(model=media,contentDescription="Foto",modifier=Modifier.fillMaxWidth().height(180.dp))
-                            if(type=="audio"&&media!=null) AudioAttachment(media) else Text(message["text"] as? String ?: "")
+                            if((type=="image"||message["image"]!=null)&&media!=null) PrivateAttachment(media,"image",uid)
+                            if(type=="audio"&&media!=null) PrivateAttachment(media,"audio",uid) else Text(message["text"] as? String ?: "")
                             if(type=="location") TextButton(onClick={
                                 val uri=Uri.parse("https://www.google.com/maps/search/?api=1&query=${message["latitude"]},${message["longitude"]}")
                                 context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,uri))
@@ -150,4 +150,30 @@ private fun AudioAttachment(url: String) {
             }
         } catch (_:Exception){error=true}
     }) {Text(if(error) "Audio no disponible" else if(playing) "Pausar audio" else "Reproducir audio")}
+}
+
+@Composable
+private fun PrivateAttachment(reference: String,type: String,uid: String?) {
+    var url by remember(reference,uid) { mutableStateOf<String?>(null) }
+    var error by remember(reference,uid) { mutableStateOf(false) }
+    LaunchedEffect(reference,uid) {
+        while (true) {
+            try {
+                url=kotlinx.coroutines.suspendCancellableCoroutine<String> { continuation ->
+                    com.example.ruwajay.data.repository.RuwaBackend.resolve(reference,uid)
+                        .addOnSuccessListener { if(continuation.isActive) continuation.resumeWith(Result.success(it)) }
+                        .addOnFailureListener { if(continuation.isActive) continuation.resumeWith(Result.failure(it)) }
+                }
+                error=false
+            } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled }
+              catch(_:Exception) { url=null;error=true }
+            if(!reference.startsWith("supabase://")) break
+            kotlinx.coroutines.delay(240000)
+        }
+    }
+    val resolved=url
+    if(resolved!=null) {
+        if(type=="audio") AudioAttachment(resolved)
+        else AsyncImage(model=resolved,contentDescription="Foto",modifier=Modifier.fillMaxWidth().height(180.dp))
+    } else Text(if(error) "Archivo no disponible" else "Cargando archivo…",style=MaterialTheme.typography.labelSmall)
 }

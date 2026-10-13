@@ -59,3 +59,44 @@ test('Login uses Firebase identity and property routes never substitute a differ
   await env.cleanup();
   expect(failures).toEqual([]);
 });
+
+test('Favorites switch accounts without stale cache and missing locations stay unknown',async({page})=>{
+  const id=Date.now();
+  const setup=async suffix=>{
+    const app=initializeApp({projectId:'demo-ruwajay',apiKey:'demo-key'},'favorites-'+id+suffix);
+    const auth=getAuth(app);connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});
+    const db=getFirestore(app);connectFirestoreEmulator(db,'127.0.0.1',8085);
+    const email='favorites-'+id+suffix+'@example.test';
+    const {user}=await createUserWithEmailAndPassword(auth,email,'testing-password');
+    await setDoc(doc(db,'users',user.uid),{name:'Favorites '+suffix,email,role:'seeker'});
+    return{user,db,email};
+  };
+  const a=await setup('a'),b=await setup('b');
+  const env=await initializeTestEnvironment({projectId:'demo-ruwajay',firestore:{host:'127.0.0.1',port:8085}});
+  const house='favorite-house-'+id;
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'properties',house),{ownerId:a.user.uid,title:'Vivienda sin ubicación de prueba',price:2500,status:'disponible',images:['https://example.test/photo.jpg']}));
+  await setDoc(doc(a.db,'users',a.user.uid,'favorites',house),{propertyId:house});
+  const failures=[];page.on('pageerror',error=>failures.push(error.message));
+  await page.goto('/login');
+  await page.evaluate(()=>{localStorage.setItem('ruwajay_favorites','not valid JSON');localStorage.setItem('ruwajay_recent_searches','not valid JSON');});
+  await page.reload();
+  await page.locator('input[type=email]').fill(a.email);
+  await page.locator('input[type=password]').fill('testing-password');
+  await page.locator('form').getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+  await expect(page).toHaveURL('http://localhost:5175/');
+  await page.goto('/propiedad/'+house);
+  await expect(page.getByTitle('Quitar de favoritos',{exact:true})).toBeVisible();
+  await expect(page.getByText('Ubicación no indicada',{exact:true}).first()).toBeVisible();
+  await page.evaluate(async email=>{
+    const {firebaseAuth}=await import('/src/lib/firebase.js');
+    const {signInWithEmailAndPassword}=await import('/node_modules/.vite/deps/firebase_auth.js');
+    await signInWithEmailAndPassword(firebaseAuth,email,'testing-password');
+  },b.email);
+  await expect(page.getByTitle('Guardar',{exact:true})).toBeVisible();
+  await page.getByTitle('Guardar',{exact:true}).click();
+  await expect.poll(async()=>(await getDoc(doc(b.db,'users',b.user.uid,'favorites',house))).exists()).toBe(true);
+  await expect(page.getByTitle('Quitar de favoritos',{exact:true})).toBeVisible();
+  expect((await getDoc(doc(a.db,'users',a.user.uid,'favorites',house))).exists()).toBe(true);
+  expect(failures).toEqual([]);
+  await env.cleanup();
+});

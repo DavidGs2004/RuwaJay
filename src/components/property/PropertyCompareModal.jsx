@@ -27,10 +27,10 @@ function getSafeImage(property) {
 
 // Safely get address zone text
 function getSafeZone(property) {
-  if (!property) return 'Guatemala';
+  if (!property) return 'Ubicación no indicada';
   const addr = property.address;
-  if (!addr || typeof addr !== 'object') return 'Guatemala';
-  return addr.zone || addr.approximate || addr.municipality || 'Guatemala';
+  if (!addr || typeof addr !== 'object') return 'Ubicación no indicada';
+  return addr.zone || addr.approximate || addr.municipality || 'Ubicación no indicada';
 }
 
 
@@ -464,7 +464,7 @@ export default function PropertyCompareModal() {
                     <td className="py-3 pr-4 font-bold text-text-secondary">Zona y Municipio</td>
                     {comparedProperties.map((p) => (
                       <td key={p.id} className="py-3 px-3 text-text-secondary">
-                        {getSafeZone(p)}, {p.address?.municipality || 'Guatemala'}
+                        {getSafeZone(p)}, {p.address?.municipality || 'Ubicación no indicada'}
                       </td>
                     ))}
                   </tr>

@@ -6,8 +6,11 @@ export function imageUrls(value) {
 
 export function coordinatesOrNull(value) {
   if (!value) return null;
-  const lat = Number(value.lat ?? value.latitude);
-  const lng = Number(value.lng ?? value.longitude ?? value.lon);
+  const rawLat = value.lat ?? value.latitude;
+  const rawLng = value.lng ?? value.longitude ?? value.lon;
+  if ([rawLat, rawLng].some(coordinate => coordinate == null || typeof coordinate === 'boolean' || (typeof coordinate === 'string' && !coordinate.trim()))) return null;
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
   return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
     ? { lat, lng } : null;
 }

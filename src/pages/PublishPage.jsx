@@ -122,9 +122,9 @@ export default function PublishPage() {
     petsAllowed: true,
     patio: false,
     servicesIncluded: ['Agua potable 24/7', 'Extracción de basura'],
-    department: 'Guatemala',
-    municipality: 'Guatemala',
-    zone: 'Zona 10 (Zona Viva / Oakland)',
+    department: '',
+    municipality: '',
+    zone: '',
     approximateAddress: '',
     exactAddress: '',
     status: 'disponible',
@@ -184,7 +184,7 @@ export default function PublishPage() {
           title: existing.title || '',
           description: existing.description || '',
           price: existing.price ? String(existing.price) : '',
-          deposit: existing.deposit ? String(existing.deposit) : '',
+          deposit: existing.deposit != null ? String(existing.deposit) : '',
           maintenanceFee: existing.maintenanceFee ? String(existing.maintenanceFee) : '',
           bedrooms: Number(existing.bedrooms || 2),
           bathrooms: Number(existing.bathrooms || 1),
@@ -194,9 +194,9 @@ export default function PublishPage() {
           petsAllowed: existing.petsAllowed !== false,
           patio: Boolean(existing.patio),
           servicesIncluded: Array.isArray(existing.servicesIncluded) ? existing.servicesIncluded : ['Agua potable 24/7', 'Extracción de basura'],
-          department: existing.department || existing.address?.department || 'Guatemala',
-          municipality: existing.municipality || existing.address?.municipality || 'Guatemala',
-          zone: existing.zone || existing.address?.zone || 'Zona 10 (Zona Viva / Oakland)',
+          department: existing.department || existing.address?.department || '',
+          municipality: existing.municipality || existing.address?.municipality || '',
+          zone: existing.zone || existing.address?.zone || '',
           approximateAddress: existing.approximateAddress || existing.address?.approximate || '',
           exactAddress: existing.exactAddress || existing.address?.exact || '',
           status: existing.status || 'disponible',
@@ -246,7 +246,7 @@ export default function PublishPage() {
   // Real-time step validations
   const validations = useMemo(() => ({
     step1: formData.title.trim().length >= 8 && Number(formData.price) > 0,
-    step2: formData.approximateAddress.trim().length >= 4,
+    step2: formData.approximateAddress.trim().length >= 4 && Boolean(formData.department && formData.municipality.trim() && formData.zone && formData.coordinates),
     step3: Number(formData.bedrooms) >= 1 && Number(formData.bathrooms) >= 1,
     step4: selectedImages.length >= 1,
   }), [formData, selectedImages]);
@@ -257,12 +257,11 @@ export default function PublishPage() {
   }, [formData.department]);
 
   const handlePublishDeptChange = (dept) => {
-    const newZones = getZonesForDepartment(dept)
-      .filter((z) => !z.toLowerCase().startsWith('todas') && !z.toLowerCase().startsWith('todos'));
     setFormData((prev) => ({
       ...prev,
       department: dept,
-      zone: newZones[0] || `${dept} Centro`,
+      zone: '',
+      municipality: '',
     }));
   };
 
@@ -502,7 +501,7 @@ export default function PublishPage() {
         title: cleanTitle || `${formData.type === 'casa' ? 'Casa' : 'Apartamento'} en ${formData.zone}`,
         type: formData.type,
         price: Number(formData.price),
-        deposit: Number(formData.deposit) || Number(formData.price),
+        deposit: formData.deposit.trim() === '' ? Number(formData.price) : Number(formData.deposit),
         maintenanceFee: Number(formData.maintenanceFee) || 0,
         bedrooms: Number(formData.bedrooms),
         bathrooms: Number(formData.bathrooms),
@@ -917,13 +916,17 @@ export default function PublishPage() {
                       </label>
                       <RuwaSelect
                         value={formData.zone}
-                        onChange={(val) => setFormData({ ...formData, zone: val })}
+                        onChange={(val) => setFormData({ ...formData, zone: val, municipality: '' })}
                         options={availablePublishZones}
                         align="auto"
                       />
                     </div>
                   </div>
 
+                  <div>
+                    <label htmlFor="publish-municipality" className="block text-xs font-black uppercase tracking-wider text-cafe mb-2">Municipio *</label>
+                    <input id="publish-municipality" value={formData.municipality} onChange={event => setFormData({ ...formData, municipality: event.target.value })} placeholder="Escribe el municipio de la vivienda" className="w-full rounded-2xl border border-border-light p-3 text-sm" />
+                  </div>
                   {/* Mapa Interactivo con GPS y Búsqueda */}
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-cafe mb-2">
@@ -940,12 +943,10 @@ export default function PublishPage() {
                         }));
                       }}
                       onAddressResolved={(addrInfo) => {
-                        if (addrInfo.reference && !formData.approximateAddress) {
-                          setFormData((prev) => ({
-                            ...prev,
-                            approximateAddress: addrInfo.reference,
-                          }));
-                        }
+                        setFormData(prev => ({ ...prev,
+                          approximateAddress: prev.approximateAddress || addrInfo.reference || '',
+                          municipality: addrInfo.municipality || prev.municipality,
+                        }));
                       }}
                     />
                   </div>

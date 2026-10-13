@@ -3,7 +3,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { encode, decode } from './backup-codec.js';
 import { getAuth } from 'firebase-admin/auth';
 import { imageUrls, coordinatesOrNull, normalizeVisit } from '../../src/lib/contracts.js';
 import { roomId, slotId } from '../domain.js';
@@ -16,18 +17,6 @@ if(apply&&(!project||!input||!backupFile)) throw new Error('--apply requires --p
 let db;
 if(project){initializeApp({projectId:project,credential:applicationDefault()});db=getFirestore();}
 if(project&&!project.startsWith('demo-')&&(process.env.FIRESTORE_EMULATOR_HOST||process.env.FIREBASE_AUTH_EMULATOR_HOST))throw new Error('Do not mix a real project with emulator environment variables.');
-function encode(value) {
-  if(value instanceof Timestamp)return {__timestamp:[value.seconds,value.nanoseconds]};
-  if(Array.isArray(value))return value.map(encode);
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,v])=>[key,encode(v)]));
-  return value;
-}
-function decode(value) {
-  if(value?.__timestamp)return new Timestamp(...value.__timestamp);
-  if(Array.isArray(value))return value.map(decode);
-  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,v])=>[key,decode(v)]));
-  return value;
-}
 async function capture() {
   const documents={};
   async function collect(collection) {
@@ -46,7 +35,8 @@ if(!input){if(!backupFile)throw new Error('Provide --backup to save the audit sn
 const mappings=option('--mapping')?JSON.parse(await readFile(option('--mapping'),'utf8')):{};
 const identities=mappings.identities||{};
 const repairs=mappings.properties||{};
-const documents=Object.fromEntries(Object.entries(backup.documents).map(([path,value])=>[path,decode(value)]));
+const decodingDb=db || new Firestore({projectId:backup.project});
+const documents=Object.fromEntries(Object.entries(backup.documents).map(([path,value])=>[path,decode(value,decodingDb)]));
 const actions=new Map(),issues=[];
 const canonical=uid=>identities[uid]||uid;
 const users=new Set(Object.keys(documents).filter(path=>/^users\/[^/]+$/.test(path)).map(path=>path.split('/')[1]));

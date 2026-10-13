@@ -7,6 +7,7 @@ test('Legacy web photos never persist temporary URLs or duplicate photos', () =>
 });
 test('Missing, invalid and zero coordinates are distinguished', () => {
   assert.equal(coordinatesOrNull(null),null);
+  for (const value of [{lat:'',lng:''},{lat:null,lng:null},{latitude:null,longitude:null},{lat:false,lng:false}]) assert.equal(coordinatesOrNull(value),null);
   assert.equal(coordinatesOrNull({lat:95,lng:0}),null);
   assert.deepEqual(coordinatesOrNull({latitude:0,longitude:0}),{lat:0,lng:0});
 });

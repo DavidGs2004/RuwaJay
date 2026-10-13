@@ -1,14 +1,14 @@
 import { collection,onSnapshot,query,where } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { firestore,functions } from './firebase';
+import { callBackend } from './backendService';
+import { firestore } from './firebase';
 import { normalizeVisit,timestampMillis } from './contracts';
 // Legacy cache is not authoritative and is never used to grant access or reserve a slot.
 export function readLocalVisits() { return []; }
 export async function createVisit(visit) {
-  return (await httpsCallable(functions,'createVisit')({propertyId:visit.propertyId,date:visit.date||visit.visitDate,time:visit.time||visit.visitTime,notes:visit.notes||''})).data;
+  return callBackend('createVisit',{propertyId:visit.propertyId,date:visit.date||visit.visitDate,time:visit.time||visit.visitTime,notes:visit.notes||''});
 }
 export async function changeVisitStatus(visitId,status) {
-  return (await httpsCallable(functions,'changeVisitStatus')({visitId,status})).data;
+  return callBackend('changeVisitStatus',{visitId,status});
 }
 export async function deleteVisit(visitId) {
   // Preserve shared history; cancellation releases the slot atomically.
