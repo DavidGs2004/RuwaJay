@@ -1045,3 +1045,57 @@ INSTRUCCIONES VIGENTES:
 
 En esta actualización solo se modificó documentación. No se inició sesión,
 no se desplegó ni migró nada y no se cambiaron cuentas o planes.
+
+======================================================================
+24. CIERRE — 13 DE OCTUBRE DE 2026: INFORME PARA QUECHE
+======================================================================
+
+El usuario solicitó elaborar informe_para_Queche.docx siguiendo el archivo
+lineamientos para informe.docx, con redacción natural y completa. Indicó
+que la sección del código QR debía referirse a la redirección a Play Store.
+
+COMPLETADO [x]:
+[x] Leídas las dos imágenes de lineamientos incluidas en el documento.
+[x] Revisadas documentación técnica, arquitectura vigente y bitácora.
+[x] Generado informe_para_Queche.docx en la raíz del proyecto: 26 páginas,
+    35 apartados principales y 12 tablas, con portada, índice actualizado,
+    propuesta de valor, Canvas, cronogramas, prototipo, arquitectura,
+    viabilidad, marketing, finanzas, indicadores, conclusiones, anexos
+    de seis semanas, glosario y referencias.
+[x] Incorporados integrantes y carnés de la documentación existente;
+    destinatario de portada: «Dirigido a Queche».
+[x] Incluidas capturas reales del acceso web en escritorio y vista móvil,
+    obtenidas localmente sin iniciar sesión. La vista móvil es web
+    adaptable, no una captura de Android nativo. Incluido esquema técnico.
+[x] Sección QR: redirigirá a la ficha oficial de RuwaJay en Play Store
+    cuando esté aprobada la publicación y exista un enlace validado.
+    No se inventó un enlace ni se generó un QR con destino no comprobado.
+[x] Separados avances comprobados, pendientes y propuestas. Las metas,
+    entrevistas, cronograma semanal y cifras comerciales son supuestos
+    de planificación; no se presentan como resultados reales.
+[x] Documento renderizado y revisadas visualmente sus 26 páginas.
+    Corregidos bordes de títulos, extensión del índice y saltos de página.
+    Verificación final: ningún apartado principal omitido y referencia
+    a Play Store presente en la sección del QR.
+[x] Cerrado el servidor web local utilizado para las capturas.
+
+ARCHIVO ENTREGADO:
+informe_para_Queche.docx
+Tamaño verificado: 304371 bytes.
+Material de generación y revisión interna: .artifacts/informe-queche/.
+Se entregó solo el Word; PDF e imágenes renderizadas son evidencia interna.
+El archivo original de lineamientos se conservó sin modificaciones.
+
+PENDIENTES [ ]:
+[ ] Mantener las tareas técnicas del apartado 23: datos históricos,
+    acceso Supabase del compañero al final, configuración/despliegue,
+    clientes compatibles y aceptación remota/física.
+[ ] Tras la publicación aprobada de Android, validar el enlace de la
+    ficha Play Store e incorporar el QR definitivo al material pertinente.
+[ ] Incorporar evidencia de catálogo, visitas y chat contra servicios
+    reales cuando se complete la puesta en marcha.
+
+El usuario pidió actualizar esta bitácora y terminar por ahora.
+Cierre de trabajo en esta sesión; no continuar con accesos o despliegues.
+No se cambiaron cuentas, planes o facturación, ni se aplicaron migraciones
+ni nuevas publicaciones durante la preparación del informe o este cierre.
