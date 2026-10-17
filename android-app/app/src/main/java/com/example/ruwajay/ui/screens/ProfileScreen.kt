@@ -214,8 +214,10 @@ fun ProfileScreen(
                                 .background(BrandForest),
                             contentAlignment = Alignment.Center
                         ) {
-                            val photo=(userData?.get("avatarImage") ?: userData?.get("avatar") ?: userData?.get("photoURL")) as? String
-                            if(!photo.isNullOrBlank()) coil.compose.AsyncImage(model=photo,contentDescription="Perfil",modifier=Modifier.fillMaxSize())
+                            val photo=listOf("avatarImage","avatar","photoURL")
+                                .firstNotNullOfOrNull { key -> (userData?.get(key) as? String)?.takeIf(String::isNotBlank) }
+                                ?: currentUser?.photoUrl?.toString().orEmpty()
+                            if(photo.isNotBlank()) coil.compose.AsyncImage(model=photo,contentDescription="Perfil",modifier=Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
                             else Text(
                                 text = (currentUser?.displayName?.take(1) ?: currentUser?.email?.take(1) ?: "U").uppercase(),
                                 color = Color.White,

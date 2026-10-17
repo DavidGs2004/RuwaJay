@@ -2,6 +2,7 @@ package com.example.ruwajay.data.repository
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 class AuthRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
@@ -90,7 +91,12 @@ class AuthRepository(
                             .addOnSuccessListener { onResult(Result.success(Unit)) }
                             .addOnFailureListener { error -> onResult(Result.failure(error)) }
                     } else {
-                        onResult(Result.success(Unit))
+                        // Mantener sincronizada la foto de Google incluso para cuentas
+                        // que ya existían antes de instalar la app móvil.
+                        val providerPhoto = user.photoUrl?.toString().orEmpty()
+                        if (providerPhoto.isBlank()) onResult(Result.success(Unit))
+                        else userRef.set(mapOf("photoURL" to providerPhoto), SetOptions.merge())
+                            .addOnCompleteListener { onResult(Result.success(Unit)) }
                     }
                 }.addOnFailureListener {
                     // Si falla leer el doc, de todos modos el login en Auth fue exitoso

@@ -28,7 +28,16 @@ export async function uploadBackendMedia(kind,source,{roomId,propertyId,expected
   const url=new URL(backendUrl+'/upload');url.searchParams.set('kind',kind);if(roomId)url.searchParams.set('roomId',roomId);if(propertyId)url.searchParams.set('propertyId',propertyId);
   const result=await authorizedRequest(url,{method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob},uid);return result.url;
 }
+const mediaCache = new Map();
+export function getCachedMediaUrl(reference) {
+  if (!reference) return '';
+  if (!reference.startsWith('supabase://')) return reference;
+  return mediaCache.get(reference) || null;
+}
 export async function resolveMediaUrl(reference){
   if(!reference?.startsWith('supabase://'))return reference;
-  return(await callBackend('resolveMedia',{reference})).url;
+  if(mediaCache.has(reference)) return mediaCache.get(reference);
+  const url = (await callBackend('resolveMedia',{reference})).url;
+  if (url) mediaCache.set(reference, url);
+  return url;
 }

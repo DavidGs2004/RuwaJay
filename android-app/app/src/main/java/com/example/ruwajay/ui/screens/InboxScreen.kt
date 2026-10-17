@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +25,8 @@ import com.example.ruwajay.data.repository.ChatRepository
 import com.example.ruwajay.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FirebaseFirestore
+import coil.compose.AsyncImage
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -37,12 +40,18 @@ fun InboxScreen(
     val chatRepo = remember { ChatRepository() }
     val currentUser = FirebaseAuth.getInstance().currentUser
     var firestoreConversations by remember { mutableStateOf<List<Conversation>>(emptyList()) }
+    var profilePhotos by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(currentUser?.uid) {
         if (currentUser == null) return@DisposableEffect onDispose {}
         
-        val listener = chatRepo.observeConversations(currentUser.uid) { maps ->
-            firestoreConversations = maps.map { map ->
+        val listener = chatRepo.observeConversations(currentUser.uid, onError = { error ->
+            loadError = "Error: ${error.message} (UID: ${currentUser.uid})"
+        }) { maps ->
+            loadError = null
+            val conversations = maps.map { map ->
                 val ts = map["lastMessageTimestamp"] as? Timestamp
                 val dateStr = ts?.let {
                     SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.toDate())
@@ -52,7 +61,18 @@ fun InboxScreen(
                     id = map["id"] as? String ?: "",
                     propertyId = map["propertyId"] as? String ?: "",
                     ownerId = map["ownerId"] as? String ?: "",
-                    participantName = (if (map["ownerId"] == currentUser.uid) map["seekerName"] else map["ownerName"]) as? String ?: "Usuario",
+                    participantName = ((if (map["ownerId"] == currentUser.uid) map["seekerName"] else map["ownerName"]) as? String)
+                        ?: (map["participantName"] as? String)
+                        ?: (map["otherUserName"] as? String)
+                        ?: "Usuario",
+                    participantId = (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString().orEmpty(),
+                    participantAvatar = run {
+                        val otherId=(map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString().orEmpty()
+                        profilePhotos[otherId]
+                            ?: ((if (map["ownerId"] == currentUser.uid) map["seekerAvatar"] else map["ownerAvatar"]) as? String)
+                            ?: (map["participantAvatar"] as? String)
+                            ?: ""
+                    },
                     participantOnline = false,
                     participantPhone = "",
                     participantRole = "Vendedor",
@@ -63,6 +83,43 @@ fun InboxScreen(
                     lastMessageTimestamp = dateStr,
                     messages = emptyList()
                 )
+            }
+            // Una persona puede tener varias conversaciones por diferentes
+            // propiedades. La bandeja muestra solamente la mas reciente.
+            firestoreConversations = conversations
+                .groupBy { it.participantId.ifBlank { it.participantName.trim().lowercase() } }
+                .values
+                .mapNotNull { group ->
+                    val latest = group.maxByOrNull { conversation ->
+                        maps.firstOrNull { it["id"] == conversation.id }
+                            ?.get("lastMessageTimestamp")
+                            .let { it as? Timestamp }
+                            ?.toDate()?.time ?: 0L
+                    }
+                    latest?.copy(unreadCount = if (group.any { it.unreadCount > 0 }) 1 else 0)
+                }
+                .sortedByDescending { conversation ->
+                    maps.firstOrNull { it["id"] == conversation.id }
+                        ?.get("lastMessageTimestamp")
+                        .let { it as? Timestamp }
+                        ?.toDate()?.time ?: 0L
+                }
+            val otherIds = maps.mapNotNull { map ->
+                (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString()
+            }.distinct()
+            otherIds.forEach { otherId ->
+                FirebaseFirestore.getInstance().collection("users").document(otherId).get()
+                    .addOnSuccessListener { doc ->
+                        val photo = listOf("avatarImage", "avatar", "photoURL")
+                            .firstNotNullOfOrNull { key -> doc.getString(key)?.takeIf(String::isNotBlank) }
+                            .orEmpty()
+                        if (photo.isNotBlank()) {
+                            profilePhotos = profilePhotos + (otherId to photo)
+                            firestoreConversations = firestoreConversations.map { conversation ->
+                                if (conversation.participantId == otherId) conversation.copy(participantAvatar = photo) else conversation
+                            }
+                        }
+                    }
             }
         }
         onDispose { listener.remove() }
@@ -113,7 +170,22 @@ fun InboxScreen(
 
             if (firestoreConversations.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No tienes conversaciones aún", color = BrandTextMuted)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No tienes conversaciones aún", color = BrandTextMuted)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Sesión: ${currentUser?.email ?: "sin email"}",
+                            fontSize = 11.sp, color = BrandTextMuted
+                        )
+                        Text(
+                            "UID: ${currentUser?.uid ?: "null"}",
+                            fontSize = 10.sp, color = BrandTextMuted
+                        )
+                        loadError?.let {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(it, color = Color.Red, fontSize = 11.sp)
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -154,8 +226,15 @@ fun ConversationItem(
                 .background(BrandForest),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = conversation.participantName.firstOrNull()?.toString() ?: "U",
+            if (conversation.participantAvatar.isNotBlank()) {
+                AsyncImage(
+                    model = conversation.participantAvatar,
+                    contentDescription = "Foto de ${conversation.participantName}",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else Text(
+                text = conversation.participantName.firstOrNull()?.toString()?.uppercase() ?: "U",
                 color = Color.White,
                 fontWeight = FontWeight.Black,
                 fontSize = 20.sp

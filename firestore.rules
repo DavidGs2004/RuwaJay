@@ -2,8 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
-      return request.auth != null && (!exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('suspended', false) == false && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status','active') != 'suspended');
+      return request.auth != null && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('suspended', false) == false
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status','active') != 'suspended')
+      );
     }
     function isAdmin() {
       return signedIn() && (request.auth.token.get('role', '') == 'admin'
@@ -19,12 +22,12 @@ service cloud.firestore {
         && data.get('bio','') is string && data.get('bio','').size() <= 2000;
     }
     match /users/{userId} {
-      allow read: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+      allow read: if request.auth != null;
       allow create: if signedIn() && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt'])
         && request.resource.data.role in ['seeker','owner'] && validProfile(request.resource.data);
       allow update: if validProfile(request.resource.data) && (isAdmin() || (signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','role'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role'])
         && (request.resource.data.get('role','seeker') == resource.data.get('role','seeker')
           || (resource.data.get('role','seeker') in ['seeker','owner'] && request.resource.data.role in ['seeker','owner']))));
       allow delete: if isAdmin();
@@ -72,26 +75,22 @@ service cloud.firestore {
       }
     }
     match /conversations/{conversationId} {
-      allow read: if member(resource.data);
-      // Creation and membership are controlled by callable functions after a confirmed visit.
-      allow create, delete: if false;
-      allow update: if member(resource.data) && (
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
-          && request.resource.data.get('readAt',{}).diff(resource.data.get('readAt',{})).affectedKeys().hasOnly([request.auth.uid])
-          && request.resource.data.readAt[request.auth.uid] == request.time)
-        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage','lastMessageTimestamp','lastSenderId','lastMessageId'])
-          && request.resource.data.lastSenderId == request.auth.uid && request.resource.data.lastMessageTimestamp == request.time
-          && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.senderId == request.auth.uid
-          && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.createdAt == request.time));
+      allow read: if signedIn() && (
+        request.auth.uid in resource.data.get('participants', []) ||
+        member(resource.data) ||
+        isAdmin()
+      );
+      allow create: if signedIn();
+      allow update: if signedIn() && (
+        request.auth.uid in resource.data.get('participants', []) ||
+        member(resource.data) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
       match /messages/{messageId} {
-        allow read: if member(get(/databases/$(database)/documents/conversations/$(conversationId)).data);
-        allow create: if member(get(/databases/$(database)/documents/conversations/$(conversationId)).data)
-          && request.resource.data.keys().hasOnly(['senderId','senderName','text','createdAt','type','mediaUrl','latitude','longitude','status'])
-          && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.senderName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
-          && request.resource.data.createdAt == request.time
-          && request.resource.data.type in ['text','image','audio','location']
-          && request.resource.data.get('text','') is string && request.resource.data.get('text','').size() <= 4000;
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if signedIn();
       }
     }
     match /visits/{visitId} {
@@ -119,7 +118,9 @@ service cloud.firestore {
         && request.resource.data.userId == userId && request.resource.data.status == 'pendiente';
     }
     match /system_updates/{updateId} { allow read: if true; allow write: if isAdmin(); }
-    // Disabled until an authenticated signaling client and lifecycle are implemented.
-    match /active_calls/{callId} { allow read, write: if false; }
+    // Authenticated WebRTC call signaling
+    match /active_calls/{callId} {
+      allow read, write: if signedIn();
+    }
   }
 }

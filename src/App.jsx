@@ -6,6 +6,8 @@ import { useAuth } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
 import { CompareProvider } from './context/CompareContext';
 import { ChatProvider } from './context/ChatContext';
+import { CallProvider } from './context/CallContext';
+import GlobalCallModal from './components/chat/GlobalCallModal';
 import Header from './components/layout/Header';
 import MobileNav from './components/layout/MobileNav';
 import Footer from './components/layout/Footer';
@@ -117,12 +119,15 @@ export default function App() {
       <FavoritesProvider>
         <CompareProvider>
           <ChatProvider>
-            <Router>
-              <ScrollToTop />
-              <ErrorBoundary>
-                <RuwaJayRoutes />
-              </ErrorBoundary>
-            </Router>
+            <CallProvider>
+              <Router>
+                <ScrollToTop />
+                <ErrorBoundary>
+                  <RuwaJayRoutes />
+                  <GlobalCallModal />
+                </ErrorBoundary>
+              </Router>
+            </CallProvider>
           </ChatProvider>
         </CompareProvider>
       </FavoritesProvider>

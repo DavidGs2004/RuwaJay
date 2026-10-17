@@ -22,11 +22,27 @@ class ChatRepository(
     fun getOrCreateConversation(propertyId: String, ownerId: String, propertyTitle: String, seekerId: String? = null,
         onResult: (Result<String>) -> Unit) {
         val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
-        RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to (seekerId ?: user.uid)))
-            .addOnSuccessListener { result ->
-                val id = result["id"] as? String
-                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta de chat invalida.")))
-            }.addOnFailureListener { onResult(Result.failure(it)) }
+        val sid = seekerId ?: user.uid
+        val targetOwnerId = if (ownerId.isNotBlank()) ownerId else "owner-1"
+        val cleanRoomId = listOf(sid, targetOwnerId, propertyId).sorted().joinToString("_").replace(Regex("[^a-zA-Z0-9_]"), "")
+        val conversationData = mapOf(
+            "propertyId" to propertyId,
+            "ownerId" to targetOwnerId,
+            "propertyTitle" to propertyTitle,
+            "participants" to listOf(sid, targetOwnerId),
+            "lastMessage" to "Consulta sobre $propertyTitle",
+            "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+            "lastSenderId" to user.uid
+        )
+        firestore.collection("conversations").document(cleanRoomId).set(conversationData, com.google.firebase.firestore.SetOptions.merge())
+            .addOnSuccessListener { onResult(Result.success(cleanRoomId)) }
+            .addOnFailureListener {
+                RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to sid))
+                    .addOnSuccessListener { result ->
+                        val id = result["id"] as? String
+                        if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta de chat invalida.")))
+                    }.addOnFailureListener { onResult(Result.failure(it)) }
+            }
     }
     fun observeMessages(roomId: String, onError: (Exception) -> Unit = {}, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
@@ -39,24 +55,82 @@ class ChatRepository(
         firestore.collection("conversations").document(roomId).update("readAt.$uid", FieldValue.serverTimestamp())
             .addOnFailureListener { onError(it) }
     }
-    fun sendText(roomId: String, text: String, onResult: (Result<Unit>) -> Unit) {
+    fun sendText(roomId: String, text: String, replyTo: Map<String, Any>? = null, onResult: (Result<Unit>) -> Unit) {
         if (text.isBlank() || text.length > 4000) return onResult(Result.failure(Exception("Mensaje invalido.")))
-        addMessage(roomId, mapOf("type" to "text", "text" to text.trim()), onResult)
+        val payload = mutableMapOf<String, Any>("type" to "text", "text" to text.trim())
+        if (replyTo != null) payload["replyTo"] = replyTo
+        addMessage(roomId, payload, onResult)
     }
     fun sendLocation(roomId: String, latitude: Double, longitude: Double, onResult: (Result<Unit>) -> Unit) {
         addMessage(roomId, mapOf("type" to "location", "text" to "Ubicacion", "latitude" to latitude, "longitude" to longitude), onResult)
     }
-    fun uploadMedia(roomId: String, uri: Uri, contentResolver: ContentResolver, type: String, onResult: (Result<Unit>) -> Unit) {
+    fun uploadMedia(roomId: String, uri: Uri, contentResolver: ContentResolver, type: String, caption: String? = null, replyTo: Map<String, Any>? = null, onResult: (Result<Unit>) -> Unit) {
         val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
-        val mime = contentResolver.getType(uri) ?: if (type == "audio") "audio/mp4" else "image/jpeg"
+        val mime = contentResolver.getType(uri) ?: if (type == "audio") "audio/mp4" else if (type == "video") "video/mp4" else "image/jpeg"
         RuwaBackend.upload("chat",uri,contentResolver,roomId=roomId,mime=mime,expectedUid=uid)
             .addOnSuccessListener { url ->
-                addMessage(roomId, mapOf("type" to type,"mediaUrl" to url,"text" to if(type=="audio") "Audio" else "Foto"), onResult,uid)
+                val fallbackText = if (type == "audio") "Audio" else if (type == "video") "Video" else "Foto"
+                val displayText = if (!caption.isNullOrBlank()) caption.trim() else fallbackText
+                val payload = mutableMapOf<String, Any>("type" to type, "mediaUrl" to url, "text" to displayText)
+                if (replyTo != null) payload["replyTo"] = replyTo
+                addMessage(roomId, payload, onResult, uid)
             }.addOnFailureListener { onResult(Result.failure(it)) }
     }
 
+    fun editMessage(roomId: String, messageId: String, newText: String, onResult: (Result<Unit>) -> Unit) {
+        if (newText.isBlank() || newText.length > 4000) return onResult(Result.failure(Exception("Mensaje inválido.")))
+        firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
+            .update(mapOf("text" to newText.trim(), "isEdited" to true, "editedAt" to FieldValue.serverTimestamp()))
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
+    fun deleteMessage(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {
+        firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
+            .update(mapOf("isDeleted" to true, "text" to "Este mensaje fue eliminado", "mediaUrl" to FieldValue.delete(), "image" to FieldValue.delete(), "deletedAt" to FieldValue.serverTimestamp()))
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
+    fun toggleReaction(roomId: String, messageId: String, emoji: String, currentEmoji: String?, onResult: (Result<Unit>) -> Unit) {
+        val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
+        val updateValue = if (currentEmoji == emoji) FieldValue.delete() else emoji
+        firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
+            .update("reactions.$uid", updateValue)
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
+    fun clearChat(roomId: String, onResult: (Result<Unit>) -> Unit) {
+        val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
+        firestore.collection("conversations").document(roomId)
+            .update("clearedAt.$uid", FieldValue.serverTimestamp())
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
     private fun addMessage(roomId: String, payload: Map<String, Any>, onResult: (Result<Unit>) -> Unit, expectedUid: String? = null) {
-        RuwaBackend.invoke("sendMessage",payload + ("roomId" to roomId),expectedUid)
-            .addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
+        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        val message = payload + mapOf(
+            "senderId" to user.uid,
+            "senderName" to (user.displayName ?: "Usuario"),
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+        firestore.collection("conversations").document(roomId).collection("messages").add(message)
+            .addOnSuccessListener {
+                firestore.collection("conversations").document(roomId).update(
+                    mapOf(
+                        "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
+                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                        "lastSenderId" to user.uid
+                    )
+                )
+                onResult(Result.success(Unit))
+            }
+            .addOnFailureListener {
+                RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), expectedUid)
+                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { onResult(Result.failure(it)) }
+            }
     }
 }

@@ -245,7 +245,10 @@ fun LoginScreen(onLoginSuccess: () -> Unit = {}) {
                 // BOTÓN GOOGLE SIGN-IN
                 OutlinedButton(
                     onClick = {
-                        googleLauncher.launch(googleSignInClient.signInIntent)
+                        // Cerrar sesión anterior para forzar el selector de cuentas
+                        googleSignInClient.signOut().addOnCompleteListener {
+                            googleLauncher.launch(googleSignInClient.signInIntent)
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()

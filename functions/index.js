@@ -128,8 +128,8 @@ async function notify(uid, eventId, title, body, path) {
   for (let offset = 0; offset < valid.length; offset += 500) {
     const slice = valid.slice(offset, offset + 500);
     const response = await getMessaging().sendEachForMulticast({
-      tokens: slice.map(d => d.data().token), notification: { title, body }, data: { path, eventId },
-      android: { notification: { channelId: 'ruwajay_messages', tag: eventId } },
+      tokens: slice.map(d => d.data().token), notification: { title, body }, data: { path, eventId, title, body },
+      android: { priority: 'high', notification: { channelId: 'ruwajay_messages', tag: eventId, sound: 'default', defaultSound: true, defaultVibrateTimings: true, notificationPriority: 'PRIORITY_MAX', visibility: 'PUBLIC' } },
       webpush: { notification: { tag: eventId }, fcmOptions: { link: `${webOrigin.value()}${path}` } },
     });
     await Promise.all(response.responses.map((result, i) =>
@@ -143,8 +143,10 @@ export const messageNotification = onDocumentCreated({ ...options, document: 'co
   const room = await db.doc(`conversations/${event.params.roomId}`).get();
   if (!room.exists) return;
   const data = room.data();
+  const senderTitle = (message.senderName && message.senderName !== 'Usuario') ? message.senderName : 'Nuevo mensaje';
+  const bodyText = text(message.text || (message.type === 'audio' ? '🎤 Nota de voz' : message.type === 'video' ? '🎥 Video' : message.type === 'image' ? '📷 Foto' : 'Archivo recibido'), 160);
   await Promise.all(data.participants.filter(uid => uid !== message.senderId).map(uid =>
-    notify(uid, `message_${event.params.messageId}`, 'Nuevo mensaje en RuwaJay', text(message.text || 'Archivo recibido', 160), `/chat?conversation=${encodeURIComponent(event.params.roomId)}`)));
+    notify(uid, `message_${event.params.messageId}`, senderTitle, bodyText, `/chat?conversation=${encodeURIComponent(event.params.roomId)}`)));
 });
 export const visitCreatedNotification = onDocumentCreated({ ...options, document: 'visits/{visitId}' }, event => {
   const visit = event.data.data();

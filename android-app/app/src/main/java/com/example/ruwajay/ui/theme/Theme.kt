@@ -44,7 +44,9 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun RuwaJayTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    // La experiencia web de RuwaJay usa siempre la paleta crema; evitamos que el modo
+    // oscuro del teléfono convierta el chat en una superficie café de bajo contraste.
+    darkTheme: Boolean = false,
     // Deshabilitar dynamic color por defecto para mantener la paleta RuwaJay
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit

@@ -5,6 +5,8 @@ data class Conversation(
     val propertyId: String,
     val ownerId: String,
     val participantName: String,
+    val participantId: String = "",
+    val participantAvatar: String = "",
     val participantOnline: Boolean,
     val participantPhone: String,
     val participantRole: String,

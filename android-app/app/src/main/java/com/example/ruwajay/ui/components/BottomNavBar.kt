@@ -44,7 +44,9 @@ fun BottomNavBar(navController: NavController) {
         NavItem("Inicio", Icons.Default.Home, Screen.Home),
         NavItem("Explorar", Icons.Default.Explore, Screen.Explore),
         NavItem("Publicar", Icons.Default.Add, Screen.Publish),
-        NavItem("Chat", Icons.Default.Chat, Screen.Chat),
+        // La pestaña principal abre la bandeja; una conversación concreta se abre
+        // solamente después de que el usuario la elija.
+        NavItem("Chat", Icons.Default.Chat, Screen.Inbox),
         NavItem("Perfil", Icons.Default.Person, Screen.Profile),
     )
 

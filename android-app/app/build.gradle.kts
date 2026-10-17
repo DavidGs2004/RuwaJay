@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.androidx.credentials.play)
     implementation(libs.play.services.auth)
     implementation(libs.googleid)
+    implementation("io.getstream:stream-webrtc-android:1.3.1")
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

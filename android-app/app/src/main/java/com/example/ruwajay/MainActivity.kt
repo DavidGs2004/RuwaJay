@@ -28,48 +28,71 @@ import org.osmdroid.config.Configuration
 import java.io.File
 
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.imePadding
 
 class MainActivity : ComponentActivity() {
     private var notificationPath by mutableStateOf<String?>(null)
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); notificationPath = intent.getStringExtra("path") }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            NotificationRepository.register()
+        }
+    }
+
+    private fun checkAndRequestNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+        NotificationRepository.register()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         notificationPath = intent.getStringExtra("path")
         if (android.os.Build.VERSION.SDK_INT >= 26) {
-            val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-            manager.createNotificationChannel(android.app.NotificationChannel("ruwajay_messages","Mensajes y visitas",android.app.NotificationManager.IMPORTANCE_DEFAULT))
-        }
-        if (android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(this,android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) NotificationRepository.register()
 
-        // Limpiar caché de disco para purgar cualquier imagen de error 403 guardada previamente
-        try {
-            val osmCacheDir = File(cacheDir, "osmdroid")
-            if (osmCacheDir.exists()) {
-                osmCacheDir.deleteRecursively()
-            }
-            val osmFilesDir = File(filesDir, "osmdroid")
-            if (osmFilesDir.exists()) {
-                osmFilesDir.deleteRecursively()
-            }
-        } catch (_: Exception) {}
-
-        // Configurar User-Agent autorizado y nueva carpeta de caché
-        Configuration.getInstance().apply {
-            load(applicationContext, applicationContext.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
-            userAgentValue = "RuwaJay-GT-App/3.0 (info@ruwajay.com)"
-            
-            val basePath = File(filesDir, "osmdroid")
-            basePath.mkdirs()
-            osmdroidBasePath = basePath
-            
-            val tileCache = File(cacheDir, "osmdroid_tiles_v4")
-            tileCache.mkdirs()
-            osmdroidTileCache = tileCache
+            RuwaMessagingService.ensureNotificationChannel(this)
         }
+        if (FirebaseAuth.getInstance().currentUser != null) checkAndRequestNotificationPermission()
 
         enableEdgeToEdge()
+
+        // Ejecutar inicialización y purga de caché de OSM en segundo plano para no demorar el primer cuadro de la app
+        kotlin.concurrent.thread(name = "osm-init") {
+            try {
+                val osmCacheDir = File(cacheDir, "osmdroid")
+                if (osmCacheDir.exists()) {
+                    osmCacheDir.deleteRecursively()
+                }
+                val osmFilesDir = File(filesDir, "osmdroid")
+                if (osmFilesDir.exists()) {
+                    osmFilesDir.deleteRecursively()
+                }
+            } catch (_: Exception) {}
+
+            Configuration.getInstance().apply {
+                load(applicationContext, applicationContext.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+                userAgentValue = "RuwaJay-GT-App/3.0 (info@ruwajay.com)"
+                
+                val basePath = File(filesDir, "osmdroid")
+                basePath.mkdirs()
+                osmdroidBasePath = basePath
+                
+                val tileCache = File(cacheDir, "osmdroid_tiles_v4")
+                tileCache.mkdirs()
+                osmdroidTileCache = tileCache
+            }
+        }
+
         setContent {
             RuwaJayTheme {
                 val navController = rememberNavController()
@@ -77,7 +100,7 @@ class MainActivity : ComponentActivity() {
                 DisposableEffect(Unit) {
                     val listener=FirebaseAuth.AuthStateListener {auth->
                         currentUid=auth.currentUser?.uid
-                        if(currentUid!=null && (android.os.Build.VERSION.SDK_INT<33 || androidx.core.content.ContextCompat.checkSelfPermission(this@MainActivity,android.Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED)) NotificationRepository.register()
+                        if(currentUid!=null) checkAndRequestNotificationPermission()
                     }
                     FirebaseAuth.getInstance().addAuthStateListener(listener)
                     onDispose {FirebaseAuth.getInstance().removeAuthStateListener(listener)}
@@ -104,17 +127,28 @@ class MainActivity : ComponentActivity() {
                 )
                 val showBottomNav = hiddenNavRoutes.none { currentRoute?.startsWith(it.split("/")[0]) == true }
 
-                Scaffold(
-                    modifier = Modifier.fillMaxSize().imePadding(),
-                    bottomBar = {
-                        if (showBottomNav) {
-                            BottomNavBar(navController = navController)
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                    Scaffold(
+                        // Cada pantalla controla sus propios insets del teclado. Aplicar
+                        // imePadding aquí y otra vez en ChatScreen hacía perder el foco.
+                        modifier = Modifier.fillMaxSize(),
+                        bottomBar = {
+                            if (showBottomNav) {
+                                BottomNavBar(navController = navController)
+                            }
                         }
+                    ) { innerPadding ->
+                        AppNavigation(
+                            navController = navController,
+                            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+                        )
                     }
-                ) { innerPadding ->
-                    AppNavigation(
-                        navController = navController,
-                        modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+
+                    // Global Call Overlay (recibe y atiende llamadas desde la web en tiempo real)
+                    val activeUser = FirebaseAuth.getInstance().currentUser
+                    com.example.ruwajay.ui.components.GlobalCallOverlay(
+                        currentUserId = activeUser?.uid,
+                        currentUserEmail = activeUser?.email
                     )
                 }
             }
