@@ -141,9 +141,9 @@ En el repositorio: **Settings → Secrets and variables → Actions → Variable
 | `RUWAJAY_BACKUP_ROOT` | `C:\RuwaJay-backups` |
 | `RUWAJAY_DEPLOY_ENABLED` | `true`, al terminar la preparación |
 
-El workflow rechaza una URL del backend vacía, con el placeholder o sin HTTPS. Las variables `VITE_*` terminan en JavaScript público: no son un lugar para secretos. El cliente conserva la configuración Firebase pública ya incluida en el repositorio.
+Al habilitar la publicación con `RUWAJAY_DEPLOY_ENABLED=true`, el workflow rechaza una URL del backend vacía, con el placeholder o sin HTTPS antes de preparar el paquete. Las variables `VITE_*` terminan en JavaScript público: no son un lugar para secretos. El cliente conserva la configuración Firebase pública ya incluida en el repositorio.
 
-Si `RUWAJAY_DEPLOY_ENABLED` no es `true`, se compila y guarda el paquete, y la publicación queda omitida. Esto permite preparar el servidor antes de activar las actualizaciones. Cambiar variables no dispara un build: utiliza **Run workflow** después.
+Si `RUWAJAY_DEPLOY_ENABLED` no es `true`, se ejecutan las pruebas, se compila y se guarda el paquete sin exigir todavía la URL del backend; la publicación queda omitida. Ese paquete permite revisar la web, pero necesita la configuración real del backend para las operaciones remotas. Esto permite preparar el servidor antes de activar las actualizaciones. Cambiar variables no dispara un build: utiliza **Run workflow** después.
 
 ## 7. Primera publicación y trabajo diario
 

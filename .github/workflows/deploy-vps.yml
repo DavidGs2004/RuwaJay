@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
@@ -41,6 +41,7 @@ jobs:
           node-version: '24'
           cache: npm
       - name: Comprobar URL pública del backend
+        if: vars.RUWAJAY_DEPLOY_ENABLED == 'true'
         shell: bash
         run: |
           node --input-type=module <<'JS'
