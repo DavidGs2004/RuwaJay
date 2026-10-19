@@ -58,7 +58,7 @@ jobs:
           mkdir -p release/site
           cp -R dist/. release/site/
           cp scripts/deploy-iis.ps1 release/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ruwajay-vps
           path: release/
@@ -74,7 +74,7 @@ jobs:
       DEPLOY_PATH: ${{ vars.RUWAJAY_IIS_PATH }}
       BACKUP_ROOT: ${{ vars.RUWAJAY_BACKUP_ROOT }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ruwajay-vps
           path: ${{ runner.temp }}/ruwajay-${{ github.run_id }}-${{ github.run_attempt }}
