@@ -62,7 +62,6 @@ class MainActivity : ComponentActivity() {
 
             RuwaMessagingService.ensureNotificationChannel(this)
         }
-        if (FirebaseAuth.getInstance().currentUser != null) checkAndRequestNotificationPermission()
 
         enableEdgeToEdge()
 
@@ -104,6 +103,14 @@ class MainActivity : ComponentActivity() {
                     }
                     FirebaseAuth.getInstance().addAuthStateListener(listener)
                     onDispose {FirebaseAuth.getInstance().removeAuthStateListener(listener)}
+                }
+                DisposableEffect(currentUid) {
+                    val stop = currentUid?.let { uid ->
+                        com.example.ruwajay.data.repository.observeForegroundNotifications(applicationContext, uid) {
+                            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                        }
+                    }
+                    onDispose { stop?.invoke() }
                 }
                 LaunchedEffect(notificationPath,currentUid) {
                     val path=notificationPath ?: return@LaunchedEffect

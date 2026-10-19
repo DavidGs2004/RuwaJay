@@ -30,3 +30,13 @@ Configurar Java 21, SDK 37, ANDROID_HOME y la misma URL pública de Supabase en 
 ```
 
 La versión actual es 2.6.0 (versionCode 5). La ruta con acentos puede impedir pruebas Gradle en Windows; compilar una copia en ruta ASCII. Un APK debug sin URL del servidor configurada sirve para inspección, pero necesita recompilarse tras el despliegue para probar las operaciones remotas.
+
+### Comprobar las notificaciones Android
+
+En **Perfil → Avisos**, usar **Activar notificaciones**, **Probar sonido y aviso** y **Ajustes de notificaciones**. La prueba local comprueba permiso, presentación y sonido del teléfono; no envía un mensaje por FCM. El canal debe permitir sonido y avisos emergentes. Android conserva la configuración elegida por el usuario; la app no la reemplaza al iniciar.
+
+La app observa mensajes y avisos nuevos desde cualquier pantalla mientras está en primer plano. Omite el historial inicial, los mensajes propios y los ya leídos. Comparte el identificador del evento con FCM para evitar alertas duplicadas dentro del proceso. Los mensajes directos de Android se guardan junto con su resumen en un lote atómico.
+
+Para recibir con la app en segundo plano o cerrada se necesita el servidor Supabase desplegado, sus credenciales FCM y el token del dispositivo registrado. Configurar la misma URL del servidor en web y Android y actualizar ambos clientes: cuando existe esa configuración, el envío pasa por el gateway, que guarda mensaje, resumen y trabajo de notificación juntos. Sin URL se conserva el chat directo existente, pero esa escritura no genera por sí sola un push desde Supabase. El gateway actualizado también conserva respuestas citadas y admite videos MP4/WebM.
+
+Prueba de aceptación: con dos cuentas distintas, enviar desde la web al teléfono en inicio, dentro del chat, en segundo plano y con la pantalla bloqueada. Comprobar una sola alerta, sonido y apertura de la conversación al tocarla. Repetir desde Android hacia otra cuenta y comprobar que cambiar de cuenta o abrir el historial no reproduce mensajes antiguos. El sonido físico y la entrega FCM remota requieren esta prueba en un teléfono real.

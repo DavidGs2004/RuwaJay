@@ -17,6 +17,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 
 object RuwaBackend {
+    val isConfigured: Boolean get() = baseUrl.isNotBlank()
     private val executor = Executors.newFixedThreadPool(3)
     private val baseUrl: String get() = (BuildConfig.RUWA_BACKEND_URL.ifBlank {
         BuildConfig.SUPABASE_URL.trimEnd('/').takeIf { it.isNotBlank() }?.plus("/functions/v1/ruwajay-api") ?: ""

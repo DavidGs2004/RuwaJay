@@ -82,6 +82,20 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
             }
             "avisos" -> {
                 Button(onClick={if(Build.VERSION.SDK_INT>=33)permission.launch(Manifest.permission.POST_NOTIFICATIONS)else NotificationRepository.register {it.onFailure{failure->error=failure.message}}}) {Text("Activar notificaciones")}
+                TextButton(onClick={
+                    val shown = com.example.ruwajay.RuwaNotifications.show(context, "Prueba de RuwaJay",
+                        "Las notificaciones están activadas en este teléfono.", "/perfil", "test_${System.currentTimeMillis()}")
+                    error = if (shown) "Prueba enviada. Si no suena, revisa el sonido del canal y el volumen de notificaciones." else "Las notificaciones están bloqueadas. Actívalas en Ajustes."
+                }) { Text("Probar sonido y aviso") }
+                TextButton(onClick={
+                    com.example.ruwajay.RuwaMessagingService.ensureNotificationChannel(context)
+                    val settingsIntent = if (Build.VERSION.SDK_INT >= 26) android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, com.example.ruwajay.RuwaMessagingService.CHANNEL_ID)
+                    else android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:${context.packageName}"))
+                    context.startActivity(settingsIntent)
+                }) { Text("Ajustes de notificaciones") }
                 if(notifications.isEmpty())Text("No tienes avisos.")
                 notifications.sortedByDescending{(it["createdAt"] as? com.google.firebase.Timestamp)?.toDate()?.time ?: 0L}.take(50).forEach { notice ->
                     TextButton(onClick={

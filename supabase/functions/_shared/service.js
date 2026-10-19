@@ -92,10 +92,15 @@ export class RuwaService {
   async sendMessage(tx,user,data){
     const id=identifier(data.roomId),room=await tx.get('conversations/'+id);
     assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid),403,'permission-denied','No perteneces a esta conversación.');
-    const type=data.type||'text';assert(['text','image','audio','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
+    const type=data.type||'text';assert(['text','image','audio','video','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
     let text=boundedText(data.text);assert(type!=='text'||text,400,'invalid-argument','Escribe un mensaje.');
     const messageId=crypto.randomUUID(),payload={type,text:text||(type==='audio'?'Audio':type==='image'?'Foto':'Ubicación'),senderId:user.uid,senderName:user.name||'Usuario',createdAt:SERVER_TIME,status:'sent'};
-    if(['image','audio'].includes(type)){const media=parseMediaReference(data.mediaUrl);assert(media.bucket==='chat-media'&&media.parts.length===4&&media.parts[0]==='chat'&&media.parts[1]===id&&media.parts[2]===user.uid,403,'permission-denied','El archivo no corresponde a esta conversación.');payload.mediaUrl=data.mediaUrl;}
+    if(['image','audio','video'].includes(type)){const media=parseMediaReference(data.mediaUrl);assert(media.bucket==='chat-media'&&media.parts.length===4&&media.parts[0]==='chat'&&media.parts[1]===id&&media.parts[2]===user.uid,403,'permission-denied','El archivo no corresponde a esta conversación.');payload.mediaUrl=data.mediaUrl;if(type==='video'&&!text)payload.text='Video';}
+    if(data.replyTo){
+      const reply=await tx.get('conversations/'+id+'/messages/'+identifier(data.replyTo.id));
+      assert(reply.exists,400,'invalid-argument','El mensaje citado no existe.');
+      payload.replyTo={id:reply.id,senderName:boundedText(reply.data.senderName||'Usuario',200),text:boundedText(reply.data.text||'',4000)};
+    }
     if(type==='location'){const coordinates=coordinatesOrNull({lat:data.latitude,lng:data.longitude});assert(coordinates,400,'invalid-argument','Ubicación inválida.');payload.latitude=coordinates.lat;payload.longitude=coordinates.lng;}
     tx.create('conversations/'+id+'/messages/'+messageId,payload);tx.update(room.path,{lastMessage:payload.text,lastMessageTimestamp:SERVER_TIME,lastSenderId:user.uid,lastMessageId:messageId});
     this.notices(tx,'message_'+messageId,room.data.participants.filter(uid=>uid!==user.uid),'Nuevo mensaje en RuwaJay',payload.text.slice(0,160),'/chat?conversation='+encodeURIComponent(id));return{id:messageId};
@@ -145,7 +150,7 @@ export class RuwaService {
     const [bucket,prefix]=definitions[kind];prefix.forEach(identifier);const path=[...prefix,crypto.randomUUID()].join('/');
     mime=String(mime||'').split(';')[0].trim().toLowerCase();
     assert(bytes.byteLength>0&&bytes.byteLength<=(kind==='chat'?20:8)*1024*1024,400,'invalid-argument','Archivo vacío o demasiado grande.');
-    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/webm)$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
+    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/(webm|mp4))$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
     await this.authorizeFile(user,bucket,path.split('/'),true);return{url:await this.files.upload(bucket,path,bytes,mime)};
   }
   async resolveMedia(user,reference){const media=parseMediaReference(reference);await this.authorizeFile(user,media.bucket,media.parts,false);return this.files.signedUrl(media.bucket,media.path);}

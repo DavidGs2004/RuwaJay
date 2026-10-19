@@ -27,12 +27,6 @@ class RuwaMessagingService : FirebaseMessagingService() {
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .build()
 
-                // Si ya existía un canal previo con importancia baja/default, lo recreamos con IMPORTANCE_HIGH
-                val existingChannel = manager.getNotificationChannel(CHANNEL_ID)
-                if (existingChannel != null && existingChannel.importance < NotificationManager.IMPORTANCE_HIGH) {
-                    try { manager.deleteNotificationChannel(CHANNEL_ID) } catch (_: Exception) {}
-                }
-
                 val channel = NotificationChannel(
                     CHANNEL_ID,
                     CHANNEL_NAME,
@@ -55,9 +49,6 @@ class RuwaMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        ensureNotificationChannel(this)
-
         val title = message.notification?.title
             ?: message.data["title"]
             ?: "RuwaJay"
@@ -66,26 +57,41 @@ class RuwaMessagingService : FirebaseMessagingService() {
             ?: "Tienes un nuevo mensaje"
         val path = message.data["path"] ?: "/perfil"
         val eventId = message.data["eventId"] ?: message.messageId ?: "ruwajay_${System.currentTimeMillis()}"
+        RuwaNotifications.show(this, title, body, path, eventId)
+    }
+}
 
-        val intent = Intent(this, MainActivity::class.java).apply {
+/** Shared by FCM and the foreground Firestore listeners. */
+object RuwaNotifications {
+    private val delivered = LinkedHashSet<String>()
+
+    @Synchronized
+    fun show(context: Context, title: String, body: String, path: String, eventId: String): Boolean {
+        RuwaMessagingService.ensureNotificationChannel(context)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
+        if (eventId in delivered) return true
+        val intent = Intent(context, MainActivity::class.java).apply {
             putExtra("path", path)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         val pending = PendingIntent.getActivity(
-            this,
+            context,
             eventId.hashCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+        val notification = NotificationCompat.Builder(context, RuwaMessagingService.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -95,9 +101,11 @@ class RuwaMessagingService : FirebaseMessagingService() {
             .build()
 
         try {
-            manager.notify(eventId.hashCode(), notification)
-            com.example.ruwajay.util.SoundManager.playSystemNotificationSound(applicationContext)
-        } catch (_: SecurityException) {}
+            manager.notify(eventId, 0, notification)
+            delivered.add(eventId)
+            if (delivered.size > 200) delivered.remove(delivered.first())
+            return true
+        } catch (_: SecurityException) { return false }
     }
 }
 

@@ -121,7 +121,6 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     var draft by remember(conversationId) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
-    var previousLastMessageId by remember(conversationId) { mutableStateOf<String?>(null) }
 
     // Voice recording states: Record -> Stop (Red) -> Review & Preview -> Send (Green Arrow)
     var recording by remember { mutableStateOf(false) }
@@ -176,15 +175,6 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     }
     DisposableEffect(conversationId, uid) {
         val a = repo.observeMessages(conversationId, onError = { error = it.message }) {
-            val lastMsg = it.lastOrNull()
-            val lastId = lastMsg?.get("id")?.toString()
-            if (previousLastMessageId != null && lastId != null && lastId != previousLastMessageId) {
-                val senderId = lastMsg["senderId"]?.toString()
-                if (senderId != null && senderId != uid) {
-                    SoundManager.playReceiveSound(context)
-                }
-            }
-            previousLastMessageId = lastId
             messages = it
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) repo.markAsRead(conversationId)
         }

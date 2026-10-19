@@ -1,5 +1,5 @@
 import { collection, query, orderBy, onSnapshot, doc, writeBatch, setDoc, serverTimestamp, updateDoc, where, getDocs, deleteField } from 'firebase/firestore';
-import { callBackend, usesServerOperations } from './backendService';
+import { callBackend, usesServerOperations, usesSupabaseBackend } from './backendService';
 import { firebaseAuth, firestore, functions } from './firebase';
 import { conversationId, timestampMillis } from './contracts';
 import { uploadChatMedia } from './mediaService';
@@ -53,6 +53,16 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
   const isVideo = extras.isVideo || (media instanceof File && media.type?.startsWith('video')) || (typeof media === 'string' && media.startsWith('data:video'));
   const type = extras.type || (media ? (extras.isVoice ? 'audio' : isVideo ? 'video' : 'image') : 'text');
   const mediaUrl = media ? await uploadChatMedia(roomId, media) : null;
+  // The gateway commits the message, summary and notification job together.
+  // Direct writes remain available for installations without the gateway.
+  if (usesSupabaseBackend) {
+    return (await callBackend('sendMessage', {
+      roomId, type, text: text || '',
+      ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
+      ...(mediaUrl ? { mediaUrl } : {}),
+      ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
+    }, { expectedUid: account.uid })).id;
+  }
   try {
     const messageRef = doc(collection(firestore, 'conversations', roomId, 'messages'));
     const batch = writeBatch(firestore);

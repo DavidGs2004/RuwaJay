@@ -111,22 +111,33 @@ class ChatRepository(
 
     private fun addMessage(roomId: String, payload: Map<String, Any>, onResult: (Result<Unit>) -> Unit, expectedUid: String? = null) {
         val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        if (expectedUid != null && expectedUid != user.uid) {
+            return onResult(Result.failure(Exception("La sesión cambió. Inténtalo con la cuenta actual.")))
+        }
+        if (RuwaBackend.isConfigured) {
+            RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), user.uid)
+                .addOnSuccessListener { onResult(Result.success(Unit)) }
+                .addOnFailureListener { onResult(Result.failure(it)) }
+            return
+        }
         val message = payload + mapOf(
             "senderId" to user.uid,
             "senderName" to (user.displayName ?: "Usuario"),
             "createdAt" to FieldValue.serverTimestamp()
         )
-        firestore.collection("conversations").document(roomId).collection("messages").add(message)
-            .addOnSuccessListener {
-                firestore.collection("conversations").document(roomId).update(
+        val roomRef = firestore.collection("conversations").document(roomId)
+        val messageRef = roomRef.collection("messages").document()
+        val batch = firestore.batch()
+        batch.set(messageRef, message)
+        batch.update(roomRef,
                     mapOf(
                         "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
                         "lastMessageTimestamp" to FieldValue.serverTimestamp(),
-                        "lastSenderId" to user.uid
+                        "lastSenderId" to user.uid,
+                        "lastMessageId" to messageRef.id
                     )
-                )
-                onResult(Result.success(Unit))
-            }
+        )
+        batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }
             .addOnFailureListener {
                 RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), expectedUid)
                     .addOnSuccessListener { onResult(Result.success(Unit)) }
