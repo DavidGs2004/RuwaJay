@@ -261,7 +261,7 @@ export default function Header() {
             {/* Logo */}
             <Link to="/" className="group flex shrink-0 items-center gap-2 md:gap-3">
               <img
-                src="/logo/logo.png"
+                src={`${import.meta.env.BASE_URL}logo/logo.png`}
                 alt="RuwaJay"
                 className="h-11 w-11 object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-14 sm:w-14"
               />

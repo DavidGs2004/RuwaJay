@@ -46,7 +46,7 @@ export default class ErrorBoundary extends React.Component {
                 <RefreshCw size={14} /> Recargar página
               </button>
               <a
-                href="/"
+                href={import.meta.env.BASE_URL}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-crema px-5 py-2.5 text-xs font-bold text-cafe hover:bg-border/60 transition-all"
               >
                 <Home size={14} /> Volver al inicio

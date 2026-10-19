@@ -31,7 +31,7 @@ export default function Footer() {
           <div>
             <Link to="/" className="inline-flex items-center gap-3 group mb-4">
               <img
-                src="/logo/logo.png"
+                src={`${import.meta.env.BASE_URL}logo/logo.png`}
                 alt="RuwaJay"
                 className="h-12 w-12 object-contain rounded-full shadow-md group-hover:scale-105 transition-transform duration-300 ring-1 ring-white/10"
               />

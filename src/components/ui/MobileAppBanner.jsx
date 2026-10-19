@@ -34,7 +34,7 @@ export default function MobileAppBanner({ onOpenModal }) {
       <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto">
         <div className="flex items-center gap-2.5 min-w-0">
           <img
-            src="/logo/logo.png"
+            src={`${import.meta.env.BASE_URL}logo/logo.png`}
             alt="RuwaJay"
             className="h-8 w-8 rounded-full bg-white p-0.5 object-contain flex-shrink-0 shadow-xs"
           />

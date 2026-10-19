@@ -145,17 +145,17 @@ function PropertyDetailContent({ property }) {
   }, [showLightbox, showVisitModal]);
 
   const getCategoryImages = () => {
-    if (!property?.images) return [property?.thumbnail || '/Casas/cat-familiar.jpg'];
+    if (!property?.images) return [property?.thumbnail || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`];
     if (Array.isArray(property.images)) return property.images.filter(Boolean);
     if (typeof property.images === 'object') {
       if (activeTab === 'todas') return Object.values(property.images).flat().filter(Boolean);
       return property.images[activeTab] || Object.values(property.images).flat().filter(Boolean);
     }
-    return [property?.thumbnail || '/Casas/cat-familiar.jpg'];
+    return [property?.thumbnail || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`];
   };
 
-  const currentImages = (getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || '/Casas/cat-familiar.jpg'])
-    .map((img) => (typeof img === 'string' && img.startsWith('blob:') ? '/Casas/cat-familiar.jpg' : img));
+  const currentImages = (getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`])
+    .map((img) => (typeof img === 'string' && img.startsWith('blob:') ? `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg` : img));
 
   const distance = position && property.coordinates?.lat && property.coordinates?.lng
     ? calculateDistance(position.lat, position.lng, property.coordinates.lat, property.coordinates.lng)

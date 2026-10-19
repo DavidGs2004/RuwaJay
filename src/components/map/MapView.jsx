@@ -146,7 +146,7 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
             ? calculateDistance(userPosition.lat, userPosition.lng, propLat, propLng)
             : null;
 
-          const thumbnail = prop.thumbnail || (Array.isArray(prop.images) && prop.images[0]) || '/Casas/hero-banner-new.jpg';
+          const thumbnail = prop.thumbnail || (Array.isArray(prop.images) && prop.images[0]) || `${import.meta.env.BASE_URL}Casas/hero-banner-new.jpg`;
           const approxAddress = prop.address?.approximate || prop.location?.approximateAddress || prop.location?.zone || 'Ubicación no indicada';
 
           return (

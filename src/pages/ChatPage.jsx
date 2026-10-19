@@ -584,7 +584,7 @@ export default function ChatPage() {
 
           <div className="hidden sm:flex items-center gap-2 border-l border-border pl-3">
             <Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-              <img src="/logo/logo.png" alt="RuwaJay" className="h-7 w-7 object-contain" />
+              <img src={`${import.meta.env.BASE_URL}logo/logo.png`} alt="RuwaJay" className="h-7 w-7 object-contain" />
               <span className="text-sm font-black text-forest">
                 Ruwa<span className="text-terracota">Jay</span>
               </span>

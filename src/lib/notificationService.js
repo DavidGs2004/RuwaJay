@@ -9,7 +9,7 @@ export async function enableNotifications() {
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) throw new Error('Las notificaciones todavía no están configuradas.');
   if (await Notification.requestPermission() !== 'granted') throw new Error('Permiso de notificaciones denegado.');
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  const registration = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}firebase-messaging-sw.js`);
   await navigator.serviceWorker.ready;
   const token = await getToken(getMessaging(firebaseApp), { vapidKey, serviceWorkerRegistration:registration });
   if (!token) throw new Error('No se pudo registrar este dispositivo.');

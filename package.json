@@ -8,6 +8,7 @@
     "dev:frontend": "vite",
     "dev:backend": "python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload",
     "build": "vite build",
+    "build:vps": "vite build --base=/ruwajay/",
     "preview": "vite preview",
     "test": "node --test tests/contracts.test.js",
     "test:rules": "node scripts/run-emulators.mjs firestore \"node --test tests/firestore.rules.test.js\"",

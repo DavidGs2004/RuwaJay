@@ -1,0 +1,90 @@
+name: Publicar RuwaJay en VPS Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'tests/**'
+      - 'functions/**'
+      - 'supabase/functions/_shared/**'
+      - 'scripts/deploy-iis.ps1'
+      - 'index.html'
+      - 'package*.json'
+      - 'vite.config.js'
+      - '.github/workflows/deploy-vps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ruwajay-vps-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_RUWA_BACKEND_URL: ${{ vars.VITE_RUWA_BACKEND_URL }}
+      VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
+      VITE_MAPBOX_ACCESS_TOKEN: ${{ vars.VITE_MAPBOX_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Comprobar URL pública del backend
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          const endpoint = process.env.VITE_RUWA_BACKEND_URL || (process.env.VITE_SUPABASE_URL ? process.env.VITE_SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/ruwajay-api' : '');
+          if (!endpoint || /YOUR_PROJECT|PLACEHOLDER/i.test(endpoint)) throw new Error('Configura VITE_SUPABASE_URL o VITE_RUWA_BACKEND_URL en Variables de GitHub.');
+          if (new URL(endpoint).protocol !== 'https:') throw new Error('El backend de producción debe usar HTTPS.');
+          JS
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:backend:unit
+      - run: npm run build:vps
+      - name: Preparar paquete
+        run: |
+          mkdir -p release/site
+          cp -R dist/. release/site/
+          cp scripts/deploy-iis.ps1 release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ruwajay-vps
+          path: release/
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.RUWAJAY_DEPLOY_ENABLED == 'true'
+    runs-on: [self-hosted, Windows, X64, ruwajay]
+    timeout-minutes: 10
+    env:
+      DEPLOY_PATH: ${{ vars.RUWAJAY_IIS_PATH }}
+      BACKUP_ROOT: ${{ vars.RUWAJAY_BACKUP_ROOT }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruwajay-vps
+          path: ${{ runner.temp }}/ruwajay-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Publicar con respaldo
+        shell: powershell
+        env:
+          RELEASE_PATH: ${{ runner.temp }}/ruwajay-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          & "$env:RELEASE_PATH/deploy-iis.ps1" -Source "$env:RELEASE_PATH/site" -Destination $env:DEPLOY_PATH -BackupRoot $env:BACKUP_ROOT
+      - name: Verificar HTTP público
+        shell: powershell
+        run: |
+          $response = Invoke-WebRequest -Uri 'https://expotec.duckdns.org/ruwajay/login' -UseBasicParsing -TimeoutSec 30 -Headers @{ Accept = 'text/html'; 'Cache-Control' = 'no-cache' }
+          if ($response.StatusCode -ne 200 -or $response.Content -notmatch '/ruwajay/assets/') { throw 'La URL pública no devuelve el build esperado. Revisar IIS y reglas de WordPress.' }

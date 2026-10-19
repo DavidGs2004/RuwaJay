@@ -13,7 +13,7 @@ export default function MobileAppConnectModal({ isOpen, onClose, targetPath = ''
   const appPath = route === 'ruta' && query.get('property') ? `ruta/${query.get('property')}`
     : route === 'chat' && query.get('conversation') ? `chat/${query.get('conversation')}` : route;
   const deepLink = appPath ? `ruwajay://${appPath}` : 'ruwajay://home';
-  const webLink = `${window.location.origin}/${cleanPath}`;
+  const webLink = `${window.location.origin}${import.meta.env.BASE_URL}${cleanPath}`;
 
   const handleOpenApp = () => {
     // Intentar abrir el esquema nativo de la app

@@ -21,8 +21,8 @@ export default function PropertyCard({ property, userPosition = null, compact = 
         ? { label: 'No disponible', className: 'bg-gray-700 text-white' }
         : { label: 'Desocupada · Disponible', className: 'bg-emerald-600 text-white' };
 
-  const rawSrc = property.thumbnail || property.thumbnails?.[0] || '/Casas/cat-familiar.jpg';
-  const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? '/Casas/cat-familiar.jpg' : rawSrc;
+  const rawSrc = property.thumbnail || property.thumbnails?.[0] || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+  const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg` : rawSrc;
   const [imgSrc, setImgSrc] = useState(cleanInitialSrc);
 
   const distance = userPosition
@@ -66,7 +66,7 @@ export default function PropertyCard({ property, userPosition = null, compact = 
           alt={property.title || 'Vivienda'}
           loading="lazy"
           decoding="async"
-          onError={() => setImgSrc('/Casas/cat-familiar.jpg')}
+          onError={() => setImgSrc(`${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`)}
           className="h-full w-full bg-[#e0d3c3] object-cover transition-transform duration-700 ease-out group-hover:scale-110"
         />
 

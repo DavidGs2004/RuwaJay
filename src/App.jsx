@@ -120,7 +120,7 @@ export default function App() {
         <CompareProvider>
           <ChatProvider>
             <CallProvider>
-              <Router>
+              <Router basename={import.meta.env.BASE_URL}>
                 <ScrollToTop />
                 <ErrorBoundary>
                   <RuwaJayRoutes />

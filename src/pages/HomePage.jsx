@@ -5,11 +5,11 @@ import {
 } from 'lucide-react';
 
 const bannerImages = [
-  '/Banners/Bannder1.png',
-  '/Banners/Banner2.png',
-  '/Banners/Banner3.png',
-  '/Banners/Banner4.png',
-  '/Banners/Banner5.png',
+  `${import.meta.env.BASE_URL}Banners/Bannder1.png`,
+  `${import.meta.env.BASE_URL}Banners/Banner2.png`,
+  `${import.meta.env.BASE_URL}Banners/Banner3.png`,
+  `${import.meta.env.BASE_URL}Banners/Banner4.png`,
+  `${import.meta.env.BASE_URL}Banners/Banner5.png`,
 ];
 
 export default function HomePage() {
@@ -56,17 +56,17 @@ export default function HomePage() {
   const categories = [
     {
       title: 'Casas familiares',
-      image: '/Casas/cat-familiar.jpg',
+      image: `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`,
       link: '/explorar?type=casa',
     },
     {
       title: 'Casas urbanas',
-      image: '/Casas/cat-urbana.jpg',
+      image: `${import.meta.env.BASE_URL}Casas/cat-urbana.jpg`,
       link: '/explorar?type=apartamento',
     },
     {
       title: 'Casas acogedoras',
-      image: '/Casas/cat-acogedora.jpg',
+      image: `${import.meta.env.BASE_URL}Casas/cat-acogedora.jpg`,
       link: '/explorar?type=amueblado',
     },
   ];

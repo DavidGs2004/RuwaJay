@@ -381,7 +381,7 @@ export function CallProvider({ children }) {
         try {
           new Notification('📞 Llamada entrante en RuwaJay', {
             body: `${incomingData.callerName || 'Contacto'} te está llamando...`,
-            icon: incomingData.callerAvatar || '/Casas/cat-familiar.jpg',
+            icon: incomingData.callerAvatar || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`,
             tag: 'ruwajay-call-ring',
           });
         } catch { /* ignore */ }

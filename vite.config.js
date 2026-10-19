@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
 export default defineConfig({
+  // Local: /. VPS build: npm run build:vps -> /ruwajay/.
   plugins: [
     react(),
     tailwindcss(),

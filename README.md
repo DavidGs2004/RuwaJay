@@ -2,6 +2,8 @@
 
 Plataforma de vivienda en Guatemala: web React/Vite y Android Kotlin/Compose.
 
+Publicación en el VPS Windows bajo **https://expotec.duckdns.org/ruwajay/** y actualizaciones desde GitHub: [guía paso a paso](docs/DESPLIEGUE-VPS-WINDOWS.md). `npm run dev:frontend` conserva la raíz local; `npm run build:vps` compila para `/ruwajay/`. El workflow prepara la web; Firebase/Supabase se configuran por separado según la guía de integración.
+
 La integración actual conserva Firebase Authentication, Firestore, Hosting y FCM en Spark. Supabase Free ejecuta el servidor y almacena fotos, documentos y audio. No requiere desplegar Cloud Functions ni Firebase Storage. Ambas aplicaciones llaman al mismo servidor con su sesión Firebase; no se crean nuevas cuentas de usuarios en Supabase.
 
 El código está preparado localmente. El inicio de sesión, configuración y despliegue de Supabase quedaron para el compañero por indicación del usuario. Todavía no se publicó esta integración ni se migraron datos reales. Consulta [las instrucciones de integración y despliegue](docs/INTEGRACION.md).

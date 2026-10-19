@@ -12,16 +12,16 @@ import { formatPrice } from '../../data/properties';
 
 // Safely get the first image from a property, handles null/undefined/array/object
 function getSafeImage(property) {
-  if (!property) return '/Casas/cat-familiar.jpg';
+  if (!property) return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
   if (property.thumbnail) return property.thumbnail;
   try {
     const imgs = property.images;
-    if (!imgs || typeof imgs !== 'object') return '/Casas/cat-familiar.jpg';
-    if (Array.isArray(imgs)) return imgs[0] || '/Casas/cat-familiar.jpg';
+    if (!imgs || typeof imgs !== 'object') return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+    if (Array.isArray(imgs)) return imgs[0] || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
     const values = Object.values(imgs).flat();
-    return (values && values[0]) || '/Casas/cat-familiar.jpg';
+    return (values && values[0]) || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
   } catch {
-    return '/Casas/cat-familiar.jpg';
+    return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
   }
 }
 

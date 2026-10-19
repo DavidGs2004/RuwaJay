@@ -2,7 +2,7 @@ export default function RuwaJayLogo({ size = 44, showText = true, className = ''
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <img
-        src="/logo/logo.png"
+        src={`${import.meta.env.BASE_URL}logo/logo.png`}
         alt="RuwaJay"
         className="drop-shadow-md"
         style={{
