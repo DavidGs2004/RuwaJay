@@ -1,6 +1,6 @@
 import NotificationCenter from './components/ui/NotificationCenter';
 import { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
@@ -44,10 +44,17 @@ function SuspendedSignOut() {
   return <button onClick={logout}>Cerrar sesión</button>;
 }
 
+function RequireSession() {
+  const { user } = useAuth();
+  return user ? <Outlet /> : <Navigate to="/login" replace />;
+}
+
 function RuwaJayRoutes() {
   const { user, isInitializing, isPostAuthLoading } = useAuth();
   const location = useLocation();
   const isChatRoute = location.pathname === '/chat';
+  const isAuthRoute = ['/login', '/reset-password', '/__/auth/action'].includes(location.pathname);
+  const showLayout = !isChatRoute && !isAuthRoute;
   const [mobileAppModalOpen, setMobileAppModalOpen] = useState(false);
 
   if (isInitializing) {
@@ -64,44 +71,30 @@ function RuwaJayRoutes() {
     <SuspendedSignOut />
   </div>;
 
-  // Rutas accesibles sin haber iniciado sesión
-  if (!user) {
-    return (
-      <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-crema font-sans text-cafe antialiased">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          {/* Ruta pública para restablecer contraseña desde el enlace del correo */}
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          {/* Capturar la URL por defecto que manda Firebase en los correos */}
-          <Route path="/__/auth/action" element={<ResetPasswordPage />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </div>
-    );
-  }
-
   return (
     <div className={`flex min-h-screen w-full min-w-0 flex-col overflow-x-clip ${isChatRoute ? 'bg-[#FAF8F5]' : 'bg-crema'} font-sans text-cafe antialiased`}>
-      {!isChatRoute && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
-      {!isChatRoute && <Header />}
+      {showLayout && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
+      {showLayout && <Header />}
       <div className="min-w-0 flex-1">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/explorar" element={<ExplorePage />} />
           <Route path="/propiedad/:id" element={<PropertyDetailPage />} />
           <Route path="/ruta" element={<RoutePage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/login" element={<Navigate to="/" replace />} />
-          <Route path="/perfil" element={<ProfilePage />} />
-          <Route path="/publicar" element={<PublishPage />} />
-          <Route path="/publicar/:editId" element={<PublishPage />} />
-          {/* Si ya está en sesión e intenta entrar aquí, lo redirige al home */}
-          <Route path="/reset-password" element={<Navigate to="/" replace />} />
+          <Route element={<RequireSession />}>
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/perfil" element={<ProfilePage />} />
+            <Route path="/publicar" element={<PublishPage />} />
+            <Route path="/publicar/:editId" element={<PublishPage />} />
+          </Route>
+          <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+          <Route path="/reset-password" element={user ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
+          <Route path="/__/auth/action" element={user ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {!isChatRoute && <Footer />}
-      {!isChatRoute && <MobileNav />}
+      {showLayout && <Footer />}
+      {showLayout && <MobileNav />}
       <PropertyCompareModal />
       <ChatNotificationToast /><NotificationCenter />
       <MobileAppConnectModal

@@ -161,7 +161,7 @@ Comprueba al terminar:
 
 - `https://expotec.duckdns.org/` sigue mostrando WordPress.
 - `https://expotec.duckdns.org/empleados` sigue funcionando.
-- `https://expotec.duckdns.org/ruwajay/` abre la web; sin sesión muestra login.
+- `https://expotec.duckdns.org/ruwajay/` abre el inicio sin exigir sesión. Explorar y ver viviendas también son públicos; perfil, chat y publicación requieren iniciar sesión.
 - `/ruwajay/login` y `/ruwajay/perfil` cargan también al entrar directamente o presionar F5.
 - `/ruwajay/logo/logo.png` y `/ruwajay/manifest.json` devuelven sus archivos.
 - Login por correo/Google, recuperación de contraseña, fotos, publicación y chat funcionan con usuarios de prueba.
