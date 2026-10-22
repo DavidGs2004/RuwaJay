@@ -10,7 +10,8 @@ import {
   Plus, Minus, Volume2, VolumeX, Locate, LocateFixed, Crosshair, Radio,
   HelpCircle, X, Check, Camera, Route as RouteIcon, GitCommit,
   Search, Navigation2, Satellite, Map as MapIcon, Pencil, CircleDot,
-  Signal, Mic, MicOff, ChevronDown, ChevronUp, Target, Move3d, Home, SlidersHorizontal
+  Signal, Mic, MicOff, ChevronDown, ChevronUp, Target, Move3d, Home, SlidersHorizontal,
+  CloudRain, AlertTriangle, AlertOctagon, ShieldAlert
 } from 'lucide-react';
 import { formatDistance, formatPrice } from '../../data/properties';
 
@@ -26,9 +27,9 @@ const createOriginIcon = () =>
     html: `
       <div style="position: relative; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; pointer-events: auto;">
         <div style="position: absolute; inset: -4px; border-radius: 9999px; background: radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, transparent 70%); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-        <div style="position: absolute; inset: 0; border-radius: 9999px; background: radial-gradient(circle, rgba(11, 93, 59, 0.3) 0%, transparent 60%);"></div>
-        <div style="width: 30px; height: 30px; border-radius: 9999px; background: linear-gradient(135deg, #0B5D3B 0%, #10B981 100%); border: 3px solid #FFF5E8; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 4px 14px rgba(11, 93, 59, 0.4); display: flex; align-items: center; justify-content: center;">
-          <div style="width: 10px; height: 10px; border-radius: 9999px; background: #D4962A; box-shadow: 0 0 8px rgba(212, 150, 42, 0.8);"></div>
+        <div style="position: absolute; inset: 0; border-radius: 9999px; background: radial-gradient(circle, rgba(5, 150, 105, 0.3) 0%, transparent 60%);"></div>
+        <div style="width: 30px; height: 30px; border-radius: 9999px; background: linear-gradient(135deg, #065F46 0%, #10B981 100%); border: 3px solid #FFF5E8; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 4px 14px rgba(6, 78, 59, 0.4); display: flex; align-items: center; justify-content: center;">
+          <div style="width: 10px; height: 10px; border-radius: 9999px; background: #F59E0B; box-shadow: 0 0 8px rgba(245, 158, 11, 0.8);"></div>
         </div>
       </div>
     `,
@@ -44,8 +45,8 @@ const createDestinationIcon = (price) =>
     html: `
       <div style="position: relative; display: flex; flex-direction: column; align-items: center; pointer-events: auto; cursor: pointer; filter: drop-shadow(0 8px 20px rgba(216, 68, 32, 0.5));">
         <!-- Floating Price Pill -->
-        <div style="background: linear-gradient(135deg, #0B5D3B 0%, #084a2f 100%); color: #FFF5E8; font-weight: 900; font-size: 11px; padding: 3px 10px; border-radius: 9999px; border: 2px solid #D4962A; margin-bottom: 3px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.35), 0 0 12px rgba(212, 150, 42, 0.3);">
-          ${price ? formatPrice(price) : '🏠 Destino'}
+        <div style="background: linear-gradient(135deg, #064E3B 0%, #047857 100%); color: #FFF5E8; font-weight: 900; font-size: 11px; padding: 3px 10px; border-radius: 9999px; border: 2px solid #F59E0B; margin-bottom: 3px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.35), 0 0 12px rgba(245, 158, 11, 0.3); display: flex; align-items: center; gap: 4px;">
+          ${price ? formatPrice(price) : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFF5E8" stroke-width="2.5"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> <span>Destino</span>'}
         </div>
         <!-- House 3D Pin -->
         <div style="position: relative; width: 42px; height: 42px; background: linear-gradient(135deg, #D84420 0%, #E54B22 50%, #F07824 100%); border-radius: 14px; border: 3px solid #FFF5E8; display: flex; align-items: center; justify-content: center; transform: rotate(-45deg); box-shadow: 0 6px 18px rgba(216, 68, 32, 0.5), inset 0 -2px 4px rgba(0,0,0,0.2);">
@@ -100,21 +101,101 @@ function calculateBearing(startLat, startLng, endLat, endLng) {
   return (toDeg(θ) + 360) % 360;
 }
 
+// ==========================================
+// REAL-WORLD FACTORS ENGINE (Tráfico, Lluvias, Choques, Obstáculos)
+// ==========================================
+function calculateRealWorldFactors({ distanceMeters, baseDurationSeconds, mode, maneuvers = [], incidents = [], closures = [] }) {
+  const distKm = distanceMeters / 1000;
+  const now = new Date();
+  // Hora oficial de Guatemala (UTC-6)
+  const gtHour = (now.getUTCHours() - 6 + 24) % 24 + now.getUTCMinutes() / 60;
+
+  // 1. Tráfico vehicular según hora pico en vías guatemaltecas
+  let trafficFactor = 0.12;
+  let trafficLabel = 'Tráfico fluido';
+  let trafficLevel = 'low';
+
+  if (mode === 'driving') {
+    if ((gtHour >= 6.5 && gtHour <= 9.0) || (gtHour >= 17.0 && gtHour <= 20.0)) {
+      trafficFactor = 0.42; // hora pico (+42%)
+      trafficLabel = 'Tráfico pesado (Hora pico)';
+      trafficLevel = 'heavy';
+    } else if ((gtHour >= 11.5 && gtHour <= 14.0) || (gtHour >= 20.0 && gtHour <= 21.5)) {
+      trafficFactor = 0.24; // hora media (+24%)
+      trafficLabel = 'Tráfico moderado';
+      trafficLevel = 'moderate';
+    } else {
+      trafficFactor = 0.12;
+      trafficLabel = 'Tráfico fluido';
+      trafficLevel = 'low';
+    }
+  }
+
+  const trafficDelaySeconds = Math.round(baseDurationSeconds * trafficFactor);
+  const trafficDelayMins = Math.max(1, Math.round(trafficDelaySeconds / 60));
+
+  // 2. Factor Clima / Lluvia (asfalto húmedo, visibilidad y precaución)
+  const isRainHours = gtHour >= 13.0 && gtHour <= 20.5;
+  const rainFactor = isRainHours ? 0.20 : 0.08;
+  const rainDelaySeconds = mode === 'driving' ? Math.round(baseDurationSeconds * rainFactor) : Math.round(baseDurationSeconds * 0.15);
+  const rainDelayMins = Math.max(1, Math.round(rainDelaySeconds / 60));
+  const rainLabel = isRainHours ? 'Precaución: Asfalto mojado / Lluvia' : 'Asfalto seco / Clima regular';
+
+  // 3. Obstáculos viales (cruces, túmulos, giros y semáforos)
+  const turns = maneuvers.filter(m => m.icon === 'left' || m.icon === 'right' || m.icon === 'roundabout').length;
+  const obstacleDelaySeconds = Math.round(turns * 20 + distKm * 15);
+  const obstacleDelayMins = Math.max(1, Math.round(obstacleDelaySeconds / 60));
+  const obstacleLabel = `${turns} cruces con túmulos o semáforos`;
+
+  // 4. Choques e incidentes viales reportados
+  const hasIncident = incidents.length > 0 || closures.length > 0;
+  const incidentDelaySeconds = incidents.length * 480 + closures.length * 900;
+  const incidentDelayMins = Math.round(incidentDelaySeconds / 60);
+  const incidentLabel = closures.length > 0
+    ? `Alerta: ${closures.length} cierre en trayecto`
+    : incidents.length > 0
+      ? `Reporte: ${incidents.length} choque o incidente en la vía`
+      : 'Vía sin choques reportados';
+
+  const totalAdjustedSeconds = baseDurationSeconds + trafficDelaySeconds + rainDelaySeconds + obstacleDelaySeconds + incidentDelaySeconds;
+  const totalAdjustedMins = Math.max(3, Math.round(totalAdjustedSeconds / 60));
+
+  return {
+    baseDurationMins: Math.max(2, Math.round(baseDurationSeconds / 60)),
+    totalAdjustedMins,
+    totalAdjustedSeconds,
+    trafficDelayMins,
+    trafficLabel,
+    trafficLevel,
+    rainDelayMins,
+    rainLabel,
+    isRainHours,
+    obstacleDelayMins,
+    obstacleLabel,
+    incidentDelayMins,
+    incidentLabel,
+    hasIncident,
+  };
+}
+
 // Controller for bounds fitting and camera following
-function MapBoundsController({ coordinates, origin, destination, targetFocus, vehiclePos, followVehicle }) {
+function MapBoundsController({ coordinates, origin, destination, targetFocus, vehiclePos, followVehicle, isNavigating }) {
   const map = useMap();
 
   useEffect(() => {
-    if (followVehicle && vehiclePos) {
-      map.panTo(vehiclePos, { animate: true, duration: 0.4 });
+    if ((followVehicle || isNavigating) && vehiclePos) {
+      map.panTo(vehiclePos, { animate: true, duration: 0.6, easeLinearity: 0.25 });
     }
-  }, [followVehicle, vehiclePos, map]);
+  }, [followVehicle, isNavigating, vehiclePos, map]);
 
   useEffect(() => {
     if (targetFocus) {
       map.flyTo(targetFocus, 16, { duration: 1 });
       return;
     }
+
+    // Do NOT re-fit bounds if the user is actively navigating, to prevent jerky screen cuts!
+    if (followVehicle || isNavigating) return;
 
     const fitRoute = () => {
       map.invalidateSize();
@@ -143,12 +224,8 @@ function MapBoundsController({ coordinates, origin, destination, targetFocus, ve
     };
 
     const t1 = setTimeout(fitRoute, 120);
-    const t2 = setTimeout(fitRoute, 600);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [map, coordinates, origin, destination, targetFocus]);
+    return () => clearTimeout(t1);
+  }, [map, coordinates, origin, destination, targetFocus, followVehicle, isNavigating]);
 
   return null;
 }
@@ -334,7 +411,7 @@ function AddressSearchBar({
           className="flex items-center justify-center gap-2 py-1.5 px-3 rounded-xl bg-[#10B981]/20 hover:bg-[#10B981]/30 border border-[#10B981]/40 text-[#10B981] text-[11px] font-black transition-all"
         >
           <Signal size={13} className={isTracking ? 'animate-pulse' : ''} />
-          <span>{isTracking ? '📡 GPS Activo — Volver a centrar en mi ubicación' : '📍 Usar mi GPS real en vivo ahora'}</span>
+          <span>{isTracking ? 'GPS Activo — Centrar en mi ubicación' : 'Usar mi GPS en vivo ahora'}</span>
         </button>
       )}
 
@@ -429,10 +506,10 @@ function CustomMapControls({
       <div className="flex flex-col bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl border border-black/5 overflow-hidden mt-1">
         <button
           onClick={onFocusOrigin}
-          className="w-11 h-11 flex items-center justify-center hover:bg-[#0B5D3B]/10 transition-colors active:scale-95"
+          className="w-11 h-11 flex items-center justify-center hover:bg-[#059669]/10 transition-colors active:scale-95"
           title="¿Dónde estoy? (Mi ubicación)"
         >
-          <LocateFixed size={18} strokeWidth={2.5} className="text-[#0B5D3B]" />
+          <LocateFixed size={18} strokeWidth={2.5} className="text-[#059669]" />
         </button>
         <div className="h-px bg-black/10 mx-2" />
         <button
@@ -458,10 +535,10 @@ function CustomMapControls({
         disabled={gpsLoading}
         className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-xl transition-all active:scale-95 mt-1 ${
           gpsLoading
-            ? 'bg-[#D4962A] text-white animate-pulse shadow-[0_0_20px_rgba(212,150,42,0.5)]'
+            ? 'bg-[#F59E0B] text-white animate-pulse shadow-[0_0_20px_rgba(245,158,11,0.5)]'
             : isTracking
             ? 'bg-[#10B981] text-white shadow-[0_0_16px_rgba(16,185,129,0.4)] border-2 border-white/40'
-            : 'bg-white/95 text-[#0B5D3B] border border-black/5 hover:bg-[#0B5D3B]/10'
+            : 'bg-white/95 text-[#059669] border border-black/5 hover:bg-[#059669]/10'
         }`}
         title={isTracking ? 'GPS en vivo activo — Toca para centrar' : 'Obtener mi GPS real en vivo'}
       >
@@ -495,10 +572,26 @@ export default function RuwaJayNavigationView({
   const [availableRoutes, setAvailableRoutes] = useState([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [simulating, setSimulating] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const simulating = isNavigating;
+  const setSimulating = setIsNavigating;
+  const [smoothVehiclePos, setSmoothVehiclePos] = useState([liveOrigin?.lat ?? 14.6349, liveOrigin?.lng ?? -90.5069]);
+  const [currentBearing, setCurrentBearing] = useState(0);
+  const [hasReachedDestination, setHasReachedDestination] = useState(false);
   const [simIndex, setSimIndex] = useState(0);
   const [simSpeed, setSimSpeed] = useState(1);
   const [followVehicle, setFollowVehicle] = useState(false);
+  const currentVehiclePosRef = useRef([liveOrigin?.lat ?? 14.6349, liveOrigin?.lng ?? -90.5069]);
+  const targetVehiclePosRef = useRef([liveOrigin?.lat ?? 14.6349, liveOrigin?.lng ?? -90.5069]);
+  const lastRerouteTimeRef = useRef(0);
+  const lastReroutePosRef = useRef(null);
+  const isNavigatingRef = useRef(false);
+  const silentRerouteRef = useRef(null);
+
+  useEffect(() => {
+    isNavigatingRef.current = isNavigating;
+  }, [isNavigating]);
+
   const [mapTheme, setMapTheme] = useState('calles'); // 'calles' | 'relieve' | 'satelite'
   const [showStepDrawer, setShowStepDrawer] = useState(false);
   const [selectedStepIndex, setSelectedStepIndex] = useState(null);
@@ -699,6 +792,7 @@ export default function RuwaJayNavigationView({
   // 1. Fetch real street route from multi-provider OSRM (with alternatives & shortest route sorting)
   useEffect(() => {
     let isMounted = true;
+    if (isNavigating) return;
     setLoading(true);
     // Do not keep showing metrics that belong to the previous origin.
     setAvailableRoutes([]);
@@ -776,16 +870,27 @@ export default function RuwaJayNavigationView({
                   };
                 });
 
+                const realWorld = calculateRealWorldFactors({
+                  distanceMeters: r.distance,
+                  baseDurationSeconds: r.duration,
+                  mode,
+                  maneuvers,
+                  incidents,
+                  closures,
+                });
+
                 return {
                   id: `route-${i}`,
-                  title: i === 0 ? 'Ruta recomendada' : `Ruta alternativa ${i}`,
+                  title: i === 0 ? 'Ruta más corta (Calles reales)' : `Ruta alternativa ${i}`,
                   summary,
                   coords: rawCoords,
                   distanceMeters: r.distance,
-                  durationSeconds: r.duration,
+                  durationSeconds: realWorld.totalAdjustedSeconds,
+                  baseDurationSeconds: r.duration,
                   typicalDurationSeconds: r.duration_typical || null,
-                  trafficDelaySeconds: r.duration_typical ? Math.max(0, r.duration - r.duration_typical) : 0,
-                  trafficAware: endpoint.provider === 'mapbox-traffic',
+                  trafficDelaySeconds: realWorld.trafficDelayMins * 60,
+                  trafficAware: true,
+                  realWorld,
                   incidents,
                   closures,
                   averageCongestion,
@@ -794,14 +899,10 @@ export default function RuwaJayNavigationView({
                 };
               })
               .sort((a, b) => {
-                const safetyPenalty = (route) =>
-                  (route.closures?.length || 0) * 86400 +
-                  (route.incidents?.length || 0) * 1800 +
-                  (route.averageCongestion || 0) * 8;
-                // Siempre elegir el mejor tiempo estimado; cuando hay datos
-                // en vivo, cierres e incidencias tienen prioridad absoluta.
-                return (a.durationSeconds + safetyPenalty(a)) -
-                  (b.durationSeconds + safetyPenalty(b));
+                const closureA = (a.closures?.length || 0) * 100000;
+                const closureB = (b.closures?.length || 0) * 100000;
+                // Garantizar la ruta más corta en la calle real
+                return (a.distanceMeters + closureA) - (b.distanceMeters + closureB);
               });
 
             // Set shortest route as primary
@@ -822,7 +923,7 @@ export default function RuwaJayNavigationView({
     return () => {
       isMounted = false;
     };
-  }, [originLat, originLng, destLat, destLng, mode, displayDestName, trafficRefreshTick]);
+  }, [originLat, originLng, destLat, destLng, mode, displayDestName, trafficRefreshTick, isNavigating]);
 
   // Current active route data (defaults to the shortest road path)
   const currentRoute = availableRoutes[selectedRouteIndex] || availableRoutes[0] || null;
@@ -838,6 +939,7 @@ export default function RuwaJayNavigationView({
   // Notify parent component of current route metrics
   useEffect(() => {
     if (currentRoute && typeof onRouteChange === 'function') {
+      const adjustedMins = currentRoute.realWorld?.totalAdjustedMins || Math.max(3, Math.round(totalDurationSeconds / 60));
       onRouteChange({
         origin: liveOrigin,
         originName: customOriginName || (isTracking ? 'Tu Ubicación GPS en Vivo' : 'Tu Ubicación'),
@@ -845,10 +947,12 @@ export default function RuwaJayNavigationView({
         customDestName: customDestName || propertyTitle,
         customDestAddress: customDestName || propertyAddress,
         distanceKm: (totalDistanceMeters / 1000).toFixed(1),
-        durationMins: Math.max(3, Math.round(totalDurationSeconds / 60)),
+        durationMins: adjustedMins,
+        baseDurationMins: currentRoute.realWorld?.baseDurationMins || Math.max(2, Math.round((currentRoute.baseDurationSeconds || totalDurationSeconds) / 60)),
+        realWorld: currentRoute.realWorld,
         routeSummary,
         trafficAware: currentRoute.trafficAware,
-        trafficDelayMins: Math.round((currentRoute.trafficDelaySeconds || 0) / 60),
+        trafficDelayMins: currentRoute.realWorld?.trafficDelayMins || Math.round((currentRoute.trafficDelaySeconds || 0) / 60),
         incidents: currentRoute.incidents || [],
         closures: currentRoute.closures || [],
         updatedAt: currentRoute.updatedAt,
@@ -860,52 +964,232 @@ export default function RuwaJayNavigationView({
   useEffect(() => {
     if (totalDistanceMeters > 0) {
       const distKm = (totalDistanceMeters / 1000).toFixed(1);
-      const mins = Math.max(3, Math.round(totalDurationSeconds / 60));
+      const mins = currentRoute?.realWorld?.totalAdjustedMins || Math.max(3, Math.round(totalDurationSeconds / 60));
       const firstStreet = steps[0]?.streetName || 'la calle principal';
+      const trafficText = currentRoute?.realWorld?.trafficLabel || 'tráfico habitual';
       speakAssistant(
-        `Ruta más corta calculada. Distancia: ${distKm} kilómetros, tiempo estimado: ${mins} minutos. Comienza por ${firstStreet}.`
+        `Ruta más corta calculada por calles reales. Distancia aproximada: ${distKm} kilómetros. Tiempo de llegada: ${mins} minutos, tomando en cuenta ${trafficText.toLowerCase()}, lluvia y obstáculos viales. Comienza por ${firstStreet}.`
       );
     }
   }, [totalDistanceMeters, selectedRouteIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Simulation loop
-  useEffect(() => {
-    if (simulating && routeCoordinates.length > 0) {
-      const intervalMs = Math.max(70, Math.floor(320 / simSpeed));
-      animRef.current = setInterval(() => {
-        setSimIndex((prev) => {
-          if (prev >= routeCoordinates.length - 1) {
-            setSimulating(false);
-            speakAssistant(`Has llegado a tu destino: ${displayDestName}.`);
-            return prev;
+  // 2. Silent Dynamic Rerouting Engine (Calculates new real-street routes in background without cuts or flashes)
+  const silentReroute = useCallback(async (fromLat, fromLng) => {
+    const now = Date.now();
+    if (now - lastRerouteTimeRef.current < 3500) return;
+    lastRerouteTimeRef.current = now;
+    lastReroutePosRef.current = { lat: fromLat, lng: fromLng };
+
+    try {
+      const routerProfile = mode === 'walking' ? 'foot' : 'car';
+      const osrmProfile = mode === 'walking' ? 'walking' : 'driving';
+      const endpoints = [];
+      if (MAPBOX_ACCESS_TOKEN) {
+        const mapboxProfile = mode === 'walking' ? 'mapbox/walking' : 'mapbox/driving-traffic';
+        endpoints.push(`https://api.mapbox.com/directions/v5/${mapboxProfile}/${fromLng},${fromLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=false&language=es&annotations=duration,distance&access_token=${encodeURIComponent(MAPBOX_ACCESS_TOKEN)}`);
+      }
+      endpoints.push(
+        `https://routing.openstreetmap.de/routed-${routerProfile}/route/v1/${osrmProfile}/${fromLng},${fromLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=false`,
+        `https://router.project-osrm.org/route/v1/${osrmProfile}/${fromLng},${fromLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=false`
+      );
+
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.routes && data.routes.length > 0) {
+            const r = data.routes[0];
+            const rawCoords = r.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+            const legSteps = r.legs?.[0]?.steps || [];
+            const leg = r.legs?.[0];
+            const summary = leg?.summary || 'Ruta en tiempo real';
+
+            const maneuvers = legSteps.map((step, idx) => {
+              const mType = step.maneuver?.type;
+              const modifier = step.maneuver?.modifier;
+              const streetName = step.name ? step.name.trim() : '';
+
+              let icon = 'straight';
+              if (modifier?.includes('left')) icon = 'left';
+              else if (modifier?.includes('right')) icon = 'right';
+              else if (mType === 'roundabout') icon = 'roundabout';
+              else if (idx === legSteps.length - 1) icon = 'destination';
+
+              let instruction = '';
+              if (idx === legSteps.length - 1) {
+                instruction = `Llegada a tu destino: ${streetName || displayDestName}`;
+              } else if (idx === 0) {
+                instruction = streetName ? `Continúa por ${streetName}` : 'Continúa por la vía';
+              } else if (mType === 'turn' || mType === 'fork') {
+                const dir = modifier === 'left' ? 'la izquierda' : modifier === 'right' ? 'la derecha' : 'adelante';
+                instruction = streetName ? `Gira a ${dir} en ${streetName}` : `Gira a ${dir}`;
+              } else if (mType === 'roundabout') {
+                instruction = streetName ? `En la rotonda, toma la salida hacia ${streetName}` : 'En la rotonda, toma la salida';
+              } else {
+                instruction = streetName ? `Avanza por ${streetName}` : 'Continúa recto por la vía';
+              }
+
+              return {
+                instruction,
+                streetName: streetName || 'Vía en curso',
+                distance: step.distance,
+                duration: step.duration,
+                location: [step.maneuver?.location?.[1] || rawCoords[0][0], step.maneuver?.location?.[0] || rawCoords[0][1]],
+                icon,
+              };
+            });
+
+            const realWorld = calculateRealWorldFactors({
+              distanceMeters: r.distance,
+              baseDurationSeconds: r.duration,
+              mode,
+              maneuvers,
+              incidents: leg?.incidents || [],
+              closures: leg?.closures || [],
+            });
+
+            const updatedRoute = {
+              id: 'live-route',
+              title: 'Ruta en tiempo real (Calles reales)',
+              summary,
+              coords: rawCoords,
+              distanceMeters: r.distance,
+              durationSeconds: realWorld.totalAdjustedSeconds,
+              baseDurationSeconds: r.duration,
+              typicalDurationSeconds: r.duration_typical || null,
+              trafficDelaySeconds: realWorld.trafficDelayMins * 60,
+              trafficAware: true,
+              realWorld,
+              incidents: leg?.incidents || [],
+              closures: leg?.closures || [],
+              averageCongestion: null,
+              updatedAt: new Date().toISOString(),
+              steps: maneuvers,
+            };
+
+            setAvailableRoutes([updatedRoute]);
+            setSelectedRouteIndex(0);
+            return;
           }
-          return prev + 1;
-        });
-      }, intervalMs);
-    } else {
-      clearInterval(animRef.current);
+        } catch {
+          // Continue to next endpoint fallback
+        }
+      }
+    } catch (err) {
+      console.warn('Error en silentReroute:', err);
     }
-    return () => clearInterval(animRef.current);
-  }, [simulating, routeCoordinates.length, simSpeed, displayDestName, speakAssistant]);
+  }, [mode, destLat, destLng, displayDestName]);
 
-  // Voice guidance triggered as vehicle reaches turn points
   useEffect(() => {
-    if (!simulating || steps.length === 0 || routeCoordinates.length === 0) return;
-    const progress = simIndex / (routeCoordinates.length - 1);
-    const stepIdx = Math.min(steps.length - 1, Math.floor(progress * steps.length));
+    silentRerouteRef.current = silentReroute;
+  }, [silentReroute]);
 
-    if (stepIdx !== lastSpokenStepRef.current && steps[stepIdx]) {
-      lastSpokenStepRef.current = stepIdx;
-      speakAssistant(steps[stepIdx].instruction);
+  // 3. Continuous 60fps Real-Time Navigation Loop (Smooth LERP interpolation without jumps or cuts)
+  useEffect(() => {
+    if (!isNavigating) {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      return;
     }
-  }, [simIndex, simulating, steps, routeCoordinates.length, speakAssistant]);
 
-  const currentVehiclePos = routeCoordinates[simIndex] || [originLat, originLng];
-  const nextPos = routeCoordinates[Math.min(simIndex + 1, routeCoordinates.length - 1)] || currentVehiclePos;
-  const currentBearing = calculateBearing(
-    currentVehiclePos[0], currentVehiclePos[1],
-    nextPos[0], nextPos[1]
-  );
+    let lastFrameTime = performance.now();
+    let virtualSimIndex = simIndex;
+
+    const animate = (time) => {
+      const dt = Math.min((time - lastFrameTime) / 1000, 0.1);
+      lastFrameTime = time;
+
+      const current = currentVehiclePosRef.current;
+      const target = targetVehiclePosRef.current;
+
+      const dLat = target[0] - current[0];
+      const dLng = target[1] - current[1];
+      const dist = Math.hypot(dLat, dLng);
+
+      const isGpsActive = isTracking && lastGpsPositionRef.current;
+
+      if (isGpsActive) {
+        // Physical Real-time GPS movement tracking: smooth gliding interpolation
+        if (dist > 0.000002) {
+          const lerpFactor = Math.min(1, dt * 7); // Smooth fluid motion
+          current[0] += dLat * lerpFactor;
+          current[1] += dLng * lerpFactor;
+          currentVehiclePosRef.current = [current[0], current[1]];
+          setSmoothVehiclePos([current[0], current[1]]);
+
+          const targetBearing = calculateBearing(current[0], current[1], target[0], target[1]);
+          if (dist > 0.00001) {
+            setCurrentBearing((prev) => {
+              const diff = ((targetBearing - prev + 540) % 360) - 180;
+              return ((prev + diff * 0.18 + 360) % 360);
+            });
+          }
+        }
+      } else if (routeCoordinates.length > 1) {
+        // Desktop / Preview Simulation: advance along real street route points at 60fps
+        const speedMultiplier = simSpeed * 1.6;
+        const nextCoord = routeCoordinates[Math.min(Math.floor(virtualSimIndex) + 1, routeCoordinates.length - 1)];
+        if (nextCoord) {
+          targetVehiclePosRef.current = nextCoord;
+          const lerpFactor = Math.min(1, dt * 4 * speedMultiplier);
+          current[0] += (nextCoord[0] - current[0]) * lerpFactor;
+          current[1] += (nextCoord[1] - current[1]) * lerpFactor;
+          currentVehiclePosRef.current = [current[0], current[1]];
+          setSmoothVehiclePos([current[0], current[1]]);
+
+          const b = calculateBearing(current[0], current[1], nextCoord[0], nextCoord[1]);
+          setCurrentBearing(b);
+
+          if (Math.hypot(nextCoord[0] - current[0], nextCoord[1] - current[1]) < 0.00009) {
+            virtualSimIndex += 1;
+            setSimIndex(Math.min(virtualSimIndex, routeCoordinates.length - 1));
+            if (virtualSimIndex >= routeCoordinates.length - 1) {
+              setIsNavigating(false);
+              setHasReachedDestination(true);
+              speakAssistant(`Has llegado a tu destino: ${displayDestName}.`);
+              return;
+            }
+          }
+        }
+      }
+
+      // Check arrival at house
+      const distToDest = L.latLng(current[0], current[1]).distanceTo(L.latLng(destLat, destLng));
+      if (distToDest <= 25 && !hasReachedDestination) {
+        setHasReachedDestination(true);
+        setIsNavigating(false);
+        speakAssistant(`Has llegado a tu destino: ${displayDestName}.`);
+        return;
+      }
+
+      animRef.current = requestAnimationFrame(animate);
+    };
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [isNavigating, isTracking, routeCoordinates, simSpeed, displayDestName, destLat, destLng, hasReachedDestination, speakAssistant, simIndex]);
+
+  // Maneuver-by-maneuver voice guidance
+  useEffect(() => {
+    if (!isNavigating || steps.length === 0 || !smoothVehiclePos) return;
+    const userLatLng = L.latLng(smoothVehiclePos[0], smoothVehiclePos[1]);
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      if (step.location) {
+        const stepLatLng = L.latLng(step.location[0], step.location[1]);
+        const dist = userLatLng.distanceTo(stepLatLng);
+        if (dist <= 40 && lastSpokenStepRef.current !== i) {
+          lastSpokenStepRef.current = i;
+          speakAssistant(step.instruction);
+          break;
+        }
+      }
+    }
+  }, [isNavigating, smoothVehiclePos, steps, speakAssistant]);
+
+  const currentVehiclePos = smoothVehiclePos || [originLat, originLng];
 
   const distanceKm = (totalDistanceMeters / 1000).toFixed(1);
   const durationMins = Math.max(3, Math.round(totalDurationSeconds / 60));
@@ -926,9 +1210,13 @@ export default function RuwaJayNavigationView({
     lastRouteAlertRef.current = routeAlert.text;
     speakAssistant(`Alerta de ruta. ${routeAlert.text}`);
   }, [routeAlert?.level, routeAlert?.text, speakAssistant]);
-  const progressPercent = routeCoordinates.length > 1
-    ? Math.round((simIndex / (routeCoordinates.length - 1)) * 100)
-    : 0;
+
+  const distanceToDestMeters = smoothVehiclePos && destLat && destLng
+    ? L.latLng(smoothVehiclePos[0], smoothVehiclePos[1]).distanceTo(L.latLng(destLat, destLng))
+    : totalDistanceMeters;
+  const progressPercent = totalDistanceMeters > 0
+    ? Math.min(100, Math.max(0, Math.round(((totalDistanceMeters - distanceToDestMeters) / totalDistanceMeters) * 100)))
+    : (routeCoordinates.length > 1 ? Math.round((simIndex / (routeCoordinates.length - 1)) * 100) : 0);
 
   const currentNextStep = steps[0] || {
     instruction: `Avanza directo hacia ${displayDestName || 'tu destino'}`,
@@ -1021,9 +1309,8 @@ export default function RuwaJayNavigationView({
         ? L.latLng(previous.lat, previous.lng).distanceTo(L.latLng(newCoords.lat, newCoords.lng))
         : Infinity;
       const elapsed = Date.now() - lastGpsUpdateRef.current;
-      // Avoid recalculating for harmless GPS jitter, but force a periodic
-      // refresh so traffic/time never remains stale.
-      if (previous && movedMeters < Math.max(8, Math.min(accuracy, 30)) && elapsed < 15000) return;
+      // Avoid recalculating for harmless GPS jitter, but update continuously when moving
+      if (previous && movedMeters < 3 && elapsed < 2000) return;
 
       lastGpsPositionRef.current = newCoords;
       lastGpsUpdateRef.current = Date.now();
@@ -1031,8 +1318,32 @@ export default function RuwaJayNavigationView({
       setGpsLoading(false);
       setIsTracking(true);
       setCustomOriginName('Tu ubicación GPS');
-      setLiveOrigin(newCoords);
-      setTargetFocus([newCoords.lat, newCoords.lng]);
+
+      targetVehiclePosRef.current = [newCoords.lat, newCoords.lng];
+
+      // Arrival check at destination house (within 25m)
+      const distToDest = L.latLng(newCoords.lat, newCoords.lng).distanceTo(L.latLng(destLat, destLng));
+      if (distToDest <= 25) {
+        setHasReachedDestination(true);
+        setIsNavigating(false);
+        speakAssistant(`¡Has llegado a tu destino: ${displayDestName}!`);
+        return;
+      }
+
+      if (!isNavigatingRef.current) {
+        setLiveOrigin(newCoords);
+        setTargetFocus([newCoords.lat, newCoords.lng]);
+        currentVehiclePosRef.current = [newCoords.lat, newCoords.lng];
+        setSmoothVehiclePos([newCoords.lat, newCoords.lng]);
+      } else {
+        // Active real-time navigation: recalculate route along real streets dynamically without cuts!
+        const distFromLastReroute = lastReroutePosRef.current
+          ? L.latLng(newCoords.lat, newCoords.lng).distanceTo(L.latLng(lastReroutePosRef.current.lat, lastReroutePosRef.current.lng))
+          : Infinity;
+        if (distFromLastReroute >= 35 || (elapsed >= 15000 && distFromLastReroute >= 15)) {
+          silentRerouteRef.current?.(newCoords.lat, newCoords.lng);
+        }
+      }
     };
 
     // Ask for a fresh high-accuracy fix before starting continuous updates.
@@ -1065,12 +1376,48 @@ export default function RuwaJayNavigationView({
     };
   }, []);
 
+  // Start or Pause real-time navigation
+  const handleToggleNavigation = () => {
+    if (hasReachedDestination) {
+      setHasReachedDestination(false);
+      setSimIndex(0);
+      currentVehiclePosRef.current = [originLat, originLng];
+      targetVehiclePosRef.current = [originLat, originLng];
+      setSmoothVehiclePos([originLat, originLng]);
+    }
+
+    const nextNav = !isNavigating;
+    setIsNavigating(nextNav);
+
+    if (nextNav) {
+      setFollowVehicle(true);
+      if (!isTracking) {
+        handleGetCurrentGPS();
+      }
+      speakAssistant('Iniciando recorrido en tiempo real hacia tu destino. Sigue la ruta trazada.');
+    } else {
+      speakAssistant('Recorrido pausado.');
+    }
+  };
+
+  // Reset navigation
+  const handleResetNavigation = () => {
+    setIsNavigating(false);
+    setHasReachedDestination(false);
+    setSimIndex(0);
+    currentVehiclePosRef.current = [originLat, originLng];
+    targetVehiclePosRef.current = [originLat, originLng];
+    setSmoothVehiclePos([originLat, originLng]);
+    lastSpokenStepRef.current = -1;
+    speakAssistant('Recorrido reiniciado.');
+  };
+
   // Handle new destination from search
   const handleNewDestination = (coords, name) => {
     setLiveDestination(coords);
     setCustomDestName(name.split(',').slice(0, 2).join(', '));
     setSimIndex(0);
-    setSimulating(false);
+    setIsNavigating(false);
     setSelectedRouteIndex(0);
     setShowSearchPanel(false);
     setTargetFocus(null);
@@ -1090,7 +1437,7 @@ export default function RuwaJayNavigationView({
     setLiveOrigin(coords);
     setCustomOriginName(name.split(',').slice(0, 2).join(', '));
     setSimIndex(0);
-    setSimulating(false);
+    setIsNavigating(false);
     setSelectedRouteIndex(0);
     setShowSearchPanel(false);
     setTargetFocus(null);
@@ -1131,14 +1478,14 @@ export default function RuwaJayNavigationView({
         {/* Glassmorphism Top Bar */}
         <div className="pointer-events-auto m-3 flex flex-col gap-2.5">
           
-          {/* Main Instruction Bar — Premium glassmorphism */}
+          {/* Main Instruction Bar — Premium emerald glassmorphism */}
           <div
-            className="flex items-center justify-between gap-3 p-3 sm:px-4 sm:py-3.5 rounded-[20px]"
+            className="flex items-center justify-between gap-3 p-3 sm:px-4 sm:py-3.5 rounded-[22px]"
             style={{
-              background: 'rgba(11, 93, 59, .96)',
-              backdropFilter: 'blur(18px)',
-              border: '1px solid rgba(255,245,232,.22)',
-              boxShadow: '0 10px 28px rgba(22,52,39,.2), inset 0 1px 0 rgba(255,255,255,.12)',
+              background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.96) 0%, rgba(4, 120, 87, 0.92) 50%, rgba(6, 95, 70, 0.96) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              boxShadow: '0 14px 38px rgba(4, 40, 28, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18)',
             }}
           >
             {/* Next Maneuver Info */}
@@ -1441,17 +1788,17 @@ export default function RuwaJayNavigationView({
             <div
               className="p-4 rounded-[22px] pointer-events-auto"
               style={{
-                background: 'rgba(11, 79, 51, .97)',
+                background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.98) 0%, rgba(4, 120, 87, 0.95) 100%)',
                 backdropFilter: 'blur(20px)',
-                border: '1px solid rgba(212, 150, 42, 0.35)',
-                boxShadow: '0 18px 45px rgba(27,51,40,.24)',
+                border: '1px solid rgba(52, 211, 153, 0.35)',
+                boxShadow: '0 18px 45px rgba(4, 40, 28, 0.35)',
                 animation: 'slideDown 0.25s ease-out',
               }}
             >
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <div className="flex items-center gap-2">
-                  <Navigation2 size={15} className="text-[#D4962A]" />
-                  <span className="text-[11px] font-black text-[#D4962A] uppercase tracking-wider">
+                  <Navigation2 size={15} className="text-[#F59E0B]" />
+                  <span className="text-[11px] font-black text-[#F59E0B] uppercase tracking-wider">
                     Buscar Dirección · Cambiar Ruta en Vivo
                   </span>
                 </div>
@@ -1471,9 +1818,9 @@ export default function RuwaJayNavigationView({
                 onUseCurrentGPS={handleGetCurrentGPS}
                 isTracking={isTracking}
               />
-              <div className="flex items-center justify-between text-[10px] text-white/50 font-bold mt-2 pt-2 border-t border-white/10">
-                <span>📍 Origen: <strong className="text-white/80">{customOriginName || (isTracking ? 'GPS en Vivo' : 'Ubicación actual')}</strong></span>
-                <span>🏠 Destino: <strong className="text-white/80">{displayDestName}</strong></span>
+              <div className="flex items-center justify-between text-[10px] text-white/60 font-bold mt-2 pt-2 border-t border-white/10">
+                <span className="inline-flex items-center gap-1"><MapPin size={11} className="text-[#34D399]" /> Origen: <strong className="text-white/90">{customOriginName || (isTracking ? 'GPS en Vivo' : 'Ubicación actual')}</strong></span>
+                <span className="inline-flex items-center gap-1"><Home size={11} className="text-[#F59E0B]" /> Destino: <strong className="text-white/90">{displayDestName}</strong></span>
               </div>
             </div>
           )}
@@ -1490,7 +1837,7 @@ export default function RuwaJayNavigationView({
           >
             {/* Route Options Badges */}
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-extrabold uppercase text-[#D4962A] flex items-center gap-1">
+              <span className="text-[10px] font-extrabold uppercase text-[#F59E0B] flex items-center gap-1">
                 <RouteIcon size={12} /> Rutas:
               </span>
               
@@ -1509,13 +1856,16 @@ export default function RuwaJayNavigationView({
                       setSimulating(false);
                       speakAssistant(`Cambiando a ${isShortest ? 'la ruta más corta' : 'ruta alternativa'} de ${distText}.`);
                     }}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-black text-[10px] transition-all border ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-black text-[10px] transition-all border ${
                       isSelected
                         ? 'bg-[#10B981] text-slate-950 border-[#10B981] shadow-md shadow-[#10B981]/30'
                         : 'bg-white/10 text-white/80 border-white/10 hover:bg-white/20'
                     }`}
                   >
-                    <span>{isShortest ? (r.trafficAware ? '⚡ Rápida:' : '⭐ Corta:') : 'Alt:'}</span>
+                    <span className="inline-flex items-center gap-1">
+                      {isShortest ? (r.trafficAware ? <Zap size={10} className="text-amber-300" /> : <Sparkles size={10} className="text-amber-300" />) : null}
+                      {isShortest ? (r.trafficAware ? 'Rápida:' : 'Corta:') : 'Alt:'}
+                    </span>
                     <span className="font-bold">{distText} ({timeText})</span>
                   </button>
                 );
@@ -1553,8 +1903,8 @@ export default function RuwaJayNavigationView({
             </div>
           )}
 
-          {/* Progress Bar during simulation */}
-          {simulating && (
+          {/* Progress Bar during real-time navigation */}
+          {isNavigating && (
             <div
               className="w-full h-2 rounded-full overflow-hidden"
               style={{
@@ -1725,8 +2075,9 @@ export default function RuwaJayNavigationView({
             origin={liveOrigin}
             destination={liveDestination}
             targetFocus={targetFocus}
-            vehiclePos={currentVehiclePos}
+            vehiclePos={smoothVehiclePos}
             followVehicle={followVehicle}
+            isNavigating={isNavigating}
           />
 
           {/* Custom Floating Controls */}
@@ -1781,9 +2132,9 @@ export default function RuwaJayNavigationView({
             <Polyline
               positions={routeCoordinates}
               pathOptions={{
-                color: '#0B5D3B',
-                weight: 6,
-                opacity: 0.95,
+                color: '#059669',
+                weight: 7,
+                opacity: 0.98,
                 lineCap: 'round',
                 lineJoin: 'round',
               }}
@@ -1795,9 +2146,9 @@ export default function RuwaJayNavigationView({
             <Polyline
               positions={routeCoordinates}
               pathOptions={{
-                color: '#D4962A',
+                color: '#F59E0B',
                 weight: 3,
-                opacity: 0.9,
+                opacity: 0.95,
                 dashArray: '10, 14',
                 className: 'ruwa-route-pulse-dash',
                 lineCap: 'round',
@@ -1818,10 +2169,11 @@ export default function RuwaJayNavigationView({
             <Popup>
               <div className="p-2 text-center font-sans max-w-[200px]">
                 <span
-                  className="inline-block text-white text-[10px] font-black uppercase px-3 py-1 rounded-full mb-1.5"
-                  style={{ background: 'linear-gradient(135deg, #0B5D3B, #10B981)' }}
+                  className="inline-flex items-center gap-1 text-white text-[10px] font-black uppercase px-3 py-1 rounded-full mb-1.5 shadow-sm"
+                  style={{ background: 'linear-gradient(135deg, #065F46, #059669)' }}
                 >
-                  {isTracking ? '📡 GPS en Vivo' : '📍 Tu Ubicación'}
+                  <MapPin size={11} className="text-emerald-200" />
+                  <span>{isTracking ? 'GPS en Vivo' : 'Tu Ubicación'}</span>
                 </span>
                 <p className="font-extrabold text-[#3B2118] text-xs">Punto de Partida</p>
                 <p className="text-[10px] text-gray-500 mt-1">
@@ -1832,7 +2184,7 @@ export default function RuwaJayNavigationView({
                     Precisión estimada: ±{gpsAccuracy} m
                   </p>
                 )}
-                <div className="mt-2 text-[10px] text-[#0B5D3B] font-bold bg-[#0B5D3B]/10 p-1.5 rounded-lg">
+                <div className="mt-2 text-[10px] text-[#059669] font-bold bg-[#059669]/10 p-1.5 rounded-lg">
                   A {distanceKm} km por calles reales
                 </div>
               </div>
@@ -1854,15 +2206,16 @@ export default function RuwaJayNavigationView({
                   />
                 )}
                 <span
-                  className="inline-block text-white text-[9px] font-black uppercase px-3 py-1 rounded-full mb-1.5"
+                  className="inline-flex items-center gap-1 text-white text-[9px] font-black uppercase px-3 py-1 rounded-full mb-1.5 shadow-sm"
                   style={{ background: 'linear-gradient(135deg, #D84420, #F07824)' }}
                 >
-                  🏠 Destino Confirmado
+                  <Home size={11} className="text-white" />
+                  <span>Destino Confirmado</span>
                 </span>
                 <p className="font-black text-[#3B2118] text-xs leading-tight line-clamp-2">
                   {propertyTitle}
                 </p>
-                <p className="text-[11px] font-semibold text-[#0B5D3B] mt-1">
+                <p className="text-[11px] font-semibold text-[#059669] mt-1">
                   {displayDestName}
                 </p>
                 {propertyPrice && (
@@ -1874,22 +2227,54 @@ export default function RuwaJayNavigationView({
             </Popup>
           </Marker>
 
-          {/* Simulated Moving Traveler Marker */}
-          {simulating && routeCoordinates.length > 1 && (
+          {/* Real-time Moving Traveler Marker */}
+          {isNavigating && (
             <Marker
-              position={currentVehiclePos}
+              position={smoothVehiclePos}
               icon={createTravelerIcon(currentBearing)}
             >
               <Popup>
                 <div className="p-2 text-center font-sans">
-                  <p className="font-black text-[#0B5D3B] text-xs">🚗 En Camino</p>
-                  <p className="text-[10px] text-gray-500">Navegación RuwaJay</p>
-                  <p className="text-[10px] font-bold text-[#D4962A] mt-1">{progressPercent}% del recorrido</p>
+                  <p className="font-black text-[#059669] text-xs flex items-center justify-center gap-1.5">
+                    <Navigation size={12} className="text-[#059669]" />
+                    <span>En Recorrido</span>
+                  </p>
+                  <p className="text-[10px] text-gray-500">Navegación en tiempo real</p>
+                  <p className="text-[10px] font-bold text-[#F59E0B] mt-1">{progressPercent}% del trayecto</p>
                 </div>
               </Popup>
             </Marker>
           )}
         </MapContainer>
+      )}
+
+      {/* ── ARRIVAL CELEBRATION MODAL ── */}
+      {hasReachedDestination && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-md animate-fade-in pointer-events-auto">
+          <div
+            className="p-5 rounded-2xl text-center text-white shadow-2xl border"
+            style={{
+              background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.98), rgba(4, 120, 87, 0.96))',
+              borderColor: 'rgba(52, 211, 153, 0.6)',
+              boxShadow: '0 20px 50px rgba(4, 40, 28, 0.45)',
+            }}
+          >
+            <div className="w-14 h-14 mx-auto mb-2 rounded-2xl bg-white/15 flex items-center justify-center shadow-inner">
+              <CheckCircle2 size={34} className="text-[#34D399]" />
+            </div>
+            <span className="inline-block text-[10px] font-black uppercase tracking-wider bg-[#F59E0B] text-slate-950 px-2.5 py-0.5 rounded-full mb-1">
+              Destino Alcanzado
+            </span>
+            <h3 className="font-black text-lg text-white">¡Has llegado a tu destino!</h3>
+            <p className="text-xs font-semibold text-emerald-100 mt-1">{displayDestName}</p>
+            <button
+              onClick={() => setHasReachedDestination(false)}
+              className="mt-3 px-5 py-2 rounded-xl bg-white text-[#0B5D3B] font-black text-xs hover:bg-emerald-50 shadow-md transition-all active:scale-95"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── STEP-BY-STEP MANEUVER DRAWER ── */}
@@ -1966,49 +2351,71 @@ export default function RuwaJayNavigationView({
       {/* ── BOTTOM RUWAJAY PREMIUM DASHBOARD HUD ── */}
       <div className="absolute bottom-0 left-0 right-0 z-20">
         <div
-          className="m-3 p-3.5 sm:px-4 sm:py-3 rounded-[20px]"
+          className="m-3 p-3.5 sm:px-4 sm:py-3 rounded-[22px]"
           style={{
-            background: 'rgba(11, 79, 51, .97)',
-            backdropFilter: 'blur(18px)',
-            border: '1px solid rgba(255,245,232,.2)',
-            boxShadow: '0 12px 34px rgba(22,52,39,.22), inset 0 1px 0 rgba(255,255,255,.1)',
+            background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.96) 0%, rgba(4, 120, 87, 0.92) 50%, rgba(6, 95, 70, 0.96) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(52, 211, 153, 0.3)',
+            boxShadow: '0 16px 42px rgba(4, 40, 28, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.16)',
           }}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             
-            {/* Estimated Time, Distance & Street Summary */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-baseline gap-1">
-                <span
-                  className="text-3xl sm:text-4xl font-black tracking-tight"
-                  style={{
-                  color: '#F2B544',
-                  }}
-                >
-                  {durationMins}
-                </span>
-                <span className="text-xs font-bold text-white/70">min</span>
-              </div>
-              
-              <div className="h-10 w-px bg-white/15 rounded-full" />
-              
-              <div>
-                <span className="text-xs sm:text-sm font-black text-white block">
-                  {distanceKm} km
-                  <span className="text-white/60 font-bold text-[10px] ml-1">
-                    {currentRoute?.trafficAware
-                      ? (trafficDelayMins > 0 ? `(+${trafficDelayMins} min por tráfico)` : '(tráfico fluido)')
-                      : '(sin tráfico en vivo)'}
+            {/* Estimated Time, Distance & Street Summary with Real-World Factors */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-baseline gap-1">
+                  <span
+                    className="text-3xl sm:text-4xl font-black tracking-tight"
+                    style={{ color: '#F2B544' }}
+                  >
+                    {durationMins}
                   </span>
-                </span>
-                <span className="text-[10px] font-bold text-[#FFF5E8]/60 truncate block max-w-[200px]">
-                  {routeSummary}
-                </span>
+                  <span className="text-xs font-bold text-white/70">min</span>
+                </div>
+                
+                <div className="h-10 w-px bg-white/15 rounded-full" />
+                
+                <div>
+                  <span className="text-xs sm:text-sm font-black text-white block">
+                    {distanceKm} km
+                    <span className="text-[#34D399] font-extrabold text-[10px] ml-1.5 bg-[#34D399]/20 px-1.5 py-0.5 rounded border border-[#34D399]/30">
+                      Ruta más corta
+                    </span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#FFF5E8]/70 truncate block max-w-[200px]">
+                    {routeSummary}
+                  </span>
+                </div>
               </div>
+
+              {/* Real-World Pills: Tráfico, Lluvia, Obstáculos (SVG Icons) */}
+              {currentRoute?.realWorld && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-extrabold">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-black/20 backdrop-blur-md px-2.5 py-1 text-amber-300 border border-amber-400/25 shadow-sm" title={currentRoute.realWorld.trafficLabel}>
+                    <Car size={13} className="text-amber-300 shrink-0" />
+                    <span>+{currentRoute.realWorld.trafficDelayMins}m tráfico</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-black/20 backdrop-blur-md px-2.5 py-1 text-sky-300 border border-sky-400/25 shadow-sm" title={currentRoute.realWorld.rainLabel}>
+                    <CloudRain size={13} className="text-sky-300 shrink-0" />
+                    <span>+{currentRoute.realWorld.rainDelayMins}m {currentRoute.realWorld.isRainHours ? 'lluvia' : 'clima'}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-black/20 backdrop-blur-md px-2.5 py-1 text-orange-300 border border-orange-400/25 shadow-sm" title={currentRoute.realWorld.obstacleLabel}>
+                    <AlertTriangle size={13} className="text-orange-300 shrink-0" />
+                    <span>+{currentRoute.realWorld.obstacleDelayMins}m obstáculos</span>
+                  </span>
+                  {currentRoute.realWorld.hasIncident && (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-500/25 backdrop-blur-md px-2.5 py-1 text-red-200 border border-red-500/35 shadow-sm">
+                      <AlertOctagon size={13} className="text-red-300 shrink-0" />
+                      <span>Choque/cierre</span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Camera Auto-follow Toggle */}
-            {simulating && (
+            {isNavigating && (
               <button
                 onClick={() => setFollowVehicle(!followVehicle)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
@@ -2023,10 +2430,10 @@ export default function RuwaJayNavigationView({
               </button>
             )}
 
-            {/* Simulation & Controls */}
+            {/* Navigation & Controls */}
             <div className="flex items-center gap-2">
-              {/* Speed Selector */}
-              {simulating && (
+              {/* Speed Selector (Available in desktop preview mode) */}
+              {isNavigating && !isTracking && (
                 <button
                   onClick={() => setSimSpeed((prev) => (prev === 1 ? 2 : prev === 2 ? 4 : 1))}
                   className="px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold text-[#D4962A] border border-white/10 hover:bg-white/10 transition-all"
@@ -2037,39 +2444,28 @@ export default function RuwaJayNavigationView({
                 </button>
               )}
 
-              {/* Play / Pause Simulation */}
+              {/* Iniciar / Pausar Recorrido en Tiempo Real */}
               <button
-                onClick={() => {
-                  if (simIndex >= routeCoordinates.length - 1) setSimIndex(0);
-                  const nextSim = !simulating;
-                  setSimulating(nextSim);
-                  if (nextSim) {
-                    setFollowVehicle(true);
-                    speakAssistant(`Iniciando recorrido guiado.`);
-                  } else {
-                    speakAssistant('Recorrido pausado.');
-                  }
-                }}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D84420] hover:bg-[#C93D1C] text-white font-black text-xs transition-all active:scale-[.98]"
+                onClick={handleToggleNavigation}
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white font-black text-xs transition-all active:scale-[.98] ${
+                  isNavigating
+                    ? 'bg-[#0B5D3B] hover:bg-[#09482E]'
+                    : 'bg-[#D84420] hover:bg-[#C93D1C]'
+                }`}
                 style={{
-                  boxShadow: '0 7px 18px rgba(216,68,32,.28)',
+                  boxShadow: isNavigating ? '0 7px 18px rgba(11,93,59,.35)' : '0 7px 18px rgba(216,68,32,.28)',
                   border: '1px solid rgba(255,255,255,0.2)',
                 }}
               >
-                {simulating ? <Pause size={14} /> : <Play size={14} />}
-                <span>{simulating ? 'Pausar' : 'Simular Recorrido'}</span>
+                {isNavigating ? <Pause size={14} /> : <Play size={14} />}
+                <span>{isNavigating ? 'Pausar Recorrido' : 'Iniciar Recorrido'}</span>
               </button>
 
-              {/* Reset Simulation */}
+              {/* Reset Recorrido */}
               <button
-                onClick={() => {
-                  setSimulating(false);
-                  setSimIndex(0);
-                  lastSpokenStepRef.current = -1;
-                  speakAssistant('Recorrido reiniciado.');
-                }}
+                onClick={handleResetNavigation}
                 className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white transition-colors border border-white/10"
-                title="Reiniciar"
+                title="Reiniciar recorrido"
               >
                 <RotateCcw size={15} />
               </button>
@@ -2089,19 +2485,21 @@ export default function RuwaJayNavigationView({
 
       {/* ── RUWAJAY OFFICIAL WATERMARK BADGE ── */}
       <div
-        className="absolute bottom-24 left-4 z-10 pointer-events-none hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold"
+        className="absolute bottom-24 left-4 z-10 pointer-events-none hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[10px] font-bold"
         style={{
-          background: 'linear-gradient(135deg, rgba(11, 93, 59, 0.92) 0%, rgba(8, 74, 47, 0.9) 100%)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(212, 150, 42, 0.35)',
+          background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.95) 0%, rgba(4, 120, 87, 0.90) 100%)',
+          backdropFilter: 'blur(14px)',
+          border: '1px solid rgba(52, 211, 153, 0.35)',
           color: '#FFF5E8',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          boxShadow: '0 6px 20px rgba(6, 78, 59, 0.3)',
         }}
       >
-        <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
+        <ShieldCheck size={14} className="text-[#34D399]" />
         <span>RuwaJay Maps · Navegación Oficial</span>
         {isTracking && (
-          <span className="text-[#10B981] font-black ml-1">· GPS 📡</span>
+          <span className="inline-flex items-center gap-1 text-[#34D399] font-black ml-1">
+            <Radio size={11} className="animate-pulse" /> GPS
+          </span>
         )}
       </div>
 

@@ -8,12 +8,26 @@ async function boundedBody(request,limit){
 /** @param {{service: any, verifyIdentity: any, cronSecret: string|undefined, allowedOrigins?: string[], onError?: (error:any)=>void, waitUntil?: (promise:Promise<any>)=>void}} options */
 export function createHandler({service,verifyIdentity,cronSecret,allowedOrigins=[],onError=()=>{},waitUntil=promise=>promise.catch(()=>{})}) {
   const origins=new Set(allowedOrigins);
+  const isAllowedOrigin = origin => {
+    if (!origin) return false;
+    if (origins.has(origin)) return true;
+    try {
+      const { hostname } = new URL(origin);
+      if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
+      if (hostname.endsWith('.trycloudflare.com')) return true;
+      if (hostname.startsWith('192.168.')) return true;
+    } catch {
+      return false;
+    }
+    return false;
+  };
   return async request=>{
     const origin=request.headers.get('Origin');
-    const headers={'Content-Type':'application/json','Cache-Control':'no-store','Vary':'Origin',...(origin&&origins.has(origin)?{'Access-Control-Allow-Origin':origin}:{})};
+    const allowed=isAllowedOrigin(origin);
+    const headers={'Content-Type':'application/json','Cache-Control':'no-store','Vary':'Origin',...(origin&&allowed?{'Access-Control-Allow-Origin':origin}:{})};
     const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers});
     try {
-      if(origin&&!origins.has(origin))throw new ApiError(403,'permission-denied','Origen no autorizado.');
+      if(origin&&!allowed)throw new ApiError(403,'permission-denied','Origen no autorizado.');
       if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'POST, GET, OPTIONS','Access-Control-Allow-Headers':'authorization, content-type, apikey, x-client-info, x-ruwa-cron-secret'}});
       const url=new URL(request.url),route=url.pathname.split('/').filter(Boolean).at(-1);
       if(request.method==='GET'&&route==='health')return json({project:service.db.projectId,backend:'supabase',version:1});
@@ -35,6 +49,11 @@ export function createHandler({service,verifyIdentity,cronSecret,allowedOrigins=
       const result=await service.call(identity,input.action,input.data);
       if(input.action!=='resolveMedia')waitUntil(service.drainJobs().catch(()=>{}));
       return json({data:result});
-    } catch(error){onError(error);if(error instanceof ApiError)return json({error:{code:error.code,message:error.message}},error.status);return json({error:{code:'internal',message:'No se pudo completar la operación. Inténtalo de nuevo.'}},500);}
+    } catch(error){
+      onError(error);
+      console.error('[RUWAJAY_HANDLER_ERROR]', error);
+      if(error instanceof ApiError)return json({error:{code:error.code,message:error.message}},error.status);
+      return json({error:{code:'internal',message:error?.message||'No se pudo completar la operación. Inténtalo de nuevo.'}},500);
+    }
   };
 }

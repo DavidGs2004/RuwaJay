@@ -3,6 +3,7 @@ package com.example.ruwajay.ui.screens
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
@@ -118,6 +119,11 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
     var messages by remember(conversationId) { mutableStateOf<List<Map<String,Any>>>(emptyList()) }
     var room by remember(conversationId) { mutableStateOf<Map<String,Any>>(emptyMap()) }
+    val other = (room["participants"] as? List<*>)?.firstOrNull { it != uid } as? String
+    val otherName = (if (room["ownerId"] == uid) room["seekerName"] else room["ownerName"]) as? String
+        ?: (room["participantName"] as? String)
+        ?: (room["otherUserName"] as? String)
+        ?: "Contacto"
     var draft by remember(conversationId) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
@@ -239,7 +245,7 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                 replyingToMessage = null
                 SoundManager.playSendSound(context)
             }.onFailure {
-                error = "No se pudo enviar el archivo. Revisa tu conexión e inténtalo nuevamente."
+                error = "No se pudo enviar el archivo: ${it.localizedMessage ?: it.message}"
             }
             if (type == "audio") {
                 recordedAudioFile?.delete()
@@ -286,6 +292,38 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                 recordedAudioFile = completedFile
                 recordedAudioUri = Uri.fromFile(completedFile)
                 isAudioReviewing = true
+            } else {
+                error = "El audio quedó vacío. Intenta grabarlo nuevamente."
+                completedFile?.delete()
+                recordingFile = null
+            }
+        } catch (_: Exception) {
+            try { activeRecorder?.reset(); activeRecorder?.release() } catch (_: Exception) {}
+            completedFile?.delete()
+            recordingFile = null
+            error = "No se pudo completar la grabación. Intenta nuevamente."
+        }
+    }
+
+    fun stopRecordingAndSend() {
+        val activeRecorder = recorder
+        val completedFile = recordingFile
+        recorder = null
+        recording = false
+        try {
+            activeRecorder?.stop()
+            activeRecorder?.release()
+            if (completedFile != null && completedFile.length() > 0) {
+                val uriToSend = Uri.fromFile(completedFile)
+                val replyPayload = replyingToMessage?.let {
+                    mapOf(
+                        "id" to it["id"].toString(),
+                        "senderName" to (if (it["senderId"] == uid) "Tú" else otherName),
+                        "text" to (it["text"]?.toString() ?: ""),
+                        "type" to (it["type"]?.toString() ?: "audio")
+                    )
+                }
+                upload(uriToSend, "audio", replyTo = replyPayload)
             } else {
                 error = "El audio quedó vacío. Intenta grabarlo nuevamente."
                 completedFile?.delete()
@@ -382,12 +420,6 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
             error = "No se pudo iniciar la cámara: ${e.localizedMessage}"
         }
     }
-
-    val other = (room["participants"] as? List<*>)?.firstOrNull { it != uid } as? String
-    val otherName = (if (room["ownerId"] == uid) room["seekerName"] else room["ownerName"]) as? String
-        ?: (room["participantName"] as? String)
-        ?: (room["otherUserName"] as? String)
-        ?: "Contacto"
     var otherAvatar by remember(other) { mutableStateOf("") }
     var otherEmail by remember(other) { mutableStateOf("") }
     DisposableEffect(other) {
@@ -788,6 +820,11 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                             val canSend = draft.isNotBlank() && !sending && !recording
                             FloatingActionButton(
                                 onClick = {
+                                    if (recording) {
+                                        stopRecordingAndSend()
+                                        return@FloatingActionButton
+                                    }
+                                    if (!canSend || sending) return@FloatingActionButton
                                     val text = draft
                                     sending = true
                                     error = null
@@ -827,13 +864,13 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                                 },
                                 modifier = Modifier.size(44.dp),
                                 shape = CircleShape,
-                                containerColor = if (canSend) BrandForest else BrandBorder.copy(alpha = 0.6f),
+                                containerColor = if (recording) Color(0xFF22C55E) else if (canSend) BrandForest else BrandBorder.copy(alpha = 0.6f),
                                 contentColor = Color.White,
                                 elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp)
                             ) {
                                 Icon(
                                     imageVector = if (editingMessageId != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = if (editingMessageId != null) "Actualizar" else "Enviar",
+                                    contentDescription = if (recording) "Enviar audio" else if (editingMessageId != null) "Actualizar" else "Enviar",
                                     modifier = Modifier.size(19.dp)
                                 )
                             }
@@ -1565,6 +1602,7 @@ private fun RecordingIndicator(seconds: Int, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AudioAttachment(url: String, mine: Boolean) {
+    val context = LocalContext.current
     var player by remember(url) { mutableStateOf<MediaPlayer?>(null) }
     var playing by remember(url) { mutableStateOf(false) }
     var error by remember(url) { mutableStateOf(false) }
@@ -1591,7 +1629,19 @@ private fun AudioAttachment(url: String, mine: Boolean) {
                     else if (player != null) { player?.start(); playing = true }
                     else try {
                         player = MediaPlayer().apply {
-                            setDataSource(url)
+                            setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .build()
+                            )
+                            val parsedUri = Uri.parse(url)
+                            if (parsedUri.scheme == "file" || parsedUri.scheme == null) {
+                                val path = parsedUri.path ?: url.removePrefix("file://")
+                                setDataSource(path)
+                            } else {
+                                setDataSource(context, parsedUri)
+                            }
                             setOnPreparedListener { duration = it.duration; it.start(); playing = true }
                             setOnCompletionListener { playing = false; position = duration }
                             setOnErrorListener { _, _, _ -> error = true; playing = false; true }

@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -29,6 +31,7 @@ import com.example.ruwajay.ui.navigation.Screen
 import com.example.ruwajay.ui.theme.BrandForest
 import com.example.ruwajay.ui.theme.BrandGradientAccent
 import com.example.ruwajay.ui.theme.BrandSurfaceElevated
+import com.example.ruwajay.ui.theme.BrandTerracota
 import com.example.ruwajay.ui.theme.BrandTextMuted
 import com.example.ruwajay.ui.theme.BrandTextPrimary
 
@@ -39,13 +42,14 @@ data class NavItem(
 )
 
 @Composable
-fun BottomNavBar(navController: NavController) {
+fun BottomNavBar(
+    navController: NavController,
+    unreadCount: Int = 0
+) {
     val items = listOf(
         NavItem("Inicio", Icons.Default.Home, Screen.Home),
         NavItem("Explorar", Icons.Default.Explore, Screen.Explore),
         NavItem("Publicar", Icons.Default.Add, Screen.Publish),
-        // La pestaña principal abre la bandeja; una conversación concreta se abre
-        // solamente después de que el usuario la elija.
         NavItem("Chat", Icons.Default.Chat, Screen.Inbox),
         NavItem("Perfil", Icons.Default.Person, Screen.Profile),
     )
@@ -79,10 +83,32 @@ fun BottomNavBar(navController: NavController) {
                         }
                     },
                     icon = {
-                        Icon(
-                            imageVector = item.icon,
-                            contentDescription = item.label
-                        )
+                        if (item.screen == Screen.Inbox && unreadCount > 0) {
+                            BadgedBox(
+                                badge = {
+                                    Badge(
+                                        containerColor = BrandTerracota,
+                                        contentColor = Color.White
+                                    ) {
+                                        Text(
+                                            text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = item.label
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = item.label
+                            )
+                        }
                     },
                     label = {
                         Text(

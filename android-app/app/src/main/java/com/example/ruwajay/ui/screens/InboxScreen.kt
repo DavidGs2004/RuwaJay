@@ -76,9 +76,22 @@ fun InboxScreen(
                     participantOnline = false,
                     participantPhone = "",
                     participantRole = "Vendedor",
-                    unreadCount = if (map["lastSenderId"] != null && map["lastSenderId"] != currentUser.uid &&
-                        ((map["lastMessageTimestamp"] as? Timestamp)?.toDate()?.time ?: 0L) >
-                        (((map["readAt"] as? Map<*, *>)?.get(currentUser.uid) as? Timestamp)?.toDate()?.time ?: 0L)) 1 else 0,
+                    unreadCount = run {
+                        val unreadMap = map["unreadCount"] as? Map<*, *>
+                        val countInMap = (unreadMap?.get(currentUser.uid) as? Number)?.toInt()
+                        val unreadCountsMap = map["unreadCounts"] as? Map<*, *>
+                        val countInCountsMap = (unreadCountsMap?.get(currentUser.uid) as? Number)?.toInt()
+                        val directCount = (map["unreadCount"] as? Number)?.toInt()
+
+                        val isFromOther = map["lastSenderId"] != null && map["lastSenderId"] != currentUser.uid
+                        val lastMsgTime = (map["lastMessageTimestamp"] as? Timestamp)?.toDate()?.time ?: 0L
+                        val readAtMap = map["readAt"] as? Map<*, *>
+                        val readAtTime = (readAtMap?.get(currentUser.uid) as? Timestamp)?.toDate()?.time ?: 0L
+                        val isTimestampUnread = isFromOther && lastMsgTime > readAtTime
+
+                        val rawCount = countInMap ?: countInCountsMap ?: directCount ?: 0
+                        if (rawCount > 0) rawCount else if (isTimestampUnread) 1 else 0
+                    },
                     lastMessage = map["lastMessage"] as? String ?: "",
                     lastMessageTimestamp = dateStr,
                     messages = emptyList()
@@ -96,7 +109,7 @@ fun InboxScreen(
                             .let { it as? Timestamp }
                             ?.toDate()?.time ?: 0L
                     }
-                    latest?.copy(unreadCount = if (group.any { it.unreadCount > 0 }) 1 else 0)
+                    latest?.copy(unreadCount = group.sumOf { it.unreadCount })
                 }
                 .sortedByDescending { conversation ->
                     maps.firstOrNull { it["id"] == conversation.id }
@@ -281,10 +294,19 @@ fun ConversationItem(
                 if (conversation.unreadCount > 0) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .defaultMinSize(minWidth = 22.dp, minHeight = 22.dp)
                             .clip(CircleShape)
                             .background(BrandTerracota)
-                    )
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (conversation.unreadCount > 99) "99+" else conversation.unreadCount.toString(),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

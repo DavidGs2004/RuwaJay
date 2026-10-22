@@ -14,6 +14,11 @@ object CallRequestBus {
     val events = requests.receiveAsFlow()
 
     fun start(data: Map<String, Any>): Boolean = requests.trySend(data).isSuccess
+
+    private val incomingPushes = Channel<String>(Channel.BUFFERED)
+    val incomingPushEvents = incomingPushes.receiveAsFlow()
+
+    fun notifyIncomingPush(callId: String): Boolean = incomingPushes.trySend(callId).isSuccess
 }
 
 data class CallSession(

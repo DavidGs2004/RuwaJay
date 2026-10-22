@@ -57,6 +57,9 @@ object RuwaBackend {
             connection.setFixedLengthStreamingMode(bytes.size)
             connection.setRequestProperty("Authorization", "Bearer " + token)
             connection.setRequestProperty("Content-Type", mime)
+            if (BuildConfig.SUPABASE_ANON_KEY.isNotBlank()) {
+                connection.setRequestProperty("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            }
             connection.outputStream.use { it.write(bytes) }
             val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
@@ -76,16 +79,28 @@ object RuwaBackend {
 
     fun upload(kind: String, uri: Uri, resolver: ContentResolver, roomId: String? = null, propertyId: String? = null,
         mime: String? = null, expectedUid: String? = null): Task<String> = authorized(expectedUid) { token, _ ->
-        val contentType = (mime ?: resolver.getType(uri) ?: "image/jpeg").substringBefore(';')
+        var contentType = (mime ?: resolver.getType(uri) ?: "image/jpeg").substringBefore(';').lowercase().trim()
+        if (contentType == "image/jpg") contentType = "image/jpeg"
+        if (kind == "chat" && !contentType.startsWith("image/") && !contentType.startsWith("audio/") && !contentType.startsWith("video/")) {
+            contentType = if (uri.toString().endsWith(".m4a") || uri.toString().endsWith(".aac")) "audio/mp4" else "image/jpeg"
+        }
         val maximum = (if (kind == "chat") 20 else 8) * 1024 * 1024
-        val bytes = resolver.openInputStream(uri)?.use { input ->
-            val output = ByteArrayOutputStream(); val buffer = ByteArray(8192); var size = 0
-            while (true) { val read = input.read(buffer); if (read < 0) break; size += read
-                if (size > maximum) throw Exception("El archivo supera el tamaño permitido.")
-                output.write(buffer, 0, read)
-            }
-            output.toByteArray()
-        } ?: throw Exception("No se pudo abrir el archivo.")
+        val bytes = if (uri.scheme == "file" || uri.scheme == null) {
+            val path = uri.path ?: uri.toString().removePrefix("file://")
+            val file = java.io.File(path)
+            if (!file.exists()) throw Exception("El archivo no existe.")
+            if (file.length() > maximum) throw Exception("El archivo supera el tamaño permitido.")
+            file.readBytes()
+        } else {
+            resolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream(); val buffer = ByteArray(8192); var size = 0
+                while (true) { val read = input.read(buffer); if (read < 0) break; size += read
+                    if (size > maximum) throw Exception("El archivo supera el tamaño permitido.")
+                    output.write(buffer, 0, read)
+                }
+                output.toByteArray()
+            } ?: throw Exception("No se pudo abrir el archivo.")
+        }
         if (bytes.isEmpty()) throw Exception("El archivo está vacío.")
         val query = mutableListOf("kind=" + URLEncoder.encode(kind,"UTF-8"))
         roomId?.let { query += "roomId=" + URLEncoder.encode(it,"UTF-8") }

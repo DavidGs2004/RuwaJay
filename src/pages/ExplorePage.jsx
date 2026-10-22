@@ -8,7 +8,7 @@ import {
   Shield, Droplets, ArrowUpDown, BookmarkPlus, Bookmark, Calculator, Sparkles
 } from 'lucide-react';
 import PropertyCard from '../components/property/PropertyCard';
-import { demoProperties, calculateDistance, popularMunicipalities } from '../data/properties';
+import { demoProperties, calculateDistance, getPropertyCoordinates, popularMunicipalities } from '../data/properties';
 import { useGeolocation } from '../hooks/useGeolocation';
 import RuwaSelect from '../components/ui/RuwaSelect';
 import { GUATEMALA_DEPARTMENTS, getZonesForDepartment, getCoordinatesForDepartment, getCoordinatesForLocation } from '../data/guatemalaLocations';
@@ -402,11 +402,13 @@ export default function ExplorePage() {
     // Distance filter
     if (position && radarRadius) {
       props = props.filter((p) => {
+        const coords = getPropertyCoordinates(p);
+        if (!coords) return false;
         const dist = calculateDistance(
           position.lat, position.lng,
-          p.coordinates.lat, p.coordinates.lng
+          coords.lat, coords.lng
         );
-        return dist <= radarRadius;
+        return dist != null && dist <= radarRadius;
       });
     }
 
@@ -419,17 +421,13 @@ export default function ExplorePage() {
       props.sort((a, b) => (b.area || 0) - (a.area || 0));
     } else if (sortBy === 'bedrooms_desc') {
       props.sort((a, b) => (b.bedrooms || 0) - (a.bedrooms || 0));
-    } else if (sortBy === 'closest' && position) {
+    } else if ((sortBy === 'closest' || !sortBy) && position) {
       props.sort((a, b) => {
-        const distA = calculateDistance(position.lat, position.lng, a.coordinates.lat, a.coordinates.lng);
-        const distB = calculateDistance(position.lat, position.lng, b.coordinates.lat, b.coordinates.lng);
-        return distA - distB;
-      });
-    } else if (position) {
-      props.sort((a, b) => {
-        const distA = calculateDistance(position.lat, position.lng, a.coordinates.lat, a.coordinates.lng);
-        const distB = calculateDistance(position.lat, position.lng, b.coordinates.lat, b.coordinates.lng);
-        return distA - distB;
+        const coordsA = getPropertyCoordinates(a);
+        const coordsB = getPropertyCoordinates(b);
+        const distA = coordsA ? calculateDistance(position.lat, position.lng, coordsA.lat, coordsA.lng) : null;
+        const distB = coordsB ? calculateDistance(position.lat, position.lng, coordsB.lat, coordsB.lng) : null;
+        return (distA ?? Infinity) - (distB ?? Infinity);
       });
     }
 
@@ -438,10 +436,20 @@ export default function ExplorePage() {
 
   // Split nearby / farther
   const nearbyProps = position
-    ? filteredProperties.filter((p) => calculateDistance(position.lat, position.lng, p.coordinates.lat, p.coordinates.lng) <= 5)
+    ? filteredProperties.filter((p) => {
+        const coords = getPropertyCoordinates(p);
+        if (!coords) return false;
+        const dist = calculateDistance(position.lat, position.lng, coords.lat, coords.lng);
+        return dist != null && dist <= 5;
+      })
     : [];
   const fartherProps = position
-    ? filteredProperties.filter((p) => calculateDistance(position.lat, position.lng, p.coordinates.lat, p.coordinates.lng) > 5)
+    ? filteredProperties.filter((p) => {
+        const coords = getPropertyCoordinates(p);
+        if (!coords) return true;
+        const dist = calculateDistance(position.lat, position.lng, coords.lat, coords.lng);
+        return dist == null || dist > 5;
+      })
     : [];
 
   const handleLocationAllow = () => {

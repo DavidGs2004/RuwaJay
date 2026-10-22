@@ -19,6 +19,8 @@ test('Reading on another device clears unread while a new message restores it', 
   const room={lastSenderId:'owner',lastMessageTimestamp:200,readAt:{tenant:100}};
   assert.equal(unreadConversation(room,'tenant'),true);
   assert.equal(unreadConversation({...room,readAt:{tenant:200}},'tenant'),false);
+  assert.equal(unreadConversation({...room,readAt:{tenant:{seconds:200,nanoseconds:0}},lastMessageTimestamp:{seconds:100,nanoseconds:0}},'tenant'),false);
+  assert.equal(unreadConversation({...room,readAt:{tenant:new Date(200)}},'tenant'),false);
   assert.equal(unreadConversation(room,'owner'),false);
   assert.equal(unreadConversation({},'tenant'),false);
 });

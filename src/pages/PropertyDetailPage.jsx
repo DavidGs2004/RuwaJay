@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 const MapView = lazy(() => import('../components/map/MapView'));
-import { demoProperties, demoOwners, formatPrice, formatDistance, calculateDistance } from '../data/properties';
+import { demoProperties, demoOwners, formatPrice, formatDistance, calculateDistance, getPropertyCoordinates } from '../data/properties';
 import { useFavorites } from '../context/FavoritesContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useCompare } from '../context/CompareContext';
@@ -157,8 +157,9 @@ function PropertyDetailContent({ property }) {
   const currentImages = (getCategoryImages().length > 0 ? getCategoryImages() : [property?.thumbnail || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`])
     .map((img) => (typeof img === 'string' && img.startsWith('blob:') ? `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg` : img));
 
-  const distance = position && property.coordinates?.lat && property.coordinates?.lng
-    ? calculateDistance(position.lat, position.lng, property.coordinates.lat, property.coordinates.lng)
+  const propertyCoords = getPropertyCoordinates(property);
+  const distance = position?.lat && position?.lng && propertyCoords
+    ? calculateDistance(position.lat, position.lng, propertyCoords.lat, propertyCoords.lng)
     : null;
 
   // WhatsApp configuration with prefilled message
@@ -590,7 +591,12 @@ function PropertyDetailContent({ property }) {
                   }>
                     <MapView
                       properties={[property]}
-                      focusCoordinates={property.coordinates ? { ...property.coordinates, zoom: 14 } : null}
+                      focusCoordinates={(() => {
+                        const coords = property.coordinates || property.location?.mapCoordinates;
+                        const lat = Number(coords?.lat);
+                        const lng = Number(coords?.lng);
+                        return coords && !isNaN(lat) && !isNaN(lng) ? { lat, lng, zoom: 16 } : null;
+                      })()}
                     />
                   </Suspense>
                 </div>

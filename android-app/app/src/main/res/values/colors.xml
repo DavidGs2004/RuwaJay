@@ -8,4 +8,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="ic_launcher_background">#FFFFFFFF</color>
+    <color name="brand_forest">#FF0B5D3B</color>
 </resources>

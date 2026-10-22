@@ -8,6 +8,9 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -15,12 +18,17 @@ import com.example.ruwajay.data.repository.NotificationRepository
 
 class RuwaMessagingService : FirebaseMessagingService() {
     companion object {
-        const val CHANNEL_ID = "ruwajay_messages"
+        const val CHANNEL_ID = "ruwajay_messages_v2"
         const val CHANNEL_NAME = "Mensajes y Notificaciones"
+
+        const val CHANNEL_CALLS_ID = "ruwajay_calls"
+        const val CHANNEL_CALLS_NAME = "Llamadas Entrantes"
 
         fun ensureNotificationChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= 26) {
                 val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                
+                // Canal 1: Mensajes y Alertas
                 val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 val audioAttributes = AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -35,11 +43,32 @@ class RuwaMessagingService : FirebaseMessagingService() {
                     description = "Notificaciones con sonido para nuevos mensajes y visitas"
                     enableLights(true)
                     enableVibration(true)
-                    vibrationPattern = longArrayOf(0, 250, 150, 250)
+                    vibrationPattern = longArrayOf(0, 300, 150, 300)
                     lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                     setSound(defaultSoundUri, audioAttributes)
                 }
                 manager.createNotificationChannel(channel)
+
+                // Canal 2: Llamadas Entrantes (Timbre continuo y prioridad de llamada)
+                val ringtoneSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                val callAudioAttributes = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .build()
+
+                val callChannel = NotificationChannel(
+                    CHANNEL_CALLS_ID,
+                    CHANNEL_CALLS_NAME,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Timbre y alertas para llamadas entrantes en tiempo real"
+                    enableLights(true)
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 1000, 1000, 1000, 1000)
+                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                    setSound(ringtoneSoundUri, callAudioAttributes)
+                }
+                manager.createNotificationChannel(callChannel)
             }
         }
     }
@@ -49,15 +78,25 @@ class RuwaMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        val type = message.data["type"] ?: "message"
+        val callId = message.data["callId"]
+        val isCall = type == "call" || !callId.isNullOrBlank()
+
         val title = message.notification?.title
+            ?: message.data["senderName"]
             ?: message.data["title"]
-            ?: "RuwaJay"
+            ?: if (isCall) "Llamada entrante" else "Nuevo mensaje"
         val body = message.notification?.body
             ?: message.data["body"]
-            ?: "Tienes un nuevo mensaje"
+            ?: if (isCall) "Te están llamando en RuwaJay" else "Tienes un nuevo mensaje"
         val path = message.data["path"] ?: "/perfil"
         val eventId = message.data["eventId"] ?: message.messageId ?: "ruwajay_${System.currentTimeMillis()}"
-        RuwaNotifications.show(this, title, body, path, eventId)
+
+        if (isCall) {
+            RuwaNotifications.showCall(this, title, body, path, eventId, callId ?: "")
+        } else {
+            RuwaNotifications.show(this, title, body, path, eventId)
+        }
     }
 }
 
@@ -72,8 +111,18 @@ object RuwaNotifications {
         if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         if (eventId in delivered) return true
+
+        val uri = android.net.Uri.parse(path)
+        val conversationId = uri.getQueryParameter("conversation")
+            ?: if (path.startsWith("/chat/")) path.removePrefix("/chat/")
+            else if (path.startsWith("chat/")) path.removePrefix("chat/")
+            else null
+
         val intent = Intent(context, MainActivity::class.java).apply {
             putExtra("path", path)
+            if (conversationId != null) {
+                putExtra("conversationId", conversationId)
+            }
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         val pending = PendingIntent.getActivity(
@@ -83,29 +132,142 @@ object RuwaNotifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val logoBitmap = try {
+            android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.ic_logo)
+        } catch (_: Exception) { null }
+
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val notification = NotificationCompat.Builder(context, RuwaMessagingService.CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, RuwaMessagingService.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF0B5D3B.toInt()) // Verde Artesanal RuwaJay
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSubText("RuwaJay")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body).setSummaryText("RuwaJay"))
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(false)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setSound(soundUri)
             .setVibrate(longArrayOf(0, 300, 150, 300))
-            .build()
+
+        if (logoBitmap != null) {
+            builder.setLargeIcon(logoBitmap)
+        }
+
+        val notification = builder.build()
 
         try {
-            manager.notify(eventId, 0, notification)
+            manager.notify(eventId.hashCode(), notification)
             delivered.add(eventId)
             if (delivered.size > 200) delivered.remove(delivered.first())
+
+            // Reproducir sonido de notificación explícitamente para garantizar que suene siempre
+            try {
+                val ringtone = RingtoneManager.getRingtone(context.applicationContext, soundUri)
+                ringtone?.play()
+            } catch (_: Exception) {}
+
+            // Vibración explícita
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    vm?.defaultVibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
+                } else {
+                    @Suppress("DEPRECATION")
+                    val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        v?.vibrate(longArrayOf(0, 300, 150, 300), -1)
+                    }
+                }
+            } catch (_: Exception) {}
+
             return true
         } catch (_: SecurityException) { return false }
     }
-}
 
+    @Synchronized
+    fun showCall(context: Context, title: String, body: String, path: String, eventId: String, callId: String): Boolean {
+        RuwaMessagingService.ensureNotificationChannel(context)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_CALLS_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
+
+        val uri = android.net.Uri.parse(path)
+        val conversationId = uri.getQueryParameter("conversation")
+            ?: if (path.startsWith("/chat/")) path.removePrefix("/chat/")
+            else if (path.startsWith("chat/")) path.removePrefix("chat/")
+            else null
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            putExtra("path", path)
+            putExtra("action", "incoming_call")
+            putExtra("callId", callId)
+            if (conversationId != null) {
+                putExtra("conversationId", conversationId)
+            }
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+        val pending = PendingIntent.getActivity(
+            context,
+            eventId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val logoBitmap = try {
+            android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.ic_logo)
+        } catch (_: Exception) { null }
+
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val builder = NotificationCompat.Builder(context, RuwaMessagingService.CHANNEL_CALLS_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF0B5D3B.toInt())
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSubText("Llamada RuwaJay")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body).setSummaryText("Llamada en curso"))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .setFullScreenIntent(pending, true)
+            .setSound(ringtoneUri)
+            .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
+            .addAction(
+                R.drawable.ic_notification,
+                "Atender Llamada",
+                pending
+            )
+
+        if (logoBitmap != null) {
+            builder.setLargeIcon(logoBitmap)
+        }
+
+        try {
+            manager.notify(eventId.hashCode(), builder.build())
+
+            // Disparar sonido del ringtone explícitamente para asegurar reproducción
+            try {
+                val ringtone = RingtoneManager.getRingtone(context.applicationContext, ringtoneUri)
+                ringtone?.play()
+            } catch (_: Exception) {}
+
+            return true
+        } catch (_: SecurityException) { return false }
+    }
+
+    fun cancel(context: Context, eventId: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(eventId.hashCode())
+    }
+}

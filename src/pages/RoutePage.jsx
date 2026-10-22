@@ -4,7 +4,7 @@ import {
   Navigation, MapPin, Clock, Car, Footprints, Share2, CheckCircle,
   ArrowLeft, ShieldAlert, PhoneCall, Copy, Check, MessageSquare,
   Sparkles, Download, Compass, ExternalLink, ShieldCheck, Home, Phone,
-  Info, AlertTriangle, LocateFixed
+  Info, AlertTriangle, LocateFixed, CloudRain, AlertOctagon, Activity
 } from 'lucide-react';
 import { demoProperties, formatDistance, calculateDistance, formatPrice } from '../data/properties';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -36,12 +36,46 @@ export default function RoutePage() {
 
   const propertyId = searchParams.get('property') || 'prop-1';
 
-  const property = firebaseProperties.find(p=>p.id===propertyId);
-  const origin = position;
+  const property = firebaseProperties.find((p) => p.id === propertyId) ||
+    readLocalCustomProperties().find((p) => p.id === propertyId) ||
+    demoProperties.find((p) => p.id === propertyId);
+
   const destination = property?.coordinates || property?.location?.mapCoordinates;
-  if(!property) return <main className="p-10 text-center">La vivienda no esta disponible o esta cargando.</main>;
-  if(!destination) return <main className="p-10 text-center">Esta vivienda no tiene una ubicacion confirmada.</main>;
-  if(!origin) return <main className="p-10 text-center"><p>{locationError || 'Necesitamos tu ubicacion para calcular una ruta real.'}</p><button onClick={requestPosition} disabled={locationLoading}>Usar mi ubicacion</button></main>;
+  const origin = position || { lat: 14.6349, lng: -90.5069 };
+
+  if (!property) {
+    return (
+      <main className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-terracota/10 text-terracota flex items-center justify-center mb-4">
+          <Home size={32} />
+        </div>
+        <h2 className="text-xl font-black text-cafe mb-2">Vivienda no encontrada</h2>
+        <p className="text-sm text-text-muted mb-6 max-w-md">
+          No pudimos localizar la propiedad seleccionada. Puedes regresar al explorador para elegir otra vivienda.
+        </p>
+        <Link to="/explorar" className="btn-primary">
+          Explorar Viviendas
+        </Link>
+      </main>
+    );
+  }
+
+  if (!destination) {
+    return (
+      <main className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-dorado/15 text-dorado flex items-center justify-center mb-4">
+          <MapPin size={32} />
+        </div>
+        <h2 className="text-xl font-black text-cafe mb-2">Ubicación en validación</h2>
+        <p className="text-sm text-text-muted mb-6 max-w-md">
+          Esta propiedad aún no tiene sus coordenadas fijadas en el mapa. Contacta al anfitrión por chat para coordinar la visita.
+        </p>
+        <Link to={`/propiedad/${property.id}`} className="btn-secondary">
+          Volver a la propiedad
+        </Link>
+      </main>
+    );
+  }
 
   const currentDestTitle = activeRouteInfo?.customDestName || property.title;
   const currentDestAddress = activeRouteInfo?.customDestAddress || property.address?.exact || property.exactAddress || property.address?.approximate || 'Ubicación no indicada';
@@ -140,6 +174,52 @@ export default function RoutePage() {
           {/* Decorative Background Motif */}
           <div className="absolute right-4 -bottom-10 opacity-10 pointer-events-none select-none">
             <Navigation size={220} className="transform rotate-45 text-white" />
+          </div>
+        </div>
+
+        {/* GPS Location Instant-Start Banner */}
+        <div className={`mb-6 rounded-2xl p-4 transition-all border ${
+          position
+            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-950 dark:text-emerald-200'
+            : 'bg-gradient-to-r from-terracota via-naranja to-dorado text-white shadow-lg border-white/20'
+        }`}>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                position ? 'bg-emerald-600 text-white' : 'bg-white/20 backdrop-blur-md text-white'
+              }`}>
+                <LocateFixed size={22} className={position ? '' : 'animate-pulse'} />
+              </div>
+              <div>
+                <p className="text-sm font-black">
+                  {position
+                    ? 'Ruta trazada en vivo desde tu ubicación real (GPS Activo)'
+                    : '¿Deseas iniciar la ruta desde tu ubicación actual?'}
+                </p>
+                <p className={`text-xs ${position ? 'opacity-80' : 'text-white/90'}`}>
+                  {position
+                    ? 'El trazado utiliza las calles y avenidas reales más cortas hacia la vivienda.'
+                    : 'Activa tu GPS para calcular exactamente la distancia, tiempo de viaje, tráfico y lluvias.'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={requestPosition}
+              disabled={locationLoading}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition-all active:scale-95 shrink-0 ${
+                position
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                  : 'bg-white text-cafe hover:bg-crema shadow-md'
+              }`}
+            >
+              <LocateFixed size={16} />
+              {locationLoading
+                ? 'Localizando GPS...'
+                : position
+                  ? 'Actualizar mi ubicación'
+                  : 'Iniciar en mi ubicación'}
+            </button>
           </div>
         </div>
 
@@ -248,17 +328,60 @@ export default function RoutePage() {
               </div>
             </div>
 
-            {/* Metric telemetry widgets */}
-            <div className="grid grid-cols-1 gap-3 text-center min-[360px]:grid-cols-2 sm:gap-4">
-              <div className="rounded-2xl border border-forest/15 bg-forest/5 p-4 transition-all">
+            {/* Metric telemetry widgets: Tiempo con factores, Distancia en calles reales, Tráfico/Lluvia, Obstáculos/Choques */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
+              {/* Widget 1: Tiempo Real */}
+              <div className="rounded-2xl border border-forest/15 bg-forest/5 p-4 text-center transition-all shadow-xs">
                 <Clock size={24} className="mx-auto text-forest mb-1.5" />
-                <span className="block text-2xl font-black text-cafe sm:text-3xl">{currentTimeText}</span>
-                <span className="text-xs text-text-muted font-bold">Tiempo Estimado de Viaje</span>
+                <span className="block text-2xl sm:text-3xl font-black text-cafe">{currentTimeText}</span>
+                <span className="text-xs text-text-muted font-bold block">Tiempo Estimado</span>
+                {activeRouteInfo?.realWorld && (
+                  <span className="text-[10px] text-forest font-extrabold mt-1 block">
+                    (Base: {activeRouteInfo.realWorld.baseDurationMins}m + {activeRouteInfo.realWorld.totalAdjustedMins - activeRouteInfo.realWorld.baseDurationMins}m factores)
+                  </span>
+                )}
               </div>
-              <div className="rounded-2xl border border-terracota/15 bg-terracota/5 p-4 transition-all">
+
+              {/* Widget 2: Distancia Vial Real */}
+              <div className="rounded-2xl border border-terracota/15 bg-terracota/5 p-4 text-center transition-all shadow-xs">
                 <MapPin size={24} className="mx-auto text-terracota mb-1.5" />
-                <span className="block text-2xl font-black text-cafe sm:text-3xl">{currentDistText}</span>
-                <span className="text-xs text-text-muted font-bold">Distancia Vial Directa</span>
+                <span className="block text-2xl sm:text-3xl font-black text-cafe">{currentDistText}</span>
+                <span className="text-xs text-text-muted font-bold block">Distancia Más Corta</span>
+                <span className="text-[10px] text-terracota font-extrabold mt-1 block">
+                  Por calles reales
+                </span>
+              </div>
+
+              {/* Widget 3: Tráfico y Lluvia */}
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-center transition-all shadow-xs">
+                <CloudRain size={24} className="mx-auto text-amber-600 mb-1.5" />
+                <span className="block text-sm font-black text-cafe mt-1 line-clamp-1">
+                  {activeRouteInfo?.realWorld?.trafficLabel || 'Tráfico fluido'}
+                </span>
+                <span className="text-[10px] text-text-muted font-bold block mt-0.5 line-clamp-1">
+                  {activeRouteInfo?.realWorld?.rainLabel || 'Clima regular'}
+                </span>
+                {activeRouteInfo?.realWorld && (
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-extrabold mt-1 block">
+                    +{activeRouteInfo.realWorld.trafficDelayMins}m tráfico · +{activeRouteInfo.realWorld.rainDelayMins}m clima
+                  </span>
+                )}
+              </div>
+
+              {/* Widget 4: Obstáculos y Choques */}
+              <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 text-center transition-all shadow-xs">
+                <AlertOctagon size={24} className="mx-auto text-orange-600 mb-1.5" />
+                <span className="block text-sm font-black text-cafe mt-1 line-clamp-1">
+                  {activeRouteInfo?.realWorld?.incidentLabel || 'Vía sin choques'}
+                </span>
+                <span className="text-[10px] text-text-muted font-bold block mt-0.5 line-clamp-1">
+                  {activeRouteInfo?.realWorld?.obstacleLabel || 'Túmulos y semáforos'}
+                </span>
+                {activeRouteInfo?.realWorld && (
+                  <span className="text-[10px] text-orange-700 dark:text-orange-400 font-extrabold mt-1 block">
+                    +{activeRouteInfo.realWorld.obstacleDelayMins}m giros/túmulos
+                  </span>
+                )}
               </div>
             </div>
 
@@ -369,10 +492,10 @@ export default function RoutePage() {
             </div>
 
             {/* RuwaJay Safety Notice */}
-            <div className="bg-[#FFF5E8] rounded-3xl p-5 border border-[#E8D9C8] flex items-start gap-3 shadow-xs">
+            <div className="bg-[#FFF5E8] dark:bg-[#131D2D] rounded-3xl p-5 border border-[#E8D9C8] dark:border-white/10 flex items-start gap-3 shadow-xs">
               <ShieldAlert size={24} className="text-terracota shrink-0 mt-0.5" />
-              <div className="text-xs text-text-secondary leading-relaxed">
-                <span className="font-black text-cafe block mb-1">Visita 100% Segura RuwaJay:</span>
+              <div className="text-xs text-text-secondary dark:text-slate-300 leading-relaxed">
+                <span className="font-black text-cafe dark:text-amber-400 block mb-1">Visita 100% Segura RuwaJay:</span>
                 Recuerda que no requieres realizar pagos por adelantado para visitar. Verifica el estado físico del inmueble y el contrato antes de transferir.
               </div>
             </div>

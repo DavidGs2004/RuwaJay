@@ -40,6 +40,28 @@ function formatTimer(seconds) {
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
+function formatChatDateHeader(messages) {
+  if (!messages || messages.length === 0) return 'Hoy';
+  const lastMsg = messages[messages.length - 1];
+  const rawTime = lastMsg.createdAt || lastMsg.timestamp;
+  let date = null;
+  if (typeof rawTime?.toDate === 'function') date = rawTime.toDate();
+  else if (typeof rawTime?.seconds === 'number') date = new Date(rawTime.seconds * 1000);
+  else if (rawTime instanceof Date) date = rawTime;
+  else if (typeof rawTime === 'string' || typeof rawTime === 'number') {
+    const parsed = new Date(rawTime);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date) return 'Hoy';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterday = today - 86400000;
+  const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (msgDay === today) return 'Hoy';
+  if (msgDay === yesterday) return 'Ayer';
+  return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+
 export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -61,6 +83,7 @@ export default function ChatPage() {
     totalUnreadCount,
     typingMap,
     resetDemoChats, chatError,
+    dismissToast,
   } = useChat();
 
   const [inputText, setInputText] = useState('');
@@ -413,8 +436,9 @@ export default function ChatPage() {
     try {
       await sendMessage(room, '', blobToSend, true, replyingTo);
       setReplyingTo(null);
-    } catch {
-      window.alert('No se pudo enviar el audio. Intenta nuevamente.');
+    } catch (err) {
+      console.error('Error al enviar audio:', err);
+      window.alert('No se pudo enviar el audio: ' + (err?.message || 'Intenta nuevamente.'));
     }
   };
 
@@ -675,13 +699,14 @@ export default function ChatPage() {
             ) : (
               filteredConversations.map((conv) => {
                 const isActive = conv.id === activeConversationId;
-                const isUnread = (conv.unreadCount || 0) > 0;
+                const isUnread = !isActive && (conv.unreadCount || 0) > 0;
 
                 return (
                   <div
                     key={conv.id}
                     onClick={() => {
                       setActiveConversationId(conv.id);
+                      dismissToast?.();
                       setMobileView('chat');
                     }}
                     className={`flex items-center gap-3 p-3 sm:p-3.5 cursor-pointer transition-all ${
@@ -874,7 +899,7 @@ export default function ChatPage() {
               </div>
 
               {/* Safety Warning Banner */}
-              <div className="flex items-center justify-center gap-2 border-b border-amber-200/60 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-900 shrink-0">
+              <div className="flex items-center justify-center gap-2 border-b border-amber-200/60 dark:border-amber-800/40 bg-amber-50/90 dark:bg-amber-950/40 px-3 py-1.5 text-[11px] font-semibold text-amber-900 dark:text-amber-200 shrink-0">
                 <ShieldAlert size={14} className="shrink-0 text-terracota" />
                 <span className="truncate">
                   <strong>Consejo de seguridad:</strong> No realices depósitos antes de visitar el inmueble en persona y firmar el contrato.
@@ -892,7 +917,7 @@ export default function ChatPage() {
                 {/* Date Badge */}
                 <div className="flex justify-center my-2">
                   <span className="rounded-full bg-white/90 backdrop-blur-xs px-3.5 py-1 text-[10px] font-bold text-text-secondary shadow-2xs border border-[#E8D9C8]/60">
-                    Hoy
+                    {formatChatDateHeader(activeConversation?.messages)}
                   </span>
                 </div>
 

@@ -67,6 +67,8 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'cv11', 'ss01';
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html,
@@ -92,6 +94,7 @@ svg,
 video,
 canvas {
   max-width: 100%;
+  height: auto;
 }
 
 input,
@@ -109,6 +112,20 @@ footer,
 nav,
 div {
   min-width: 0;
+}
+
+@media (max-width: 768px) {
+  /* Evitar zoom automático indesejado en iOS Safari al tocar inputs */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 @media (max-width: 359px) {
@@ -782,4 +799,211 @@ path.ruwa-route-pulse-dash {
 .ruwa-wave-bar-4 {
   animation: ruwaSoundWave 0.7s ease-in-out infinite 0.45s;
 }
+
+/* ========================================================
+   ===== RUWAJAY LUXURY DUAL THEME (LIGHT & DARK MODES) =====
+   ======================================================== */
+
+/* Transitions for smooth theme switching */
+body, header, nav, main, footer,
+.bg-crema, .bg-white, .shadow-card, .shadow-elevated,
+input, textarea, select {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
+
+/* ===== Dark Mode Token Overrides ===== */
+html.dark {
+  color-scheme: dark;
+
+  /* Primary Palette (Dark Mode: Crisp & High Contrast) */
+  --color-forest: #10B981;
+  --color-forest-light: #34D399;
+  --color-forest-dark: #059669;
+  --color-jade: #10B981;
+  --color-jade-light: #34D399;
+  --color-terracota: #FB7185;
+  --color-terracota-light: #FDA4AF;
+  --color-terracota-dark: #E11D48;
+  --color-naranja: #FB923C;
+  --color-dorado: #FBBF24;
+  --color-dorado-light: #FCD34D;
+  --color-dorado-muted: #D97706;
+
+  /* Surfaces & Typography (Obsidian Slate) */
+  --color-crema: #0B111A;
+  --color-crema-dark: #121A26;
+  --color-crema-warm: #182232;
+  --color-surface: #0B111A;
+  --color-surface-card: #131D2D;
+  --color-surface-elevated: #19263A;
+  --color-cafe: #F1F5F9;
+  --color-cafe-light: #CBD5E1;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+  --color-border: #23334D;
+  --color-border-light: #1A2639;
+
+  /* Shadows (Subtle, Deep Ambient Glow) */
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover: 0 14px 40px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-popup: 0 24px 64px rgba(0, 0, 0, 0.8), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Base Body in Dark Mode */
+html.dark body {
+  background-color: #0B111A;
+  color: #F1F5F9;
+}
+
+/* Surfaces and Cards */
+html.dark .bg-white {
+  background-color: #131D2D !important;
+}
+
+html.dark .bg-white\/95,
+html.dark .bg-white\/90,
+html.dark .bg-white\/85,
+html.dark .bg-white\/80 {
+  background-color: rgba(19, 29, 45, 0.95) !important;
+}
+
+html.dark .bg-\[\#FAF8F5\],
+html.dark .bg-\[\#F5ECE0\],
+html.dark .bg-\[\#FDFBF7\],
+html.dark .bg-\[\#FAF5EE\],
+html.dark .bg-\[\#FAF6F0\],
+html.dark .bg-\[\#FBF3E8\],
+html.dark .bg-\[\#FFF5E8\],
+html.dark .bg-\[\#F7F7F7\],
+html.dark .bg-\[\#FAF5EF\] {
+  background-color: #0E1624 !important;
+}
+
+/* Text Colors in Dark Mode */
+html.dark .text-cafe {
+  color: #F1F5F9 !important;
+}
+
+html.dark .text-text-primary,
+html.dark .text-\[\#222222\],
+html.dark .text-\[\#111111\] {
+  color: #F8FAFC !important;
+}
+
+html.dark .text-text-secondary,
+html.dark .text-\[\#717171\],
+html.dark .text-\[\#666666\] {
+  color: #94A3B8 !important;
+}
+
+html.dark .text-text-muted {
+  color: #64748B !important;
+}
+
+/* Borders in Dark Mode */
+html.dark .border-border,
+html.dark .border-border-light,
+html.dark .border-\[\#EBEBEB\],
+html.dark .border-\[\#DDDDDD\],
+html.dark .border-\[\#E8D9C8\],
+html.dark .border-\[\#E8D9C8\]\/60,
+html.dark .border-\[\#E8D9C8\]\/80,
+html.dark .border-\[\#E5E7EB\],
+html.dark .border-border-light\/50 {
+  border-color: #23334D !important;
+}
+
+/* Header in Dark Mode */
+html.dark header {
+  background-color: rgba(11, 17, 26, 0.92) !important;
+  border-bottom-color: #23334D !important;
+  backdrop-filter: blur(14px);
+}
+
+html.dark header .border-b {
+  border-bottom-color: #23334D !important;
+}
+
+/* Mobile Nav in Dark Mode */
+html.dark nav[aria-label="Navegación móvil"] .bg-glass,
+html.dark .bg-glass {
+  background: rgba(19, 29, 45, 0.94) !important;
+  backdrop-filter: blur(16px);
+  border-color: #23334D !important;
+}
+
+/* Interactive hover pills in Dark Mode */
+html.dark .hover\:bg-\[\#F7F7F7\]:hover,
+html.dark .hover\:bg-crema:hover,
+html.dark .hover\:bg-crema\/80:hover {
+  background-color: #1A273D !important;
+}
+
+/* Form inputs & selects in Dark Mode */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark textarea,
+html.dark select {
+  background-color: #131D2D !important;
+  color: #F8FAFC !important;
+  border-color: #23334D !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748B !important;
+}
+
+/* Chat bubble styling in Dark Mode */
+html.dark .chat-bubble-received {
+  background-color: #192538 !important;
+  color: #F1F5F9 !important;
+  border-color: #23334D !important;
+}
+
+/* Café surfaces in Dark Mode — softer brown than the light theme's #3B2118.
+   --color-cafe is inverted to a light text color in dark mode, so any
+   element using bg-cafe as a background needs an explicit brown. */
+html.dark .bg-cafe {
+  background-color: #5A4134 !important;
+}
+html.dark .bg-cafe\/80,
+html.dark .bg-cafe\/85 {
+  background-color: rgba(90, 65, 52, 0.88) !important;
+}
+
+/* Footer — soft café gradient, shared by light & dark themes (all screen sizes) */
+footer[role="contentinfo"] {
+  background: linear-gradient(180deg, #5A4134 0%, #4A352A 100%) !important;
+  color: rgba(255, 255, 255, 0.85);
+}
+footer[role="contentinfo"] .text-white\/50 {
+  color: rgba(255, 245, 235, 0.72) !important;
+}
+footer[role="contentinfo"] .text-white\/45 {
+  color: rgba(255, 245, 235, 0.66) !important;
+}
+footer[role="contentinfo"] .text-white\/30 {
+  color: rgba(255, 245, 235, 0.52) !important;
+}
+footer[role="contentinfo"] .text-white\/35 {
+  color: rgba(255, 245, 235, 0.6) !important;
+}
+footer[role="contentinfo"] a:hover {
+  color: #FFFFFF !important;
+}
+footer[role="contentinfo"] .border-white\/\[0\.06\] {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Scrollbars in Dark Mode */
+html.dark ::-webkit-scrollbar-thumb {
+  background: #23334D;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #10B981;
+}
+
 

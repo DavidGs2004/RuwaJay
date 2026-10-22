@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Heart, Bed, Bath, Car, MapPin, CheckCircle, Sparkles, Ruler, ArrowLeftRight } from 'lucide-react';
 import { useFavorites } from '../../context/FavoritesContext';
 import { useCompare } from '../../context/CompareContext';
-import { formatPrice, formatDistance, calculateDistance } from '../../data/properties';
+import { formatPrice, formatDistance, calculateDistance, getPropertyCoordinates } from '../../data/properties';
 
 export default function PropertyCard({ property, userPosition = null, compact = false }) {
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -25,8 +25,9 @@ export default function PropertyCard({ property, userPosition = null, compact = 
   const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg` : rawSrc;
   const [imgSrc, setImgSrc] = useState(cleanInitialSrc);
 
-  const distance = userPosition
-    ? calculateDistance(userPosition.lat, userPosition.lng, property.coordinates?.lat, property.coordinates?.lng)
+  const coords = getPropertyCoordinates(property);
+  const distance = (userPosition?.lat && userPosition?.lng && coords)
+    ? calculateDistance(userPosition.lat, userPosition.lng, coords.lat, coords.lng)
     : null;
 
   const handleMouseMove = (e) => {

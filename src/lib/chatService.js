@@ -1,4 +1,4 @@
-import { collection, query, orderBy, onSnapshot, doc, writeBatch, setDoc, serverTimestamp, updateDoc, where, getDocs, deleteField } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, writeBatch, setDoc, serverTimestamp, updateDoc, where, getDocs, deleteField, increment, getDoc } from 'firebase/firestore';
 import { callBackend, usesServerOperations, usesSupabaseBackend } from './backendService';
 import { firebaseAuth, firestore, functions } from './firebase';
 import { conversationId, timestampMillis } from './contracts';
@@ -7,18 +7,23 @@ export const buildConversationId = conversationId;
 export function subscribeToMessages(roomId, onUpdate, onError = console.error) {
   if (!roomId || !firebaseAuth?.currentUser) { onUpdate([]); return () => {}; }
   return onSnapshot(query(collection(firestore, 'conversations', roomId, 'messages'), orderBy('createdAt','asc')),
-    snap => onUpdate(snap.docs.map(d => ({ ...d.data(), id: d.id,
-      timestamp: d.data().createdAt?.toDate?.().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) || '',
-    }))), onError);
+    snap => onUpdate(snap.docs.map(d => {
+      const data = d.data({ serverTimestamps: 'estimate' });
+      return {
+        ...data,
+        id: d.id,
+        timestamp: data.createdAt?.toDate?.().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) || '',
+      };
+    })), onError);
 }
 export function subscribeToConversations(userId, onUpdate, onError = console.error) {
   if (!userId) { onUpdate([]); return () => {}; }
   return onSnapshot(query(collection(firestore,'conversations'),where('participants','array-contains',userId)),
-    snap => onUpdate(snap.docs.filter(d=>!d.data().migratedTo && !d.data().archived).map(d => ({ ...d.data(),id:d.id })).sort((a,b) => timestampMillis(b.lastMessageTimestamp)-timestampMillis(a.lastMessageTimestamp))), onError);
+    snap => onUpdate(snap.docs.filter(d=>!d.data().migratedTo && !d.data().archived).map(d => ({ ...d.data({ serverTimestamps: 'estimate' }),id:d.id })).sort((a,b) => timestampMillis(b.lastMessageTimestamp)-timestampMillis(a.lastMessageTimestamp))), onError);
 }
 export function subscribeToConversation(roomId, userId, onUpdate, onError = console.error) {
   if (!roomId || !userId) return () => {};
-  return onSnapshot(doc(firestore,'conversations',roomId), snap => onUpdate(snap.exists()?{...snap.data(),id:snap.id}:null), onError);
+  return onSnapshot(doc(firestore,'conversations',roomId), snap => onUpdate(snap.exists()?{...snap.data({ serverTimestamps: 'estimate' }),id:snap.id}:null), onError);
 }
 export async function getOrCreateConversation(seekerId, ownerId, propertyId, propertyTitle = '') {
   if (!firebaseAuth?.currentUser) throw new Error('Debes iniciar sesión.');
@@ -56,14 +61,37 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
   // The gateway commits the message, summary and notification job together.
   // Direct writes remain available for installations without the gateway.
   if (usesSupabaseBackend) {
-    return (await callBackend('sendMessage', {
-      roomId, type, text: text || '',
-      ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
-      ...(mediaUrl ? { mediaUrl } : {}),
-      ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
-    }, { expectedUid: account.uid })).id;
+    try {
+      return (await callBackend('sendMessage', {
+        roomId, type, text: text || '',
+        ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
+        ...(mediaUrl ? { mediaUrl } : {}),
+        ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
+      }, { expectedUid: account.uid })).id;
+    } catch (err) {
+      console.warn('Backend sendMessage no disponible, usando Firestore directo:', err);
+    }
   }
   try {
+    let recipientIds = [];
+    if (extras.recipientId) {
+      recipientIds = [extras.recipientId];
+    } else if (Array.isArray(extras.participants) && extras.participants.length > 0) {
+      recipientIds = extras.participants.filter(p => p && p !== account.uid);
+    }
+    if (recipientIds.length === 0) {
+      try {
+        const convSnap = await getDoc(doc(firestore, 'conversations', roomId));
+        if (convSnap.exists()) {
+          const data = convSnap.data();
+          const p = data.participants || [data.seekerId, data.ownerId];
+          recipientIds = (p || []).filter(uid => uid && uid !== account.uid);
+        }
+      } catch (e) {
+        console.warn('Could not determine recipient for unread counter:', e);
+      }
+    }
+
     const messageRef = doc(collection(firestore, 'conversations', roomId, 'messages'));
     const batch = writeBatch(firestore);
     batch.set(messageRef, {
@@ -77,12 +105,20 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
       createdAt: serverTimestamp(),
       status: 'sent',
     });
-    batch.update(doc(firestore, 'conversations', roomId), {
+
+    const convUpdates = {
       lastMessage: text || (type === 'audio' ? '🎤 Audio' : type === 'video' ? '🎥 Video' : type === 'image' ? '📷 Foto' : 'Mensaje'),
       lastMessageTimestamp: serverTimestamp(),
       lastSenderId: account.uid,
+      lastSenderName: senderName || account.displayName || 'Usuario',
       lastMessageId: messageRef.id,
-    });
+      [`unreadCount.${account.uid}`]: 0,
+    };
+    for (const rId of recipientIds) {
+      convUpdates[`unreadCount.${rId}`] = increment(1);
+    }
+
+    batch.update(doc(firestore, 'conversations', roomId), convUpdates);
     await batch.commit();
     return messageRef.id;
   } catch (firestoreError) {
@@ -101,7 +137,22 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
 }
 export async function markConversationRead(roomId) {
   const uid = firebaseAuth?.currentUser?.uid;
-  if (uid && roomId) await updateDoc(doc(firestore,'conversations',roomId),{[`readAt.${uid}`]:serverTimestamp()});
+  if (!uid || !roomId) return;
+  try {
+    await updateDoc(doc(firestore, 'conversations', roomId), {
+      [`readAt.${uid}`]: serverTimestamp(),
+      [`unreadCount.${uid}`]: 0,
+    });
+  } catch (err) {
+    try {
+      await setDoc(doc(firestore, 'conversations', roomId), {
+        readAt: { [uid]: serverTimestamp() },
+        unreadCount: { [uid]: 0 }
+      }, { merge: true });
+    } catch (setErr) {
+      console.warn('No se pudo actualizar readAt en Firestore:', setErr);
+    }
+  }
 }
 export async function migrateConversationToEmailRoom(conversation) {
   return conversation.id; // Migration is an audited server operation, never a browser copy.

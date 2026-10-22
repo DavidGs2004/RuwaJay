@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "ruwa-jay"
-  }
+  },
+  "targets": {
+    "ruwa-jay": {
+      "storage": {
+        "default": [
+          "ruwa-jay.firebasestorage.app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

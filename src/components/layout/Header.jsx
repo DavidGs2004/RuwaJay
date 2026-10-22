@@ -3,13 +3,16 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu, X, User, PlusCircle, Search, MapPin, Home, Building,
   Compass, Mountain, Palmtree, Landmark, Settings, Heart, LogOut, ChevronDown,
-  MessageSquare, Calculator, Building2, Shield, Megaphone, Smartphone
+  MessageSquare, Calculator, Building2, Shield, Megaphone, Smartphone,
+  Sun, Moon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
+import { useTheme } from '../../context/ThemeContext';
 import { AVATAR_OPTIONS } from '../../data/avatars';
 import SystemUpdatesModal from '../ui/SystemUpdatesModal';
 import MobileAppConnectModal from '../ui/MobileAppConnectModal';
+import ThemeToggle from '../ui/ThemeToggle';
 import { subscribeToSystemUpdates } from '../../lib/adminService';
 
 /* ── Category tabs ── */
@@ -43,6 +46,7 @@ const propertyTypes = [
 export default function Header() {
   const { user, logout, isAdmin } = useAuth();
   const { totalUnreadCount } = useChat();
+  const { theme, toggleTheme, isDark } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUpdatesModal, setShowUpdatesModal] = useState(false);
@@ -303,6 +307,9 @@ export default function Header() {
               )}
             </Link>
 
+            {/* Mobile Theme Toggle Button */}
+            <ThemeToggle size="md" className="lg:hidden shrink-0" />
+
             {/* Center: Category tabs */}
             <div className="hidden min-w-0 flex-1 items-center justify-center gap-3 min-[1450px]:flex 2xl:gap-6">
               {categories.map(({ label, icon, type }) => (
@@ -372,6 +379,9 @@ export default function Header() {
                 <span>App Móvil</span>
                 <span className="h-2 w-2 rounded-full bg-jade animate-pulse" />
               </button>
+
+              {/* Desktop Theme Toggle Button */}
+              <ThemeToggle size="md" className="hidden lg:inline-flex shrink-0" />
 
               {user ? (
                 <div className="relative" ref={userMenuRef}>
@@ -529,6 +539,22 @@ export default function Header() {
                           <Settings size={17} className="text-[#717171]" />
                           Configuración
                         </Link>
+                        {/* Tema visual: Claro / Oscuro */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleTheme();
+                          }}
+                          className="flex w-full items-center justify-between px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3">
+                            {isDark ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} className="text-[#717171]" />}
+                            <span>{isDark ? 'Modo claro' : 'Modo oscuro'}</span>
+                          </div>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-forest/10 text-forest">
+                            {isDark ? '🌙 Oscuro' : '☀️ Claro'}
+                          </span>
+                        </button>
                       </div>
                       {/* Logout */}
                       <div className="border-t border-[#EBEBEB] py-1.5">
@@ -864,8 +890,8 @@ export default function Header() {
       </header>
 
       {/* Spacer to push content below fixed header */}
-      <div className={`hidden md:block transition-all duration-300 ${scrolled ? 'h-[158px]' : 'h-[162px]'}`} />
-      <div className="block md:hidden h-[72px]" />
+      <div className={`hidden lg:block transition-all duration-300 ${scrolled ? 'h-[158px]' : 'h-[162px]'}`} />
+      <div className="block lg:hidden h-[72px]" />
 
       {/* Mobile search and navigation sheet */}
       {mobileOpen && (

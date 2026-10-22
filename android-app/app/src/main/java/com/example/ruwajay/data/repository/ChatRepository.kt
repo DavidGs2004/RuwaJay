@@ -52,8 +52,12 @@ class ChatRepository(
             }
     fun markAsRead(roomId: String, onError: (Exception) -> Unit = {}) {
         val uid = auth.currentUser?.uid ?: return
-        firestore.collection("conversations").document(roomId).update("readAt.$uid", FieldValue.serverTimestamp())
-            .addOnFailureListener { onError(it) }
+        firestore.collection("conversations").document(roomId).update(
+            mapOf(
+                "readAt.$uid" to FieldValue.serverTimestamp(),
+                "unreadCount.$uid" to 0
+            )
+        ).addOnFailureListener { onError(it) }
     }
     fun sendText(roomId: String, text: String, replyTo: Map<String, Any>? = null, onResult: (Result<Unit>) -> Unit) {
         if (text.isBlank() || text.length > 4000) return onResult(Result.failure(Exception("Mensaje invalido.")))
@@ -66,15 +70,59 @@ class ChatRepository(
     }
     fun uploadMedia(roomId: String, uri: Uri, contentResolver: ContentResolver, type: String, caption: String? = null, replyTo: Map<String, Any>? = null, onResult: (Result<Unit>) -> Unit) {
         val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
-        val mime = contentResolver.getType(uri) ?: if (type == "audio") "audio/mp4" else if (type == "video") "video/mp4" else "image/jpeg"
-        RuwaBackend.upload("chat",uri,contentResolver,roomId=roomId,mime=mime,expectedUid=uid)
-            .addOnSuccessListener { url ->
-                val fallbackText = if (type == "audio") "Audio" else if (type == "video") "Video" else "Foto"
-                val displayText = if (!caption.isNullOrBlank()) caption.trim() else fallbackText
-                val payload = mutableMapOf<String, Any>("type" to type, "mediaUrl" to url, "text" to displayText)
-                if (replyTo != null) payload["replyTo"] = replyTo
-                addMessage(roomId, payload, onResult, uid)
-            }.addOnFailureListener { onResult(Result.failure(it)) }
+        var mime = (contentResolver.getType(uri) ?: if (type == "audio") "audio/mp4" else if (type == "video") "video/mp4" else "image/jpeg").substringBefore(';').lowercase().trim()
+        if (mime == "image/jpg") mime = "image/jpeg"
+        if (!mime.startsWith("image/") && !mime.startsWith("audio/") && !mime.startsWith("video/")) {
+            mime = if (type == "audio") "audio/mp4" else if (type == "video") "video/mp4" else "image/jpeg"
+        }
+        val ext = if (type == "audio") "m4a" else if (type == "video") "mp4" else "jpg"
+        val fallbackText = if (type == "audio") "Audio" else if (type == "video") "Video" else "Foto"
+        val displayText = if (!caption.isNullOrBlank()) caption.trim() else fallbackText
+
+        fun completeWithMessage(url: String) {
+            val payload = mutableMapOf<String, Any>("type" to type, "mediaUrl" to url, "text" to displayText)
+            if (replyTo != null) payload["replyTo"] = replyTo
+            addMessage(roomId, payload, onResult, uid)
+        }
+
+        fun uploadWithFirebaseStorage() {
+            try {
+                val bytes = if (uri.scheme == "file" || uri.scheme == null) {
+                    val path = uri.path ?: uri.toString().removePrefix("file://")
+                    val file = java.io.File(path)
+                    if (!file.exists()) return onResult(Result.failure(Exception("El archivo no existe.")))
+                    file.readBytes()
+                } else {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: return onResult(Result.failure(Exception("No se pudo abrir el archivo.")))
+                }
+                val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance().reference
+                    .child("chat/$roomId/$uid/${java.util.UUID.randomUUID()}.$ext")
+                val metadata = com.google.firebase.storage.StorageMetadata.Builder()
+                    .setContentType(mime)
+                    .build()
+                storageRef.putBytes(bytes, metadata)
+                    .addOnSuccessListener {
+                        storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                            completeWithMessage(downloadUri.toString())
+                        }.addOnFailureListener { onResult(Result.failure(it)) }
+                    }
+                    .addOnFailureListener { onResult(Result.failure(it)) }
+            } catch (e: Exception) {
+                onResult(Result.failure(e))
+            }
+        }
+
+        if (RuwaBackend.isConfigured) {
+            RuwaBackend.upload("chat", uri, contentResolver, roomId = roomId, mime = mime, expectedUid = uid)
+                .addOnSuccessListener { url ->
+                    completeWithMessage(url)
+                }.addOnFailureListener {
+                    uploadWithFirebaseStorage()
+                }
+        } else {
+            uploadWithFirebaseStorage()
+        }
     }
 
     fun editMessage(roomId: String, messageId: String, newText: String, onResult: (Result<Unit>) -> Unit) {
@@ -114,34 +162,62 @@ class ChatRepository(
         if (expectedUid != null && expectedUid != user.uid) {
             return onResult(Result.failure(Exception("La sesión cambió. Inténtalo con la cuenta actual.")))
         }
-        if (RuwaBackend.isConfigured) {
-            RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), user.uid)
-                .addOnSuccessListener { onResult(Result.success(Unit)) }
-                .addOnFailureListener { onResult(Result.failure(it)) }
-            return
-        }
-        val message = payload + mapOf(
-            "senderId" to user.uid,
-            "senderName" to (user.displayName ?: "Usuario"),
-            "createdAt" to FieldValue.serverTimestamp()
-        )
-        val roomRef = firestore.collection("conversations").document(roomId)
-        val messageRef = roomRef.collection("messages").document()
-        val batch = firestore.batch()
-        batch.set(messageRef, message)
-        batch.update(roomRef,
+
+        fun writeDirectlyToFirestore() {
+            val message = payload + mapOf(
+                "senderId" to user.uid,
+                "senderName" to (user.displayName ?: "Usuario"),
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            val roomRef = firestore.collection("conversations").document(roomId)
+            val messageRef = roomRef.collection("messages").document()
+            roomRef.get().addOnSuccessListener { roomSnap ->
+                val participants = (roomSnap.get("participants") as? List<*>)?.mapNotNull { it?.toString() }
+                    ?: listOfNotNull(roomSnap.getString("seekerId"), roomSnap.getString("ownerId"))
+                val updates = mutableMapOf<String, Any>(
+                    "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
+                    "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                    "lastSenderId" to user.uid,
+                    "lastSenderName" to (user.displayName ?: "Usuario"),
+                    "lastMessageId" to messageRef.id,
+                    "unreadCount.${user.uid}" to 0
+                )
+                for (pId in participants) {
+                    if (pId != user.uid) {
+                        updates["unreadCount.$pId"] = FieldValue.increment(1)
+                    }
+                }
+                val batch = firestore.batch()
+                batch.set(messageRef, message)
+                batch.update(roomRef, updates)
+                batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { onResult(Result.failure(it)) }
+            }.addOnFailureListener {
+                val batch = firestore.batch()
+                batch.set(messageRef, message)
+                batch.update(roomRef,
                     mapOf(
                         "lastMessage" to (payload["text"] as? String ?: "Archivo enviado"),
                         "lastMessageTimestamp" to FieldValue.serverTimestamp(),
                         "lastSenderId" to user.uid,
-                        "lastMessageId" to messageRef.id
+                        "lastSenderName" to (user.displayName ?: "Usuario"),
+                        "lastMessageId" to messageRef.id,
+                        "unreadCount.${user.uid}" to 0
                     )
-        )
-        batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }
-            .addOnFailureListener {
-                RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), expectedUid)
-                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                )
+                batch.commit().addOnSuccessListener { onResult(Result.success(Unit)) }
                     .addOnFailureListener { onResult(Result.failure(it)) }
             }
+        }
+
+        if (RuwaBackend.isConfigured) {
+            RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), user.uid)
+                .addOnSuccessListener { onResult(Result.success(Unit)) }
+                .addOnFailureListener {
+                    writeDirectlyToFirestore()
+                }
+        } else {
+            writeDirectlyToFirestore()
+        }
     }
 }

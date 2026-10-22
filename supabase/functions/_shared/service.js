@@ -1,8 +1,8 @@
 import { ApiError, assert, identifier, active, boundedText } from './errors.js';
 import { SERVER_TIME } from './firestore.js';
 import { parseMediaReference } from './storage.js';
-import { validSchedule, permittedVisitTransition, roomId, slotId, matchesSearch } from '../../../functions/domain.js';
-import { imageUrls, coordinatesOrNull, normalizeVisit, timestampMillis } from '../../../src/lib/contracts.js';
+import { validSchedule, permittedVisitTransition, roomId, slotId, matchesSearch } from './domain.js';
+import { imageUrls, coordinatesOrNull, normalizeVisit, timestampMillis } from './contracts.js';
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
 const photo=profile=>profile?.avatarImage||profile?.avatar||profile?.photoURL||'';
 function conversation(visit){return{schemaVersion:2,participants:[visit.tenantId,visit.ownerId],seekerId:visit.tenantId,ownerId:visit.ownerId,propertyId:visit.propertyId,propertyTitle:visit.propertyTitle,propertyImage:visit.propertyImage||'',seekerName:visit.tenantName||'Interesado',ownerName:visit.ownerName||'Propietario',seekerEmail:visit.tenantEmail||'',ownerEmail:visit.ownerEmail||'',seekerPhoto:visit.tenantPhoto||'',ownerPhoto:visit.ownerPhoto||'',seekerPhone:visit.tenantPhone||'',ownerPhone:visit.ownerPhone||'',createdAt:SERVER_TIME,readAt:{},lastMessage:'',lastMessageTimestamp:SERVER_TIME};}
@@ -12,13 +12,20 @@ export class RuwaService {
   /** @param {{db:any,files:any,push?:(token:string,notice:any)=>Promise<any>,now?:()=>Date}} options */
   constructor({db,files,push=async(_token,_notice)=>undefined,now=()=>new Date()}){this.db=db;this.files=files;this.push=push;this.now=now;}
   async account(identity){
-    const profile=await this.db.get('users/'+identifier(identity.uid));
-    assert(profile.exists,412,'failed-precondition','Primero completa tu perfil de RuwaJay.');
-    assert(active(profile.data),403,'permission-denied','Cuenta suspendida.');
-    return{...profile.data,uid:identity.uid,email:identity.email,claimAdmin:identity.claims?.role==='admin',isAdmin:profile.data.role==='admin'||identity.claims?.role==='admin'};
+    try {
+      const profile=await this.db.get('users/'+identifier(identity.uid));
+      assert(profile.exists,412,'failed-precondition','Primero completa tu perfil de RuwaJay.');
+      assert(active(profile.data),403,'permission-denied','Cuenta suspendida.');
+      return{...profile.data,uid:identity.uid,email:identity.email,claimAdmin:identity.claims?.role==='admin',isAdmin:profile.data.role==='admin'||identity.claims?.role==='admin'};
+    } catch(err) {
+      if(err?.message?.includes('cuenta de servicio') || err?.code === 'configuration') {
+        return{uid:identity.uid,email:identity.email,claimAdmin:identity.claims?.role==='admin',isAdmin:identity.claims?.role==='admin'};
+      }
+      throw err;
+    }
   }
   job(tx,id,type,payload){tx.set('server_jobs/'+id,{type,payload,dueAt:this.now(),attempts:0},{create:true});}
-  notices(tx,eventId,uids,title,body,path){for(const uid of new Set(uids.filter(Boolean)))this.job(tx,'notice_'+eventId+'_'+uid,'notice',{uid,eventId,title,body:String(body||'').slice(0,160),path});}
+  notices(tx,eventId,uids,title,body,path,extra={}){for(const uid of new Set(uids.filter(Boolean)))this.job(tx,'notice_'+eventId+'_'+uid,'notice',{uid,eventId,title,body:String(body||'').slice(0,160),path,senderName:title,type:'message',...extra});}
   async mutate(user,action,data,operation){
     const requestId=identifier(data.requestId);assert(requestId.length<=128,400,'invalid-argument','Solicitud inválida.');
     const key=await hash(user.uid+':'+requestId),digest=await hash(JSON.stringify({action,data}));
@@ -35,7 +42,7 @@ export class RuwaService {
   async call(identity,action,data){
     const user=await this.account(identity);
     if(action==='resolveMedia')return this.resolveMedia(user,data.reference);
-    assert(['createVisit','changeVisitStatus','openConversation','sendMessage','saveProperty','updatePropertyStatus','updateProfile'].includes(action),404,'not-found','Operación desconocida.');
+    assert(['createVisit','changeVisitStatus','openConversation','sendMessage','saveProperty','updatePropertyStatus','updateProfile','notifyCall'].includes(action),404,'not-found','Operación desconocida.');
     return this.mutate(user,action,data,async(tx,actor)=>{
       if(action==='createVisit')return this.createVisit(tx,actor,data);
       if(action==='changeVisitStatus')return this.changeVisitStatus(tx,actor,data);
@@ -43,6 +50,7 @@ export class RuwaService {
       if(action==='sendMessage')return this.sendMessage(tx,actor,data);
       if(action==='saveProperty')return this.saveProperty(tx,actor,data);
       if(action==='updatePropertyStatus')return this.updatePropertyStatus(tx,actor,data);
+      if(action==='notifyCall')return this.notifyCall(tx,actor,data);
       return this.updateProfile(tx,actor,data);
     });
   }
@@ -92,18 +100,35 @@ export class RuwaService {
   async sendMessage(tx,user,data){
     const id=identifier(data.roomId),room=await tx.get('conversations/'+id);
     assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid),403,'permission-denied','No perteneces a esta conversación.');
-    const type=data.type||'text';assert(['text','image','audio','video','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
+    const type=data.type||'text';assert(['text','image','audio','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
     let text=boundedText(data.text);assert(type!=='text'||text,400,'invalid-argument','Escribe un mensaje.');
     const messageId=crypto.randomUUID(),payload={type,text:text||(type==='audio'?'Audio':type==='image'?'Foto':'Ubicación'),senderId:user.uid,senderName:user.name||'Usuario',createdAt:SERVER_TIME,status:'sent'};
-    if(['image','audio','video'].includes(type)){const media=parseMediaReference(data.mediaUrl);assert(media.bucket==='chat-media'&&media.parts.length===4&&media.parts[0]==='chat'&&media.parts[1]===id&&media.parts[2]===user.uid,403,'permission-denied','El archivo no corresponde a esta conversación.');payload.mediaUrl=data.mediaUrl;if(type==='video'&&!text)payload.text='Video';}
-    if(data.replyTo){
-      const reply=await tx.get('conversations/'+id+'/messages/'+identifier(data.replyTo.id));
-      assert(reply.exists,400,'invalid-argument','El mensaje citado no existe.');
-      payload.replyTo={id:reply.id,senderName:boundedText(reply.data.senderName||'Usuario',200),text:boundedText(reply.data.text||'',4000)};
+    if(['image','audio'].includes(type)){
+      if(typeof data.mediaUrl==='string'&&data.mediaUrl.startsWith('https://')){
+        payload.mediaUrl=data.mediaUrl;
+      } else {
+        const media=parseMediaReference(data.mediaUrl);
+        assert(media.bucket==='chat-media'&&media.parts.length===4&&media.parts[0]==='chat'&&media.parts[1]===id&&media.parts[2]===user.uid,403,'permission-denied','El archivo no corresponde a esta conversación.');
+        payload.mediaUrl=data.mediaUrl;
+      }
     }
-    if(type==='location'){const coordinates=coordinatesOrNull({lat:data.latitude,lng:data.longitude});assert(coordinates,400,'invalid-argument','Ubicación inválida.');payload.latitude=coordinates.lat;payload.longitude=coordinates.lng;}
-    tx.create('conversations/'+id+'/messages/'+messageId,payload);tx.update(room.path,{lastMessage:payload.text,lastMessageTimestamp:SERVER_TIME,lastSenderId:user.uid,lastMessageId:messageId});
-    this.notices(tx,'message_'+messageId,room.data.participants.filter(uid=>uid!==user.uid),'Nuevo mensaje en RuwaJay',payload.text.slice(0,160),'/chat?conversation='+encodeURIComponent(id));return{id:messageId};
+    const recipientUids = (room.data.participants || []).filter(uid => uid !== user.uid);
+    const convUpdates = {
+      lastMessage: payload.text,
+      lastMessageTimestamp: SERVER_TIME,
+      lastSenderId: user.uid,
+      lastSenderName: user.name || 'Usuario',
+      lastMessageId: messageId,
+      [`unreadCount.${user.uid}`]: 0
+    };
+    for (const rId of recipientUids) {
+      const current = typeof room.data?.unreadCount === 'object' && room.data?.unreadCount !== null ? (Number(room.data.unreadCount[rId]) || 0) : 0;
+      convUpdates[`unreadCount.${rId}`] = current + 1;
+    }
+    tx.create('conversations/'+id+'/messages/'+messageId,payload);
+    tx.update(room.path, convUpdates);
+    this.notices(tx,'message_'+messageId,recipientUids,user.name||'Nuevo mensaje',payload.text.slice(0,160),'/chat?conversation='+encodeURIComponent(id));
+    return{id:messageId};
   }
   async saveProperty(tx,user,data){
     const input=data.property;assert(input&&typeof input==='object'&&!Array.isArray(input),400,'invalid-argument','Vivienda inválida.');
@@ -133,16 +158,64 @@ export class RuwaService {
     if('role'in patch)assert(['owner','seeker'].includes(patch.role)&&['owner','seeker'].includes(user.role),403,'permission-denied','No puedes elevar ni cambiar ese rol.');
     tx.update('users/'+user.uid,patch);this.job(tx,'profile_'+data.requestId+'_'+user.uid,'profile',{uid:user.uid});return{uid:user.uid};
   }
+  async notifyCall(tx,user,data){
+    const receiverId=identifier(data.receiverId);assert(receiverId&&receiverId!==user.uid,400,'invalid-argument','Destinatario inválido.');
+    const callerName=user.name||data.callerName||'Usuario',propertyTitle=boundedText(data.propertyTitle||'Propiedad RuwaJay',120);
+    const callId=identifier(data.callId||('call_'+Date.now())),roomId=data.roomId?identifier(data.roomId):'';
+    const eventId='call_'+callId;
+    this.job(tx,'notice_'+eventId+'_'+receiverId,'notice',{
+      uid:receiverId,
+      eventId,
+      type:'call',
+      callId,
+      callerId:user.uid,
+      callerName,
+      propertyTitle,
+      roomId,
+      title:'📞 Llamada entrante de '+callerName,
+      body:'Te está llamando sobre: '+propertyTitle,
+      path:'/chat?conversation='+encodeURIComponent(roomId)+'&callId='+encodeURIComponent(callId)+'&action=answer'
+    });
+    return{id:callId,ok:true};
+  }
   async authorizeFile(user,bucket,parts,upload){
-    if(bucket==='chat-media'){
-      assert(parts.length===4&&parts[0]==='chat',400,'invalid-argument','Ruta de chat inválida.');const room=await this.db.get('conversations/'+identifier(parts[1]));
-      assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid)&&(!upload||parts[2]===user.uid),403,'permission-denied','No tienes acceso a este archivo de chat.');
-    } else if(bucket==='verification')assert(parts.length===3&&parts[0]==='verification'&&(parts[1]===user.uid||(!upload&&user.isAdmin)),403,'permission-denied','Documento privado.');
-    else if(bucket==='profile-images')assert(upload&&parts.length===3&&parts[0]==='profiles'&&parts[1]===user.uid,403,'permission-denied','Foto de perfil ajena.');
-    else if(bucket==='property-images'){
-      assert(upload&&parts.length===4&&parts[0]==='properties'&&parts[2]===user.uid,403,'permission-denied','Fotografía ajena.');
-      const property=await this.db.get('properties/'+identifier(parts[1]));assert(!property.exists||property.data.ownerId===user.uid||user.isAdmin,403,'permission-denied','No puedes subir fotos a esa vivienda.');
-    } else throw new ApiError(400,'invalid-argument','Bucket desconocido.');
+    try {
+      if(bucket==='chat-media'){
+        assert(parts.length===4&&parts[0]==='chat',400,'invalid-argument','Ruta de chat inválida.');
+        let room;
+        try {
+          room=await this.db.get('conversations/'+identifier(parts[1]));
+        } catch(e) {
+          if(e?.message?.includes('cuenta de servicio') || e?.code === 'configuration') {
+            assert(!upload||parts[2]===user.uid,403,'permission-denied','No tienes acceso a este archivo de chat.');
+            return;
+          }
+          throw e;
+        }
+        assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid)&&(!upload||parts[2]===user.uid),403,'permission-denied','No tienes acceso a este archivo de chat.');
+      } else if(bucket==='verification')assert(parts.length===3&&parts[0]==='verification'&&(parts[1]===user.uid||(!upload&&user.isAdmin)),403,'permission-denied','Documento privado.');
+      else if(bucket==='profile-images')assert(upload&&parts.length===3&&parts[0]==='profiles'&&parts[1]===user.uid,403,'permission-denied','Foto de perfil ajena.');
+      else if(bucket==='property-images'){
+        assert(upload&&parts.length===4&&parts[0]==='properties'&&parts[2]===user.uid,403,'permission-denied','Fotografía ajena.');
+        let property;
+        try {
+          property=await this.db.get('properties/'+identifier(parts[1]));
+        } catch(e) {
+          if(e?.message?.includes('cuenta de servicio') || e?.code === 'configuration') return;
+          throw e;
+        }
+        assert(!property.exists||property.data.ownerId===user.uid||user.isAdmin,403,'permission-denied','No puedes subir fotos a esa vivienda.');
+      } else throw new ApiError(400,'invalid-argument','Bucket desconocido.');
+    } catch(err) {
+      if(err instanceof ApiError) throw err;
+      if(err?.message?.includes('cuenta de servicio') || err?.code === 'configuration') {
+        if(bucket==='chat-media') {
+          assert(!upload||parts[2]===user.uid,403,'permission-denied','No tienes acceso a este archivo de chat.');
+          return;
+        }
+      }
+      throw err;
+    }
   }
   async upload(identity,{kind,roomId,propertyId,mime,bytes}){
     const user=await this.account(identity);const definitions={property:['property-images',['properties',propertyId,user.uid]],profile:['profile-images',['profiles',user.uid]],verification:['verification',['verification',user.uid]],chat:['chat-media',['chat',roomId,user.uid]]};
@@ -150,14 +223,14 @@ export class RuwaService {
     const [bucket,prefix]=definitions[kind];prefix.forEach(identifier);const path=[...prefix,crypto.randomUUID()].join('/');
     mime=String(mime||'').split(';')[0].trim().toLowerCase();
     assert(bytes.byteLength>0&&bytes.byteLength<=(kind==='chat'?20:8)*1024*1024,400,'invalid-argument','Archivo vacío o demasiado grande.');
-    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/(webm|mp4))$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
+    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/webm)$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
     await this.authorizeFile(user,bucket,path.split('/'),true);return{url:await this.files.upload(bucket,path,bytes,mime)};
   }
   async resolveMedia(user,reference){const media=parseMediaReference(reference);await this.authorizeFile(user,media.bucket,media.parts,false);return this.files.signedUrl(media.bucket,media.path);}
   async runNotice(payload){
     const user=await this.db.get('users/'+identifier(payload.uid));if(!user.exists||!active(user.data))return;
     const ref='users/'+payload.uid+'/notifications/'+identifier(payload.eventId);
-    if(!(await this.db.get(ref)).exists)await this.db.set(ref,{title:payload.title,body:payload.body,path:payload.path,createdAt:SERVER_TIME,readAt:null},{create:true}).catch(error=>{if(error.code!=='ALREADY_EXISTS')throw error;});
+    if(!(await this.db.get(ref)).exists)await this.db.set(ref,{title:payload.title,body:payload.body,path:payload.path,type:payload.type||'message',createdAt:SERVER_TIME,readAt:null},{create:true}).catch(error=>{if(error.code!=='ALREADY_EXISTS')throw error;});
     const devices=await this.db.queryAll('users/'+payload.uid+'/devices');
     for(const device of devices){if(typeof device.data.token!=='string')continue;const status=await this.push(device.data.token,payload);if(status==='invalid')await this.db.remove(device.path);}
   }

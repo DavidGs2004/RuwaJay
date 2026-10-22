@@ -28,9 +28,15 @@ export function normalizeVisit(value) {
 }
 
 export function timestampMillis(value) {
-  if (value?.toMillis) return value.toMillis();
-  if (typeof value === 'number') return value;
-  return Date.parse(value || '') || 0;
+  if (!value) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (typeof value?.toDate === 'function') return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value?.seconds === 'number') return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+  if (typeof value?._seconds === 'number') return value._seconds * 1000 + Math.floor((value._nanoseconds || 0) / 1000000);
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function unreadConversation(conversation, uid) {

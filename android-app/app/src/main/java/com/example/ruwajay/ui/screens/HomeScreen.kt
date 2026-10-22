@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocationOn
@@ -34,10 +37,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +63,7 @@ import com.example.ruwajay.ui.theme.BrandCrema
 import com.example.ruwajay.ui.theme.BrandCremaDark
 import com.example.ruwajay.ui.theme.BrandForest
 import com.example.ruwajay.ui.theme.BrandForestDark
+import com.example.ruwajay.ui.theme.BrandGold
 import com.example.ruwajay.ui.theme.BrandGoldMuted
 import com.example.ruwajay.ui.theme.BrandJade
 import com.example.ruwajay.ui.theme.BrandTextPrimary
@@ -93,91 +99,105 @@ fun HomeScreen(
     val featuredProperties = rememberProperties().filter { it.status == "disponible" }
     val systemUpdates = rememberSystemUpdates(includeInactive = false)
 
+    val bannerDrawables = listOf(
+        R.drawable.banner_1,
+        R.drawable.banner_2,
+        R.drawable.banner_3,
+        R.drawable.banner_4,
+        R.drawable.banner_5
+    )
+    val pagerState = rememberPagerState(pageCount = { bannerDrawables.size })
+
+    LaunchedEffect(pagerState) {
+        while (true) {
+            delay(5000)
+            val nextPage = (pagerState.currentPage + 1) % bannerDrawables.size
+            pagerState.animateScrollToPage(nextPage)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(BrandCrema),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        // ── HERO HEADER ──────────────────────────────────────────
+        // ── TOP APP BAR ──────────────────────────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_logo),
+                    contentDescription = "Logo RuwaJay",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "RuwaJay",
+                        color = BrandForestDark,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 22.sp
+                    )
+                    Text(
+                        text = "Tu hogar en Guatemala 🇬🇹",
+                        color = BrandGold,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // ── HERO BANNER CAROUSEL ─────────────────────────────────
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .aspectRatio(2062f / 763f)
             ) {
-                // Imagen hero igual que la web
-                Image(
-                    painter = painterResource(id = R.drawable.hero_banner),
-                    contentDescription = "Banner RuwaJay",
-                    contentScale = ContentScale.Crop,
+                // Carrusel de imágenes que se adapta a cualquier tamaño de pantalla
+                HorizontalPager(
+                    state = pagerState,
                     modifier = Modifier.fillMaxSize()
-                )
-                // Overlay degradado oscuro para legibilidad del texto
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    BrandForestDark.copy(alpha = 0.72f),
-                                    BrandForest.copy(alpha = 0.55f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                )
-                // Contenido sobre la imagen
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 24.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // App name con logo
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_logo),
-                            contentDescription = "Logo RuwaJay",
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "RuwaJay",
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp
-                            )
-                            Text(
-                                text = "Tu hogar en Guatemala 🇬🇹",
-                                color = BrandGoldMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
+                ) { page ->
+                    Image(
+                        painter = painterResource(id = bannerDrawables[page]),
+                        contentDescription = "Banner RuwaJay ${page + 1}",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
-                    // Headline
-                    Column {
-                        Text(
-                            text = "Encuentra tu hogar",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp
+                // Indicadores de página (dots) discretos en la parte inferior
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 6.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.38f),
+                            shape = RoundedCornerShape(12.dp)
                         )
-                        Text(
-                            text = "para vivir indefinidamente",
-                            color = BrandGoldMuted,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Busca casas para alquilar de forma indefinida",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 12.sp
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    bannerDrawables.indices.forEach { index ->
+                        val isSelected = pagerState.currentPage == index
+                        Box(
+                            modifier = Modifier
+                                .height(4.dp)
+                                .width(if (isSelected) 18.dp else 5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    if (isSelected) Color.White else Color.White.copy(alpha = 0.5f)
+                                )
                         )
                     }
                 }
@@ -189,10 +209,9 @@ fun HomeScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .offset(y = (-20).dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp),
                 shape = RoundedCornerShape(20.dp),
-                shadowElevation = 8.dp,
+                shadowElevation = 4.dp,
                 color = Color.White
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {

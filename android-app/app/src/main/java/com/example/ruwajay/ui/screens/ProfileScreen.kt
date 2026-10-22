@@ -57,7 +57,6 @@ fun ProfileScreen(
     var userData by remember { mutableStateOf<Map<String, Any>?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var favoriteIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var chatsCount by remember { mutableStateOf(0) }
 
     DisposableEffect(Unit) {
         val authListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
@@ -65,7 +64,6 @@ fun ProfileScreen(
             if (firebaseAuth.currentUser == null) {
                 userData = null
                 favoriteIds = emptyList()
-                chatsCount = 0
                 isLoading = false
             }
         }
@@ -76,7 +74,6 @@ fun ProfileScreen(
     DisposableEffect(currentUser?.uid) {
         var listener: ListenerRegistration? = null
         var favListener: ListenerRegistration? = null
-        var chatListener: ListenerRegistration? = null
 
         if (currentUser != null) {
             isLoading = true
@@ -97,25 +94,15 @@ fun ProfileScreen(
                         favoriteIds = snapshot.documents.map { it.id }
                     }
                 }
-
-            chatListener = firestore.collection("conversations")
-                .whereArrayContains("participants", uid)
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null) {
-                        chatsCount = snapshot.size()
-                    }
-                }
         } else {
             isLoading = false
             userData = null
             favoriteIds = emptyList()
-            chatsCount = 0
         }
 
         onDispose {
             listener?.remove()
             favListener?.remove()
-            chatListener?.remove()
         }
     }
 
@@ -136,13 +123,6 @@ fun ProfileScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Mi Cuenta - RuwaJay", color = BrandTextPrimary, fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = onInboxClick) {
-                        BadgeBox(count = chatsCount) {
-                            Icon(Icons.Default.Chat, contentDescription = "Mensajes", tint = BrandForest)
-                        }
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },

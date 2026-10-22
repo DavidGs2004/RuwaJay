@@ -22,9 +22,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
+    allowedHosts: true,
     port: 5173,
     watch: {
-      ignored: ['**/android-app/**'],
+      ignored: ['**/android-app/**', '**/*.exe', '**/cloudflared*'],
     },
     headers: {
       'X-Content-Type-Options': 'nosniff',

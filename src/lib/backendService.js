@@ -26,7 +26,8 @@ export async function uploadBackendMedia(kind,source,{roomId,propertyId,expected
   const blob=source instanceof Blob?source:await(await fetch(source)).blob();
   if(!blob.size||blob.size>(kind==='chat'?20:8)*1024*1024)throw new Error('El archivo está vacío o supera el tamaño permitido.');
   const url=new URL(backendUrl+'/upload');url.searchParams.set('kind',kind);if(roomId)url.searchParams.set('roomId',roomId);if(propertyId)url.searchParams.set('propertyId',propertyId);
-  const result=await authorizedRequest(url,{method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob},uid);return result.url;
+  const contentType = blob.type || (kind === 'chat' ? 'audio/webm' : 'application/octet-stream');
+  const result=await authorizedRequest(url,{method:'POST',headers:{'Content-Type':contentType},body:blob},uid);return result.url;
 }
 const mediaCache = new Map();
 export function getCachedMediaUrl(reference) {
@@ -37,7 +38,14 @@ export function getCachedMediaUrl(reference) {
 export async function resolveMediaUrl(reference){
   if(!reference?.startsWith('supabase://'))return reference;
   if(mediaCache.has(reference)) return mediaCache.get(reference);
-  const url = (await callBackend('resolveMedia',{reference})).url;
-  if (url) mediaCache.set(reference, url);
-  return url;
+  try {
+    const res = await callBackend('resolveMedia',{reference});
+    const url = res?.url || null;
+    if (url) mediaCache.set(reference, url);
+    return url;
+  } catch (err) {
+    mediaCache.set(reference, null);
+    setTimeout(() => { mediaCache.delete(reference); }, 30000);
+    throw err;
+  }
 }

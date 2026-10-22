@@ -823,15 +823,33 @@ export const quickReplies = [
   'Me gustaría agendar una visita',
 ];
 
+// Utility: Safely extract valid coordinates from any property object
+export function getPropertyCoordinates(property) {
+  if (!property) return null;
+  const coords = property.coordinates || property.location?.mapCoordinates;
+  if (!coords) return null;
+  const lat = Number(coords.lat ?? coords.latitude);
+  const lng = Number(coords.lng ?? coords.longitude);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat, lng };
+}
+
 // Utility: calculate distance between two coordinates (Haversine)
 export function calculateDistance(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null;
+  const nLat1 = Number(lat1);
+  const nLng1 = Number(lng1);
+  const nLat2 = Number(lat2);
+  const nLng2 = Number(lng2);
+  if (!isFinite(nLat1) || !isFinite(nLng1) || !isFinite(nLat2) || !isFinite(nLng2)) return null;
+
   const R = 6371; // Earth radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const dLat = ((nLat2 - nLat1) * Math.PI) / 180;
+  const dLng = ((nLng2 - nLng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
+    Math.cos((nLat1 * Math.PI) / 180) *
+      Math.cos((nLat2 * Math.PI) / 180) *
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
@@ -847,6 +865,7 @@ export function formatPrice(price) {
 
 // Format distance
 export function formatDistance(km) {
+  if (km == null || !isFinite(km)) return '';
   if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(1)} km`;
 }

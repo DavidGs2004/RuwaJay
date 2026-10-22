@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { firestore, firebaseWebEnabled, firebaseAuth } from './firebase';
 import { publishRealtimeEvent, subscribeRealtimeEvents } from './realtimeService';
+import { callBackend } from './backendService';
 
 const optionalTurnServer = import.meta.env.VITE_TURN_URL ? {
   urls: import.meta.env.VITE_TURN_URL.split(',').map((url) => url.trim()).filter(Boolean),
@@ -483,6 +484,18 @@ export async function createCallSession(callData) {
       } catch (convErr) {
         console.warn('Error guardando llamada en conversations:', convErr);
       }
+    }
+
+    // Notificar al receptor vía push para que suene aunque tenga la app móvil cerrada
+    const targetReceiverId = cleanCall.receiverId || (Array.isArray(cleanCall.receiverIds) ? cleanCall.receiverIds[0] : null);
+    if (targetReceiverId) {
+      callBackend('notifyCall', {
+        receiverId: targetReceiverId,
+        callId,
+        callerName: cleanCall.callerName || firebaseAuth?.currentUser?.displayName || 'Usuario',
+        propertyTitle: cleanCall.propertyTitle || 'Propiedad RuwaJay',
+        roomId: cleanCall.roomId || ''
+      }).catch(err => console.warn('Aviso push de llamada omitido o fallido:', err));
     }
   }
 

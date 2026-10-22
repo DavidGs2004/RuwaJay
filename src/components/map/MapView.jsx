@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Link } from 'react-router-dom';
@@ -62,8 +62,46 @@ function MapController({ center, zoom, focusCoordinates }) {
   return null;
 }
 
+// Street-level zoom used when the user clicks a property on the map
+const PROPERTY_FOCUS_ZOOM = 17;
+
+// Exposes the Leaflet map instance to the parent and handles clicks on empty map areas
+function MapBridge({ onReady, onMapClick }) {
+  const map = useMap();
+  useEffect(() => { onReady(map); }, [map, onReady]);
+  useMapEvents({
+    click: (e) => onMapClick?.(e),
+  });
+  return null;
+}
+
 export default function MapView({ properties = [], userPosition, radarRadius, radarActive, focusCoordinates }) {
   const [selectedProperty, setSelectedProperty] = useState(null);
+  const mapRef = useRef(null);
+  const markerRefs = useRef({});
+
+  const handleMapReady = useCallback((map) => { mapRef.current = map; }, []);
+
+  /**
+   * Fly to a property at street-level zoom. The map is centered slightly
+   * below the marker so the popup (which opens above the pin) stays visible.
+   */
+  const focusProperty = useCallback((prop, lat, lng) => {
+    const map = mapRef.current;
+    if (!map) return;
+    setSelectedProperty(prop);
+
+    const zoom = Math.max(map.getZoom(), PROPERTY_FOCUS_ZOOM);
+    const mapHeight = map.getSize().y;
+    const verticalOffset = Math.min(140, mapHeight * 0.3);
+    const markerPoint = map.project([lat, lng], zoom);
+    const target = map.unproject(markerPoint.subtract([0, verticalOffset]), zoom);
+
+    map.flyTo(target, zoom, { duration: 1.1 });
+    map.once('moveend', () => {
+      markerRefs.current[prop.id]?.openPopup();
+    });
+  }, []);
   const { isFavorite, toggleFavorite } = useFavorites();
 
   const userLocationIcon = useMemo(() => {
@@ -105,6 +143,19 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
           center={defaultCenter}
           zoom={userPosition ? 13 : 11}
           focusCoordinates={focusCoordinates}
+        />
+
+        <MapBridge
+          onReady={handleMapReady}
+          onMapClick={() => {
+            // On a single-property map (detail page), clicking anywhere zooms to the home
+            if (properties.length !== 1) return;
+            if ((mapRef.current?.getZoom() ?? 0) >= PROPERTY_FOCUS_ZOOM) return;
+            const only = properties[0];
+            const lat = Number(only.coordinates?.lat ?? only.location?.mapCoordinates?.lat);
+            const lng = Number(only.coordinates?.lng ?? only.location?.mapCoordinates?.lng);
+            if (!isNaN(lat) && !isNaN(lng)) focusProperty(only, lat, lng);
+          }}
         />
 
         {/* User location marker & radar circle */}
@@ -152,13 +203,14 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
           return (
             <Marker
               key={prop.id}
+              ref={(ref) => { if (ref) markerRefs.current[prop.id] = ref; }}
               position={[propLat, propLng]}
               icon={createCustomIcon(prop.type, prop.price, isSelected)}
               eventHandlers={{
-                click: () => setSelectedProperty(prop),
+                click: () => focusProperty(prop, propLat, propLng),
               }}
             >
-              <Popup>
+              <Popup autoPan={false}>
                 <div className="max-w-full p-0" style={{ width: 'min(16rem, calc(100vw - 4rem))' }}>
                   <div className="relative aspect-video rounded-t-xl overflow-hidden bg-crema">
                     <img

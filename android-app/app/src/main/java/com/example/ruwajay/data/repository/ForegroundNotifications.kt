@@ -8,8 +8,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
 
-/** Live alerts while the activity exists; FCM supplies alerts when the app is closed. */
-fun observeForegroundNotifications(context: Context, uid: String, isVisible: () -> Boolean): () -> Unit {
+/** Live alerts for incoming messages and system notices. Shows notifications whenever the user is not actively inside that specific chat room. */
+fun observeForegroundNotifications(
+    context: Context,
+    uid: String,
+    isViewingRoom: (String) -> Boolean
+): () -> Unit {
     val db = FirebaseFirestore.getInstance()
     val tracker = IncomingMessageTracker(uid)
     val messages = db.collection("conversations").whereArrayContains("participants", uid)
@@ -20,14 +24,32 @@ fun observeForegroundNotifications(context: Context, uid: String, isVisible: () 
                 it.getString("migratedTo") == null && it.getBoolean("archived") != true
             }.map {
                 val readAt = (it.get("readAt") as? Map<*, *>)?.get(uid) as? Timestamp
-                IncomingMessage(it.id, it.getString("lastMessageId") ?: "",
+                val senderName = it.getString("lastSenderName")
+                    ?: (if (it.getString("ownerId") == uid) it.getString("seekerName") else it.getString("ownerName"))
+                    ?: it.getString("participantName")
+                    ?: it.getString("otherUserName")
+                    ?: it.getString("propertyTitle")?.takeIf(String::isNotBlank)
+                    ?: "Nuevo mensaje"
+                IncomingMessage(
+                    it.id,
+                    it.getString("lastMessageId") ?: "",
                     it.getTimestamp("lastMessageTimestamp")?.toDate()?.time ?: 0L,
-                    it.getString("lastSenderId") ?: "", readAt?.toDate()?.time ?: 0L,
+                    it.getString("lastSenderId") ?: "",
+                    readAt?.toDate()?.time ?: 0L,
                     it.getString("lastMessage") ?: "Nuevo mensaje",
-                    it.getString("propertyTitle")?.takeIf(String::isNotBlank) ?: "Nuevo mensaje en RuwaJay")
+                    senderName
+                )
             })
-            if (isVisible()) incoming.forEach {
-                RuwaNotifications.show(context, it.title, it.body, "/chat?conversation=${android.net.Uri.encode(it.roomId)}", it.eventId)
+            incoming.forEach {
+                if (!isViewingRoom(it.roomId)) {
+                    RuwaNotifications.show(
+                        context,
+                        it.title,
+                        it.body,
+                        "/chat?conversation=${android.net.Uri.encode(it.roomId)}",
+                        it.eventId
+                    )
+                }
             }
         }
     var seenNotices: Set<String>? = null
@@ -37,9 +59,16 @@ fun observeForegroundNotifications(context: Context, uid: String, isVisible: () 
             if (snapshot == null || snapshot.metadata.isFromCache || FirebaseAuth.getInstance().currentUser?.uid != uid) return@addSnapshotListener
             val previous = seenNotices
             seenNotices = snapshot.documents.map { it.id }.toSet()
-            if (previous != null && isVisible()) snapshot.documents.filter { it.id !in previous && it.get("readAt") == null }.forEach {
-                RuwaNotifications.show(context, it.getString("title") ?: "RuwaJay", it.getString("body") ?: "",
-                    it.getString("path") ?: "/perfil", it.id)
+            if (previous != null) {
+                snapshot.documents.filter { it.id !in previous && it.get("readAt") == null }.forEach {
+                    RuwaNotifications.show(
+                        context,
+                        it.getString("title") ?: "RuwaJay",
+                        it.getString("body") ?: "",
+                        it.getString("path") ?: "/perfil",
+                        it.id
+                    )
+                }
             }
         }
     return { messages.remove(); notices.remove() }

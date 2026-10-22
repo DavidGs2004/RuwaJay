@@ -10,6 +10,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.example.ruwajay.data.repository.NotificationRepository
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.Timestamp
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -26,12 +28,23 @@ import com.example.ruwajay.ui.navigation.Screen
 import com.example.ruwajay.ui.theme.RuwaJayTheme
 import org.osmdroid.config.Configuration
 import java.io.File
-
 import androidx.compose.foundation.layout.consumeWindowInsets
+import com.example.ruwajay.data.repository.CallRequestBus
 
 class MainActivity : ComponentActivity() {
     private var notificationPath by mutableStateOf<String?>(null)
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); notificationPath = intent.getStringExtra("path") }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val path = intent.getStringExtra("path") ?: intent.getStringExtra("conversationId")?.let { "/chat?conversation=$it" }
+        notificationPath = path
+
+        val incomingCallId = intent.getStringExtra("callId")
+        if (!incomingCallId.isNullOrBlank()) {
+            CallRequestBus.notifyIncomingPush(incomingCallId)
+            RuwaNotifications.cancel(this, "call_$incomingCallId")
+        }
+    }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
@@ -57,13 +70,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        notificationPath = intent.getStringExtra("path")
-        if (android.os.Build.VERSION.SDK_INT >= 26) {
+        val initialPath = intent.getStringExtra("path") ?: intent.getStringExtra("conversationId")?.let { "/chat?conversation=$it" }
+        notificationPath = initialPath
 
+        val incomingCallId = intent.getStringExtra("callId")
+        if (!incomingCallId.isNullOrBlank()) {
+            CallRequestBus.notifyIncomingPush(incomingCallId)
+            RuwaNotifications.cancel(this, "call_$incomingCallId")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+            }
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
             RuwaMessagingService.ensureNotificationChannel(this)
         }
 
         enableEdgeToEdge()
+        checkAndRequestNotificationPermission()
 
         // Ejecutar inicialización y purga de caché de OSM en segundo plano para no demorar el primer cuadro de la app
         kotlin.concurrent.thread(name = "osm-init") {
@@ -96,34 +121,101 @@ class MainActivity : ComponentActivity() {
             RuwaJayTheme {
                 val navController = rememberNavController()
                 var currentUid by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser?.uid) }
+                var unreadMessagesCount by remember { mutableStateOf(0) }
+
                 DisposableEffect(Unit) {
-                    val listener=FirebaseAuth.AuthStateListener {auth->
-                        currentUid=auth.currentUser?.uid
-                        if(currentUid!=null) checkAndRequestNotificationPermission()
+                    val listener = FirebaseAuth.AuthStateListener { auth ->
+                        currentUid = auth.currentUser?.uid
+                        if (currentUid != null) checkAndRequestNotificationPermission()
                     }
                     FirebaseAuth.getInstance().addAuthStateListener(listener)
-                    onDispose {FirebaseAuth.getInstance().removeAuthStateListener(listener)}
+                    onDispose { FirebaseAuth.getInstance().removeAuthStateListener(listener) }
                 }
+
+                // Contador de mensajes no leídos para el badge en la barra inferior
                 DisposableEffect(currentUid) {
+                    val uid = currentUid
+                    if (uid == null) {
+                        unreadMessagesCount = 0
+                        return@DisposableEffect onDispose {}
+                    }
+                    val listener = FirebaseFirestore.getInstance()
+                        .collection("conversations")
+                        .whereArrayContains("participants", uid)
+                        .addSnapshotListener { snapshot, error ->
+                            if (error != null || snapshot == null) return@addSnapshotListener
+                            val totalUnread = snapshot.documents.sumOf { doc ->
+                                if (doc.getString("migratedTo") != null || doc.getBoolean("archived") == true) return@sumOf 0
+                                val lastSenderId = doc.getString("lastSenderId")
+                                val lastMessageTimestamp = doc.getTimestamp("lastMessageTimestamp")?.toDate()?.time ?: 0L
+                                val readAtMap = doc.get("readAt") as? Map<*, *>
+                                val readAtTime = (readAtMap?.get(uid) as? Timestamp)?.toDate()?.time ?: 0L
+
+                                val isFromOther = lastSenderId != null && lastSenderId != uid
+                                val isTimestampUnread = isFromOther && lastMessageTimestamp > readAtTime
+
+                                val unreadMap = doc.get("unreadCount") as? Map<*, *>
+                                val countInMap = (unreadMap?.get(uid) as? Number)?.toInt()
+                                val unreadCountsMap = doc.get("unreadCounts") as? Map<*, *>
+                                val countInCountsMap = (unreadCountsMap?.get(uid) as? Number)?.toInt()
+                                val directCount = (doc.get("unreadCount") as? Number)?.toInt()
+
+                                val rawCount = countInMap ?: countInCountsMap ?: directCount ?: 0
+                                if (rawCount > 0) rawCount else if (isTimestampUnread) 1 else 0
+                            }
+                            unreadMessagesCount = totalUnread
+                        }
+                    onDispose { listener.remove() }
+                }
+
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route
+                val activeConversationId = if (currentRoute?.startsWith("chat/") == true) {
+                    navBackStackEntry?.arguments?.getString("conversationId")
+                } else null
+
+                // Notificaciones con sonido cuando llega un mensaje y el usuario no está en ese chat o salió de la app
+                DisposableEffect(currentUid, activeConversationId) {
                     val stop = currentUid?.let { uid ->
-                        com.example.ruwajay.data.repository.observeForegroundNotifications(applicationContext, uid) {
-                            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                        com.example.ruwajay.data.repository.observeForegroundNotifications(applicationContext, uid) { roomId ->
+                            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && activeConversationId == roomId
                         }
                     }
                     onDispose { stop?.invoke() }
                 }
-                LaunchedEffect(notificationPath,currentUid) {
-                    val path=notificationPath ?: return@LaunchedEffect
-                    if (FirebaseAuth.getInstance().currentUser == null) { navController.navigate(Screen.Login.route); return@LaunchedEffect }
-                    val uri=android.net.Uri.parse(path)
-                    val conversation=uri.getQueryParameter("conversation")
-                    if(conversation!=null && !conversation.contains('/')) navController.navigate(Screen.Chat.createRoute(conversation))
-                    else if(path.startsWith("/propiedad/")) navController.navigate(Screen.PropertyDetail.createRoute(path.removePrefix("/propiedad/")))
-                    else navController.navigate(Screen.Profile.route)
-                    notificationPath=null
+
+                LaunchedEffect(notificationPath, currentUid) {
+                    val path = notificationPath ?: return@LaunchedEffect
+                    if (FirebaseAuth.getInstance().currentUser == null) {
+                        navController.navigate(Screen.Login.route)
+                        return@LaunchedEffect
+                    }
+                    val uri = android.net.Uri.parse(path)
+                    val conversation = uri.getQueryParameter("conversation")
+                        ?: if (path.startsWith("/chat/")) path.removePrefix("/chat/")
+                        else if (path.startsWith("chat/")) path.removePrefix("chat/")
+                        else null
+
+                    if (!conversation.isNullOrBlank() && !conversation.contains('/')) {
+                        navController.navigate(Screen.Chat.createRoute(conversation)) {
+                            popUpTo(Screen.Home.route) { saveState = false }
+                            launchSingleTop = true
+                        }
+                    } else if (path.startsWith("/propiedad/")) {
+                        navController.navigate(Screen.PropertyDetail.createRoute(path.removePrefix("/propiedad/"))) {
+                            launchSingleTop = true
+                        }
+                    } else if (path == "/inbox" || path == "/mensajes") {
+                        navController.navigate(Screen.Inbox.route) {
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.navigate(Screen.Profile.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                    notificationPath = null
                 }
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
 
                 // Rutas donde NO mostramos la barra inferior
                 val hiddenNavRoutes = listOf(
@@ -136,12 +228,13 @@ class MainActivity : ComponentActivity() {
 
                 androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
-                        // Cada pantalla controla sus propios insets del teclado. Aplicar
-                        // imePadding aquí y otra vez en ChatScreen hacía perder el foco.
                         modifier = Modifier.fillMaxSize(),
                         bottomBar = {
                             if (showBottomNav) {
-                                BottomNavBar(navController = navController)
+                                BottomNavBar(
+                                    navController = navController,
+                                    unreadCount = unreadMessagesCount
+                                )
                             }
                         }
                     ) { innerPadding ->

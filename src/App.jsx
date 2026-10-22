@@ -1,4 +1,3 @@
-import NotificationCenter from './components/ui/NotificationCenter';
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
@@ -7,6 +6,7 @@ import { FavoritesProvider } from './context/FavoritesContext';
 import { CompareProvider } from './context/CompareContext';
 import { ChatProvider } from './context/ChatContext';
 import { CallProvider } from './context/CallContext';
+import { ThemeProvider } from './context/ThemeContext';
 import GlobalCallModal from './components/chat/GlobalCallModal';
 import Header from './components/layout/Header';
 import MobileNav from './components/layout/MobileNav';
@@ -75,7 +75,7 @@ function RuwaJayRoutes() {
     <div className={`flex min-h-screen w-full min-w-0 flex-col overflow-x-clip ${isChatRoute ? 'bg-[#FAF8F5]' : 'bg-crema'} font-sans text-cafe antialiased`}>
       {showLayout && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
       {showLayout && <Header />}
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${showLayout ? 'pb-20 md:pb-0' : ''}`}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/explorar" element={<ExplorePage />} />
@@ -96,7 +96,7 @@ function RuwaJayRoutes() {
       {showLayout && <Footer />}
       {showLayout && <MobileNav />}
       <PropertyCompareModal />
-      <ChatNotificationToast /><NotificationCenter />
+      <ChatNotificationToast />
       <MobileAppConnectModal
         isOpen={mobileAppModalOpen}
         onClose={() => setMobileAppModalOpen(false)}
@@ -108,22 +108,24 @@ function RuwaJayRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <FavoritesProvider>
-        <CompareProvider>
-          <ChatProvider>
-            <CallProvider>
-              <Router basename={import.meta.env.BASE_URL}>
-                <ScrollToTop />
-                <ErrorBoundary>
-                  <RuwaJayRoutes />
-                  <GlobalCallModal />
-                </ErrorBoundary>
-              </Router>
-            </CallProvider>
-          </ChatProvider>
-        </CompareProvider>
-      </FavoritesProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <FavoritesProvider>
+          <CompareProvider>
+            <ChatProvider>
+              <CallProvider>
+                <Router basename={import.meta.env.BASE_URL}>
+                  <ScrollToTop />
+                  <ErrorBoundary>
+                    <RuwaJayRoutes />
+                    <GlobalCallModal />
+                  </ErrorBoundary>
+                </Router>
+              </CallProvider>
+            </ChatProvider>
+          </CompareProvider>
+        </FavoritesProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

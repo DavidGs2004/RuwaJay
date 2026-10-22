@@ -1,4 +1,4 @@
-project_id = "ruwajay"
+project_id = "yrwrvmcmxqmvkwmsuegc"
 
 [functions.ruwajay-api]
 # Firebase JWTs are verified inside the handler (signature, issuer and audience).

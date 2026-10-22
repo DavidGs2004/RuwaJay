@@ -43,6 +43,8 @@ import coil.compose.AsyncImage
 import com.example.ruwajay.data.repository.CallRepository
 import com.example.ruwajay.data.repository.CallRequestBus
 import com.example.ruwajay.data.repository.CallSession
+import com.example.ruwajay.data.repository.RuwaBackend
+import com.example.ruwajay.RuwaNotifications
 import com.example.ruwajay.data.webrtc.WebRtcManager
 import kotlinx.coroutines.delay
 import org.webrtc.IceCandidate
@@ -148,10 +150,41 @@ fun GlobalCallOverlay(
                         )
                         queuedCandidates.forEach { callRepo.addIceCandidate(id, it.toMap(), isCaller = true) }
                         queuedCandidates.clear()
+
+                        // Enviar notificación Push de alta prioridad para despertar el móvil receptor aunque esté cerrado
+                        val receiverId = data["receiverId"] as? String
+                        if (!receiverId.isNullOrBlank() && currentUserId != null) {
+                            RuwaBackend.invoke(
+                                "notifyCall",
+                                mapOf(
+                                    "receiverId" to receiverId,
+                                    "callId" to id,
+                                    "callerName" to (data["callerName"] as? String ?: "Usuario"),
+                                    "propertyTitle" to (data["propertyTitle"] as? String ?: "Propiedad RuwaJay"),
+                                    "roomId" to (data["roomId"] as? String ?: "")
+                                ),
+                                currentUserId
+                            )
+                        }
                     }.onFailure {
                         Log.e("RuwaCall", "No se pudo publicar la llamada", it)
                         callStatus = "idle"
                         webrtcManager.close()
+                    }
+                }
+            }
+        }
+    }
+
+    // Escuchar llamadas entrantes provenientes de Notificaciones Push cuando la app se abrió desde una alerta
+    LaunchedEffect(currentUserId) {
+        CallRequestBus.incomingPushEvents.collect { pushCallId ->
+            if (currentUserId != null && pushCallId.isNotBlank() && callStatus == "idle") {
+                callRepo.observeCall(pushCallId, currentUserId) { incoming ->
+                    if (incoming.status == "calling" && callStatus == "idle") {
+                        activeSession = incoming
+                        callStatus = "incoming"
+                        startRinging()
                     }
                 }
             }
