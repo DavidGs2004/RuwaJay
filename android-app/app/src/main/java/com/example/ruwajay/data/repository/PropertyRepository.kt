@@ -138,9 +138,12 @@ private fun uploadPropertyImages(
     if (imageUris.isEmpty()) return Tasks.forException(Exception("Sube al menos una fotografia."))
     if (imageUris.size > 8 || contentResolver == null) return Tasks.forException(Exception("Sube entre 1 y 8 fotografias."))
     val tasks = imageUris.map { uri ->
-        val mime = contentResolver.getType(uri) ?: "image/jpeg"
-        if (mime !in listOf("image/jpeg","image/png","image/webp")) return Tasks.forException(Exception("Formato de fotografia no permitido."))
-        RuwaBackend.upload("property",uri,contentResolver,propertyId=propertyId,mime=mime,expectedUid=userId)
+        val rawMime = contentResolver.getType(uri) ?: "image/jpeg"
+        val mime = rawMime.lowercase().split(";")[0].trim().let {
+            if (it == "image/jpg" || it == "image/heic" || it.isBlank()) "image/jpeg" else it
+        }
+        val safeMime = if (mime in listOf("image/jpeg","image/png","image/webp")) mime else "image/jpeg"
+        RuwaBackend.upload("property",uri,contentResolver,propertyId=propertyId,mime=safeMime,expectedUid=userId)
     }
     return Tasks.whenAllSuccess<String>(tasks)
 }

@@ -242,12 +242,24 @@ fun PublishScreen(propertyId: String? = null) {
                     }
                     if (selectedImages.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("${selectedImages.size} imagen(es) seleccionada(s)", color = BrandForest, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            TextButton(onClick = { selectedImages = emptyList() }) {
+                                Text("Limpiar selección", color = BrandTerracota, fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(selectedImages) { uri ->
                                 AsyncImage(
                                     model = uri,
                                     contentDescription = "Imagen seleccionada",
-                                    modifier = Modifier.width(88.dp).height(72.dp)
+                                    modifier = Modifier.width(88.dp).height(72.dp).clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
                                 )
                             }
                         }

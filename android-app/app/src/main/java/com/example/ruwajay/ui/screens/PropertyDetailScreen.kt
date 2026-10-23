@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
@@ -404,50 +405,113 @@ fun PropertyDetailScreen(
 
     // Modal Request Visit
     if (showVisitDialog) {
-        var visitDate by remember { mutableStateOf("") }
-        var visitTime by remember { mutableStateOf("") }
+        val defaultDate = remember {
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+        }
+        var visitDate by remember { mutableStateOf(defaultDate) }
+        var visitTime by remember { mutableStateOf("10:00") }
         var isSubmitting by remember { mutableStateOf(false) }
+        var submitError by remember { mutableStateOf<String?>(null) }
+        val context = LocalContext.current
+
+        val datePickerDialog = remember {
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            android.app.DatePickerDialog(
+                context,
+                { _, year, month, dayOfMonth ->
+                    visitDate = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                },
+                cal.get(java.util.Calendar.YEAR),
+                cal.get(java.util.Calendar.MONTH),
+                cal.get(java.util.Calendar.DAY_OF_MONTH)
+            ).apply {
+                datePicker.minDate = System.currentTimeMillis() + 86400000L
+            }
+        }
+
+        val timePickerDialog = remember {
+            android.app.TimePickerDialog(
+                context,
+                { _, hourOfDay, minute ->
+                    visitTime = String.format(Locale.US, "%02d:%02d", hourOfDay, minute)
+                },
+                10, 0, true
+            )
+        }
 
         AlertDialog(
             onDismissRequest = { showVisitDialog = false },
             title = { Text("Agendar visita presencial", color = BrandCafe, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Selecciona una fecha y hora sugerida. Al confirmar, enviaremos la solicitud al propietario.", color = BrandTextSecondary, fontSize = 14.sp)
+                    Text("Fecha y hora sugeridas automáticamente para la cita. Puedes modificarlas si lo deseas:", color = BrandTextSecondary, fontSize = 13.sp)
+
+                    submitError?.let { err ->
+                        Text(err, color = BrandTerracota, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     OutlinedTextField(
                         value = visitDate,
                         onValueChange = { visitDate = it },
-                        label = { Text("Fecha (Ej: 25/10/2026)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        label = { Text("Fecha de visita (AAAA-MM-DD)") },
+                        modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() },
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { datePickerDialog.show() }) {
+                                Icon(Icons.Default.Event, contentDescription = "Elegir Fecha", tint = BrandForest)
+                            }
+                        }
                     )
+
                     OutlinedTextField(
                         value = visitTime,
                         onValueChange = { visitTime = it },
-                        label = { Text("Hora (Ej: 10:00 AM)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        label = { Text("Hora de visita 24h (HH:mm)") },
+                        modifier = Modifier.fillMaxWidth().clickable { timePickerDialog.show() },
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { timePickerDialog.show() }) {
+                                Icon(Icons.Default.Schedule, contentDescription = "Elegir Hora", tint = BrandForest)
+                            }
+                        }
                     )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
+                        val cleanDate = visitDate.trim()
+                        val cleanTime = visitTime.trim()
+                        if (!cleanDate.matches(Regex("""\d{4}-\d{2}-\d{2}"""))) {
+                            submitError = "La fecha debe tener formato AAAA-MM-DD (ej: 2026-10-25)."
+                            return@Button
+                        }
+                        if (!cleanTime.matches(Regex("""([01]\d|2[0-3]):[0-5]\d"""))) {
+                            submitError = "La hora debe tener formato 24h HH:mm (ej: 10:00 ó 14:30)."
+                            return@Button
+                        }
+
                         isSubmitting = true
+                        submitError = null
                         visitRepo.createVisit(
                             propertyId = property.id,
                             propertyTitle = property.title,
                             propertyAddress = property.location.address,
                             ownerId = property.ownerId,
                             ownerName = owner?.name ?: "Propietario",
-                            visitDate = visitDate,
-                            visitTime = visitTime,
+                            visitDate = cleanDate,
+                            visitTime = cleanTime,
                             notes = "Solicitud enviada desde la app."
                         ) { result ->
                             isSubmitting = false
                             if (result.isSuccess) {
                                 hasPendingVisit = true
                                 showVisitDialog = false
+                            } else {
+                                submitError = result.exceptionOrNull()?.localizedMessage ?: "No se pudo agendar la cita. Inténtalo nuevamente."
                             }
                         }
                     },
@@ -457,7 +521,7 @@ fun PropertyDetailScreen(
                     if (isSubmitting) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Confirmar")
+                        Text("Confirmar Cita")
                     }
                 }
             },
