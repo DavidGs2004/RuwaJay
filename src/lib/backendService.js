@@ -3,8 +3,10 @@ import { httpsCallable } from 'firebase/functions';
 const supabaseUrl=(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'');
 export const backendUrl=(import.meta.env.VITE_RUWA_BACKEND_URL||(supabaseUrl?supabaseUrl+'/functions/v1/ruwajay-api':'')).replace(/\/$/,'');
 export const usesSupabaseBackend=Boolean(backendUrl);
-const legacyEmulators=import.meta.env.DEV&&import.meta.env.VITE_FIREBASE_EMULATORS==='true'&&!backendUrl;
-export const usesServerOperations=!legacyEmulators;
+const legacyEmulators = import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATORS === 'true' && !backendUrl;
+// Solo usar operaciones del servidor si hay un backend configurado O emuladores activos
+export const usesServerOperations = Boolean(backendUrl) || legacyEmulators;
+
 function requireSession(expectedUid){const user=firebaseAuth?.currentUser;if(!user||expectedUid&&user.uid!==expectedUid)throw new Error('La sesión cambió. Inténtalo con la cuenta actual.');return user;}
 async function authorizedRequest(url,options,expectedUid){
   const account=requireSession(expectedUid),uid=account.uid;let response;

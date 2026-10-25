@@ -35,9 +35,10 @@ export default function SystemUpdatesModal({
     };
   }, [isOpen, propUpdates]);
 
-  // Si no se han hecho cambios o no hay actualizaciones activas, ocultar y no mostrar al usuario
+  // Permitir que el modal abra siempre que isOpen sea true
   if (!isOpen) return null;
-  if (!loading && updates.length === 0) return null;
+
+  const [selectedCategory, setSelectedCategory] = useState('todas');
 
   const getCategoryBadge = (cat) => {
     switch (cat) {
@@ -52,6 +53,11 @@ export default function SystemUpdatesModal({
     }
   };
 
+  const filteredUpdates = updates.filter((item) => {
+    if (selectedCategory === 'todas') return true;
+    return (item.category || 'novedad') === selectedCategory;
+  });
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
@@ -62,41 +68,68 @@ export default function SystemUpdatesModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-border">
+        <div className="flex items-center justify-between pb-3 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-forest/10 text-forest">
               <Megaphone size={22} />
             </div>
             <div>
               <h2 className="text-lg font-extrabold text-cafe">Actualizaciones del Sistema</h2>
-              <p className="text-xs text-text-muted">Novedades y avisos de la plataforma RuwaJay</p>
+              <p className="text-xs text-text-muted">Novedades, mejoras y avisos oficiales de RuwaJay</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-full p-2 text-text-muted hover:bg-crema hover:text-cafe transition-colors"
+            className="rounded-full p-2 text-text-muted hover:bg-crema hover:text-cafe transition-colors cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
 
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1.5 pt-3 pb-2 overflow-x-auto no-scrollbar">
+          {[
+            { id: 'todas', label: 'Todas' },
+            { id: 'novedad', label: 'Novedades' },
+            { id: 'mejora', label: 'Mejoras' },
+            { id: 'mantenimiento', label: 'Mantenimiento' },
+            { id: 'alerta', label: 'Alertas' },
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(cat.id)}
+              className={`rounded-xl px-3 py-1 text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                selectedCategory === cat.id
+                  ? 'bg-forest text-white shadow-xs'
+                  : 'bg-crema/40 text-text-muted hover:bg-crema hover:text-cafe'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
         {/* Content list */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-3.5 pr-1">
+        <div className="flex-1 overflow-y-auto py-3 space-y-3 pr-1">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-text-muted">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-forest border-t-transparent mb-3" />
               <p className="text-xs font-semibold">Cargando comunicados...</p>
             </div>
-          ) : updates.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-crema text-forest">
-                <CheckCircle size={24} />
+          ) : filteredUpdates.length === 0 ? (
+            <div className="text-center py-10 rounded-2xl border border-dashed border-border bg-crema/20 p-6">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-forest/10 text-forest">
+                <CheckCircle size={26} />
               </div>
-              <p className="text-sm font-bold text-cafe">No hay comunicados recientes</p>
-              <p className="text-xs text-text-muted mt-1">El sistema está funcionando con normalidad.</p>
+              <p className="text-sm font-bold text-cafe">¡Estás al día!</p>
+              <p className="text-xs text-text-muted mt-1 max-w-xs mx-auto">
+                {selectedCategory === 'todas'
+                  ? 'No hay comunicados publicados recientemente. El sistema está operando con normalidad.'
+                  : `No hay publicaciones en la categoría "${selectedCategory}".`}
+              </p>
             </div>
           ) : (
-            updates.map((item) => {
+            filteredUpdates.map((item) => {
               const badge = getCategoryBadge(item.category);
               const IconComp = badge.icon;
               return (

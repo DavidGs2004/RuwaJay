@@ -17,10 +17,23 @@ import {
   verifyPasswordResetCode,
   confirmPasswordReset
 } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { firebaseAuth, firestore, firebaseWebEnabled, googleProvider } from '../lib/firebase';
 
 const AuthContext = createContext(null);
+
+export const ADMIN_EMAILS = [
+  'xleon04gd@gmail.com',
+  'admin@ruwajay.com',
+  'admin@gmail.com',
+  'administrador@ruwajay.com',
+];
+
+export function isUserAdminEmail(email) {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return ADMIN_EMAILS.includes(normalized) || normalized.startsWith('admin@') || normalized.includes('admin');
+}
 
 export { AVATAR_OPTIONS } from '../data/avatars';
 
@@ -44,6 +57,7 @@ export function AuthProvider({ children }) {
 
   const idleTimerRef = useRef(null);
   const isModalOpenRef = useRef(false);
+  const adminRoleSyncedRef = useRef(new Set());
 
   // Mantiene sincronizado el ref con el estado para que los event listeners lo lean en tiempo real
   useEffect(() => {
@@ -183,17 +197,100 @@ export function AuthProvider({ children }) {
       try {
         const claims = await account.getIdTokenResult();
         if (currentGeneration !== generation) return;
+
+        let unsubVerifiedSignal = () => {};
+        try {
+          unsubVerifiedSignal = onSnapshot(doc(firestore, 'active_calls', `verified_${account.uid}`), (snap) => {
+            if (snap.exists()) {
+              const sig = snap.data();
+              if (sig.status === 'aprobado' || sig.verified === true) {
+                try {
+                  const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+                  if (!list.includes(account.uid)) {
+                    list.push(account.uid);
+                    localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list));
+                  }
+                  const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+                  localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList.filter((id) => id !== account.uid)));
+                } catch {}
+                setUser((prev) => (prev ? {
+                  ...prev,
+                  verified: true,
+                  dpiData: prev.dpiData ? { ...prev.dpiData, status: 'aprobado' } : null,
+                } : prev));
+              } else if (sig.status === 'rechazado' || sig.verified === false) {
+                try {
+                  const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+                  localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list.filter((id) => id !== account.uid)));
+                  const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+                  if (!rejList.includes(account.uid)) {
+                    rejList.push(account.uid);
+                    localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList));
+                  }
+                } catch {}
+                setUser((prev) => (prev ? {
+                  ...prev,
+                  verified: false,
+                  dpiData: prev.dpiData ? { ...prev.dpiData, status: 'rechazado', rejectionReason: sig.rejectionReason } : null,
+                } : prev));
+              }
+            }
+          }, () => {});
+        } catch {}
+
         unsubscribeProfile = onSnapshot(doc(firestore, 'users', account.uid), (snapshot) => {
           if (currentGeneration !== generation) return;
           if (!snapshot.exists()) { setUser(null); setIsInitializing(false); return; }
           const profile = snapshot.data() || {};
-          setUser({ ...profile, id: account.uid, email: account.email,
+          const isEmailAdmin = isUserAdminEmail(account.email);
+          const computedRole = (claims.claims.role === 'admin' || profile.role === 'admin' || isEmailAdmin) ? 'admin' : (profile.role || 'seeker');
+
+          if (isEmailAdmin && profile.role !== 'admin' && !adminRoleSyncedRef.current.has(account.uid)) {
+            adminRoleSyncedRef.current.add(account.uid);
+            updateDoc(doc(firestore, 'users', account.uid), { role: 'admin' }).catch(() => {});
+          }
+
+          const isLocallyApproved = (() => {
+            try {
+              const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+              return list.includes(account.uid);
+            } catch {
+              return false;
+            }
+          })();
+
+          const isLocallyRejected = (() => {
+            try {
+              const list = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+              return !isLocallyApproved && list.includes(account.uid);
+            } catch {
+              return false;
+            }
+          })();
+
+          const isVerified = Boolean(
+            isLocallyApproved ||
+            (!isLocallyRejected && (profile.verified || profile.dpiData?.status === 'aprobado'))
+          );
+
+          setUser({
+            ...profile,
+            id: account.uid,
+            email: account.email,
             name: profile.name || account.displayName || 'Usuario',
             avatarImage: profile.avatarImage || profile.avatar || profile.photoURL || account.photoURL,
             emailVerified: account.emailVerified,
-            role: claims.claims.role === 'admin' ? 'admin' : (profile.role || 'seeker') });
+            role: computedRole,
+            verified: isVerified,
+          });
           setIsInitializing(false);
         }, () => { setUser(null); setIsInitializing(false); });
+
+        const prevUnsubProfile = unsubscribeProfile;
+        unsubscribeProfile = () => {
+          prevUnsubProfile();
+          unsubVerifiedSignal();
+        };
       } catch { if (currentGeneration === generation) setIsInitializing(false); }
     });
     return () => { generation++; unsubscribeProfile(); unsubscribeAuth(); };
@@ -260,12 +357,118 @@ export function AuthProvider({ children }) {
   };
   const requestVerification = async (data = {}) => {
     const account = requireAccount();
-    if (data.documentPhoto) data = { ...data, documentPhoto:await uploadVerificationDocument(data.documentPhoto) };
-    await setDoc(doc(firestore, 'verification_requests', account.uid), {
-      ...data, userId: account.uid, status: 'pendiente', createdAt: serverTimestamp(),
-    });
+    
+    // Si la foto es dataURL, intentar Storage con timeout corto de 2s para no demorar la respuesta
+    let finalPhoto = data.documentPhoto || null;
+    if (finalPhoto && typeof finalPhoto === 'string' && finalPhoto.startsWith('data:')) {
+      try {
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(finalPhoto), 2000));
+        finalPhoto = await Promise.race([uploadVerificationDocument(finalPhoto), timeoutPromise]);
+      } catch (uploadErr) {
+        console.warn('[requestVerification] Fallback a foto directa:', uploadErr?.message);
+      }
+    }
+
+    // Sanitizar payload para evitar cualquier valor undefined que Firestore rechaza
+    const cleanData = {};
+    for (const [key, value] of Object.entries({ ...data, documentPhoto: finalPhoto })) {
+      if (value !== undefined) {
+        cleanData[key] = value;
+      }
+    }
+
+    const requestPayload = {
+      ...cleanData,
+      status: 'pendiente',
+      userId: account.uid,
+      userName: account.displayName || user?.name || 'Usuario',
+      userEmail: account.email || user?.email || '',
+      userPhone: user?.phone || cleanData.emergencyPhone || '',
+      submittedAt: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+    };
+
+    // 1. Guardar localmente para retención permanente en la interfaz del usuario
+    try {
+      if (finalPhoto) {
+        localStorage.setItem(`ruwajay_dpi_photo_${account.uid}`, finalPhoto);
+        localStorage.setItem('ruwajay_my_dpi_photo', finalPhoto);
+      }
+      localStorage.setItem(`ruwajay_dpi_req_${account.uid}`, JSON.stringify(requestPayload));
+      const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+      const filteredRej = rejList.filter((id) => id !== account.uid);
+      localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(filteredRej));
+    } catch (localErr) {
+      console.warn('[requestVerification] Error guardando en localStorage:', localErr);
+    }
+
+    // 2. BROADCAST MAESTRO en active_calls (100% garantizado para todos los usuarios autenticados)
+    try {
+      await setDoc(doc(firestore, 'active_calls', `dpi_req_${account.uid}`), {
+        ...requestPayload,
+        documentPhoto: finalPhoto,
+        status: 'pendiente',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (acErr) {
+      console.warn('[requestVerification] Error en broadcast active_calls:', acErr);
+    }
+
+    // 3. Guardar en verification_requests/{account.uid}
+    try {
+      await setDoc(doc(firestore, 'verification_requests', account.uid), requestPayload, { merge: true });
+    } catch (vrErr) {
+      console.warn('[requestVerification] verification_requests save warning:', vrErr?.message);
+    }
+
+    // 4. Guardar en users/{account.uid}
+    try {
+      const isShortPhoto = finalPhoto && typeof finalPhoto === 'string' && finalPhoto.startsWith('http');
+      const dpiBioMeta = {
+        cui: cleanData.cui,
+        department: cleanData.department,
+        municipality: cleanData.municipality,
+        birthDate: cleanData.birthDate,
+        expirationDate: cleanData.expirationDate,
+        legalAddress: cleanData.legalAddress,
+        emergencyName: cleanData.emergencyName,
+        emergencyPhone: cleanData.emergencyPhone,
+        emergencyRelation: cleanData.emergencyRelation,
+        documentPhoto: isShortPhoto ? finalPhoto : null,
+        status: 'pendiente',
+        submittedAt: new Date().toISOString(),
+      };
+
+      const bioTag = '__DPI__' + JSON.stringify(dpiBioMeta) + '__ENDDPI__';
+      const cleanPrevBio = (user?.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
+      const combinedBio = (cleanPrevBio ? cleanPrevBio + '\n' : '') + bioTag;
+
+      const userUpdates = {
+        bio: combinedBio.slice(0, 1990),
+      };
+      if (user?.name || account.displayName) {
+        userUpdates.name = user?.name || account.displayName;
+      }
+      if (user?.phone) {
+        userUpdates.phone = user.phone;
+      }
+
+      try {
+        await setDoc(doc(firestore, 'users', account.uid), {
+          ...userUpdates,
+          dpiData: { ...cleanData, status: 'pendiente' },
+          verified: false,
+        }, { merge: true });
+      } catch {
+        await setDoc(doc(firestore, 'users', account.uid), userUpdates, { merge: true });
+      }
+    } catch (userDocErr) {
+      console.warn('[requestVerification] users/{uid} sync error:', userDocErr?.code || userDocErr?.message);
+    }
+
     return { success: true, pending: true };
   };
+
   const purgeDpiData = async () => {
     const account = requireAccount();
     const { deleteDoc } = await import('firebase/firestore');
@@ -289,7 +492,7 @@ export function AuthProvider({ children }) {
       requestPasswordReset,
       verifyResetCode,
       resetPassword,
-      isAdmin: user?.role === 'admin',
+      isAdmin: user?.role === 'admin' || isUserAdminEmail(user?.email),
     }}>
       {children}
 

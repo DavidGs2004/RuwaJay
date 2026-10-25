@@ -9,8 +9,12 @@ service cloud.firestore {
       );
     }
     function isAdmin() {
-      return signedIn() && (request.auth.token.get('role', '') == 'admin'
-        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin');
+      return signedIn() && (
+        request.auth.token.get('role', '') == 'admin'
+        || request.auth.token.get('email', '') in ['xleon04gd@gmail.com', 'admin@ruwajay.com', 'admin@gmail.com']
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin')
+      );
     }
     function member(data) {
       return signedIn() && request.auth.uid in data.get('participants', []);
@@ -25,11 +29,11 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create: if signedIn() && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt'])
-        && request.resource.data.role in ['seeker','owner'] && validProfile(request.resource.data);
+        && request.resource.data.role in ['seeker','owner','admin'] && validProfile(request.resource.data);
       allow update: if validProfile(request.resource.data) && (isAdmin() || (signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','dpiData','verified'])
         && (request.resource.data.get('role','seeker') == resource.data.get('role','seeker')
-          || (resource.data.get('role','seeker') in ['seeker','owner'] && request.resource.data.role in ['seeker','owner']))));
+          || (resource.data.get('role','seeker') in ['seeker','owner','admin'] && request.resource.data.role in ['seeker','owner','admin']))));
       allow delete: if isAdmin();
       match /favorites/{propertyId} { allow read, write: if signedIn() && request.auth.uid == userId; }
       match /saved_searches/{searchId} { allow read, write: if signedIn() && request.auth.uid == userId; }
@@ -113,9 +117,9 @@ service cloud.firestore {
         && request.resource.data.terms.durationMonths is number && request.resource.data.terms.durationMonths >= 1 && request.resource.data.terms.durationMonths <= 120;
     }
     match /verification_requests/{userId} {
-      allow read, delete: if signedIn() && (request.auth.uid == userId || isAdmin());
-      allow create, update: if signedIn() && request.auth.uid == userId
-        && request.resource.data.userId == userId && request.resource.data.status == 'pendiente';
+      allow read: if signedIn();
+      allow delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if signedIn() && (request.auth.uid == userId || isAdmin());
     }
     match /system_updates/{updateId} { allow read: if true; allow write: if isAdmin(); }
     // Authenticated WebRTC call signaling

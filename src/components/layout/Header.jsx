@@ -154,12 +154,7 @@ export default function Header() {
   };
 
   const handleOpenUpdatesClick = () => {
-    if (systemUpdates.length > 0) {
-      setShowUpdatesModal(true);
-    } else {
-      setNoUpdatesNotice(true);
-      setTimeout(() => setNoUpdatesNotice(false), 3000);
-    }
+    setShowUpdatesModal(true);
   };
 
   // Close user menu on outside click

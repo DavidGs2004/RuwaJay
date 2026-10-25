@@ -13,7 +13,8 @@ import { GUATEMALA_DEPARTMENTS_ONLY, getZonesForDepartment, getCoordinatesForLoc
 import PropertyLocationPickerMap from '../components/map/PropertyLocationPickerMap';
 import { sanitizeText } from '../utils/security';
 import { publishPropertyToFirebase, uploadPropertyImages, updatePropertyToFirebase, getPropertyById, fetchPropertyById } from '../lib/propertyService';
-import { firebaseAuth } from '../lib/firebase';
+import { firebaseAuth, firestore } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { formatPrice } from '../data/properties';
 
 const SAMPLE_DEMO_IMAGES = [
@@ -100,11 +101,137 @@ function dataUrlToJpegFile(dataUrl, fileName) {
 export default function PublishPage() {
   const navigate = useNavigate();
   const { editId } = useParams();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, isAdmin } = useAuth();
   const [step, setStep] = useState(1);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editPropertyData, setEditPropertyData] = useState(null);
   const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editId));
+  const [verificationReq, setVerificationReq] = useState(null);
+  const [signalApproved, setSignalApproved] = useState(false);
+  const [signalRejected, setSignalRejected] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  // Subscribe in real-time to the current user's verification request and active approval/rejection signals
+  useEffect(() => {
+    const uid = user?.id || firebaseAuth?.currentUser?.uid;
+    if (!uid) return;
+
+    // 1. Escuchar verification_requests
+    const unsubReq = onSnapshot(doc(firestore, 'verification_requests', uid), (snap) => {
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() };
+        setVerificationReq(data);
+        if (data.status === 'aprobado') {
+          setSignalApproved(true);
+          setSignalRejected(false);
+        } else if (data.status === 'rechazado') {
+          setSignalApproved(false);
+          setSignalRejected(true);
+          if (data.rejectionReason) setRejectionReason(data.rejectionReason);
+        }
+      }
+    }, () => {});
+
+    // 2. Escuchar active_calls verified_{uid} (señal instantánea de aprobación o rechazo garantizada)
+    const unsubSignal = onSnapshot(doc(firestore, 'active_calls', `verified_${uid}`), (snap) => {
+      if (snap.exists()) {
+        const sig = snap.data();
+        if (sig.status === 'aprobado' || sig.verified === true) {
+          setSignalApproved(true);
+          setSignalRejected(false);
+          setRejectionReason('');
+          try {
+            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+            if (!list.includes(uid)) {
+              list.push(uid);
+              localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list));
+            }
+            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+            localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList.filter((id) => id !== uid)));
+          } catch {}
+        } else if (sig.status === 'rechazado' || sig.verified === false) {
+          setSignalApproved(false);
+          setSignalRejected(true);
+          if (sig.rejectionReason) setRejectionReason(sig.rejectionReason);
+          try {
+            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+            localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list.filter((id) => id !== uid)));
+            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+            if (!rejList.includes(uid)) {
+              rejList.push(uid);
+              localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList));
+            }
+          } catch {}
+        }
+      }
+    }, () => {});
+
+    // 3. Escuchar active_calls dpi_req_{uid}
+    const unsubDpiReq = onSnapshot(doc(firestore, 'active_calls', `dpi_req_${uid}`), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.status === 'aprobado') {
+          setSignalApproved(true);
+          setSignalRejected(false);
+          setRejectionReason('');
+          try {
+            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+            if (!list.includes(uid)) {
+              list.push(uid);
+              localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list));
+            }
+            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+            localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList.filter((id) => id !== uid)));
+          } catch {}
+        } else if (data.status === 'rechazado') {
+          setSignalApproved(false);
+          setSignalRejected(true);
+          if (data.rejectionReason) setRejectionReason(data.rejectionReason);
+          try {
+            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+            localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list.filter((id) => id !== uid)));
+            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+            if (!rejList.includes(uid)) {
+              rejList.push(uid);
+              localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList));
+            }
+          } catch {}
+        }
+        setVerificationReq((prev) => ({ ...(prev || {}), ...data }));
+      }
+    }, () => {});
+
+    return () => {
+      unsubReq();
+      unsubSignal();
+      unsubDpiReq();
+    };
+  }, [user?.id, firebaseAuth?.currentUser?.uid]);
+
+  // Sincronización inmediata entre pestañas con el evento storage
+  const [storageTick, setStorageTick] = useState(0);
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === 'ruwajay_approved_verifications' || e.key === 'ruwajay_rejected_verifications') {
+        setStorageTick((t) => t + 1);
+        try {
+          const uid = user?.id || firebaseAuth?.currentUser?.uid;
+          const appList = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+          const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+          if (uid && appList.includes(uid)) {
+            setSignalApproved(true);
+            setSignalRejected(false);
+            setRejectionReason('');
+          } else if (uid && rejList.includes(uid)) {
+            setSignalApproved(false);
+            setSignalRejected(true);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [user?.id]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -392,32 +519,189 @@ export default function PublishPage() {
   }
 
   const ownerPhoneDigits = String(user?.phone || '').replace(/\D/g, '');
-  const ownerRequirementsComplete = ownerPhoneDigits.length >= 8 && Boolean(user?.dpiData?.cui);
+  const hasPhone = ownerPhoneDigits.length >= 8;
+
+  const isLocallyApproved = useMemo(() => {
+    try {
+      const uid = user?.id || firebaseAuth?.currentUser?.uid;
+      const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
+      return Boolean(uid && list.includes(uid));
+    } catch {
+      return false;
+    }
+  }, [user?.id, storageTick]);
+
+  const isLocallyRejected = useMemo(() => {
+    try {
+      const uid = user?.id || firebaseAuth?.currentUser?.uid;
+      const list = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
+      return Boolean(uid && list.includes(uid));
+    } catch {
+      return false;
+    }
+  }, [user?.id, storageTick]);
+
+  const bioDpi = useMemo(() => {
+    if (!user?.bio || !user.bio.includes('__DPI__')) return null;
+    try {
+      const m = user.bio.match(/__DPI__(.*?)__ENDDPI__/s);
+      return m && m[1] ? JSON.parse(m[1]) : null;
+    } catch {
+      return null;
+    }
+  }, [user?.bio]);
+
+  // Prioridad inmediata a la última acción explícita del Administrador
+  const isExplicitlyApproved = Boolean(
+    (signalApproved && !signalRejected) ||
+    (isLocallyApproved && !signalRejected)
+  );
+
+  const isExplicitlyRejected = Boolean(
+    !isExplicitlyApproved && (
+      signalRejected ||
+      (isLocallyRejected && !isLocallyApproved) ||
+      verificationReq?.status === 'rechazado' ||
+      user?.dpiData?.status === 'rechazado'
+    )
+  );
+
+  const isDpiApproved = Boolean(
+    isExplicitlyApproved || (
+      !isExplicitlyRejected && (
+        user?.verified ||
+        verificationReq?.status === 'aprobado' ||
+        user?.dpiData?.status === 'aprobado' ||
+        bioDpi?.status === 'aprobado'
+      )
+    )
+  );
+
+  const hasDpiSubmitted = Boolean(
+    user?.dpiData?.cui ||
+    verificationReq?.cui ||
+    bioDpi?.cui ||
+    isDpiApproved ||
+    isExplicitlyRejected
+  );
+
+  const isUserAdmin = Boolean(isAdmin || user?.role === 'admin');
+
+  // Admins can publish directly; regular users require phone + DPI + Admin verification approval
+  const ownerRequirementsComplete = isUserAdmin || (hasPhone && isDpiApproved);
+
   if (!ownerRequirementsComplete) {
+    const isRejected = isExplicitlyRejected || (verificationReq?.status === 'rechazado' && !isDpiApproved);
+    const isPendingApproval = !isRejected && !isDpiApproved;
+    const effectiveRejectionReason = rejectionReason || verificationReq?.rejectionReason || 'Documento no válido o vencido';
+
     return (
       <main className="flex min-h-[70vh] items-center justify-center bg-[#FAF5EE] px-4 py-12">
         <div className="w-full max-w-lg rounded-3xl border border-[#E8D9C8] bg-white p-8 text-center shadow-card sm:p-10">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
             <ShieldAlert size={30} />
           </div>
-          <h1 className="text-2xl font-black text-cafe">Completa tus datos de propietario</h1>
+          <h1 className="text-2xl font-black text-cafe">Requisitos para Publicar Viviendas</h1>
           <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-            Para anunciar o administrar una vivienda debes registrar un teléfono válido y completar la identificación DPI.
+            Para garantizar la seguridad de la comunidad RuwaJay, se requiere que verifiques tu identidad con DPI y que un Administrador valide y apruebe tu cuenta antes de publicar.
           </p>
-          <div className="mt-5 space-y-2 text-left text-sm font-bold">
-            <p className={ownerPhoneDigits.length >= 8 ? 'text-jade' : 'text-red-600'}>
-              {ownerPhoneDigits.length >= 8 ? '✓' : '•'} Número de teléfono
-            </p>
-            <p className={user?.dpiData?.cui ? 'text-jade' : 'text-red-600'}>
-              {user?.dpiData?.cui ? '✓' : '•'} Identificación DPI
-            </p>
+
+          <div className="mt-6 space-y-3 text-left">
+            {/* 1. Teléfono */}
+            <div className={`flex items-start gap-3 rounded-2xl p-3.5 border ${hasPhone ? 'bg-jade/5 border-jade/20 text-jade' : 'bg-red-50/50 border-red-200 text-red-600'}`}>
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${hasPhone ? 'bg-jade text-white' : 'bg-red-500 text-white'}`}>
+                {hasPhone ? '✓' : '1'}
+              </span>
+              <div>
+                <p className="text-sm font-extrabold text-cafe">1. Número de teléfono registrado</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {hasPhone ? `Registrado: ${user?.phone}` : 'Debes registrar al menos 8 dígitos'}
+                </p>
+              </div>
+            </div>
+
+            {/* 2. Identificación DPI */}
+            <div className={`flex items-start gap-3 rounded-2xl p-3.5 border ${hasDpiSubmitted ? 'bg-jade/5 border-jade/20 text-jade' : 'bg-red-50/50 border-red-200 text-red-600'}`}>
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${hasDpiSubmitted ? 'bg-jade text-white' : 'bg-red-500 text-white'}`}>
+                {hasDpiSubmitted ? '✓' : '2'}
+              </span>
+              <div>
+                <p className="text-sm font-extrabold text-cafe">2. Identificación oficial con DPI</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {hasDpiSubmitted ? 'Datos y fotografía de documento enviados' : 'Debes ingresar tu CUI de 13 dígitos y datos de DPI'}
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Validación y Aprobación del Administrador */}
+            <div className={`flex items-start gap-3 rounded-2xl p-3.5 border ${
+              isDpiApproved
+                ? 'bg-jade/5 border-jade/20'
+                : isPendingApproval
+                ? 'bg-amber-50 border-amber-200'
+                : isRejected
+                ? 'bg-red-50 border-red-200'
+                : 'bg-crema/40 border-border'
+            }`}>
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                isDpiApproved
+                  ? 'bg-jade text-white'
+                  : isPendingApproval
+                  ? 'bg-amber-500 text-white'
+                  : isRejected
+                  ? 'bg-red-500 text-white'
+                  : 'bg-gray-300 text-gray-700'
+              }`}>
+                {isDpiApproved ? '✓' : isPendingApproval ? '⏳' : isRejected ? '✕' : '3'}
+              </span>
+              <div>
+                <p className="text-sm font-extrabold text-cafe">3. Aprobación por un Administrador</p>
+                <p className={`text-xs mt-0.5 ${
+                  isDpiApproved
+                    ? 'text-jade font-bold'
+                    : isPendingApproval
+                    ? 'text-amber-800 font-bold'
+                    : isRejected
+                    ? 'text-red-700 font-bold'
+                    : 'text-text-muted'
+                }`}>
+                  {isDpiApproved
+                    ? '✓ Tu cuenta ha sido aprobada y validada por la administración'
+                    : isPendingApproval
+                    ? '⏳ Solicitud en revisión por el Administrador. Podrás publicar en cuanto sea aprobada.'
+                    : isRejected
+                    ? `❌ Solicitud rechazada: ${effectiveRejectionReason}. Actualiza tus datos en tu perfil.`
+                    : 'Un administrador revisará y validará tu cuenta tras ingresar tu DPI'}
+                </p>
+              </div>
+            </div>
           </div>
-          <Link
-            to="/perfil?tab=configuracion"
-            className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-forest px-6 text-sm font-black text-white hover:bg-forest-dark"
-          >
-            Completar datos en mi perfil
-          </Link>
+
+          <div className="mt-7 flex flex-col gap-2.5">
+            {isRejected ? (
+              <div className="rounded-2xl bg-red-50 border border-red-200 p-4 text-xs font-medium text-red-900 leading-relaxed text-center">
+                ❌ <strong>Solicitud rechazada:</strong> El administrador rechazó la verificación con el motivo: <em>"{effectiveRejectionReason}"</em>. La opción de publicar está inhabilitada. Debes reiniciar el procedimiento de verificación de tu DPI en tu perfil e ingresar documentación válida para esperar una nueva aprobación del Administrador.
+              </div>
+            ) : isPendingApproval ? (
+              <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs font-medium text-amber-900 leading-relaxed text-center">
+                🛡️ <strong>En proceso de revisión:</strong> Tu solicitud está en espera de la aprobación por un administrador. Podrás publicar tus viviendas en cuanto sea aprobada.
+              </div>
+            ) : null}
+
+            <Link
+              to="/perfil?tab=configuracion"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-forest px-6 text-sm font-black text-white hover:bg-forest-dark transition-all cursor-pointer"
+            >
+              {isRejected ? 'Reiniciar verificación de DPI en mi perfil' : 'Completar datos en mi perfil'}
+            </Link>
+
+            <Link
+              to="/explorar"
+              className="text-xs font-bold text-text-muted hover:text-cafe transition-colors py-2"
+            >
+              Volver a explorar viviendas
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -426,10 +710,9 @@ export default function PublishPage() {
   // Handle final submission (create OR update)
   const handlePublish = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    const ownerPhoneDigits = String(user?.phone || '').replace(/\D/g, '');
-    const hasOwnerIdentification = Boolean(user?.dpiData?.cui);
-    if (ownerPhoneDigits.length < 8 || !hasOwnerIdentification) {
-      setPublishError('Para publicar una vivienda debes registrar un número de teléfono válido y completar la identificación DPI en Ajustes de tu perfil.');
+    const isApproved = isUserAdmin || (hasPhone && isDpiApproved);
+    if (!isApproved) {
+      setPublishError('Tu cuenta aún requiere la aprobación del Administrador tras validar tu DPI.');
       return;
     }
     if (selectedImages.length === 0) {
