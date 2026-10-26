@@ -13,6 +13,7 @@ export default function SystemUpdatesModal({
   const { isAdmin } = useAuth();
   const [internalUpdates, setInternalUpdates] = useState([]);
   const [internalLoading, setInternalLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('todas');
 
   const updates = propUpdates !== undefined ? propUpdates : internalUpdates;
   const loading = propLoading !== undefined ? propLoading : internalLoading;
@@ -37,8 +38,6 @@ export default function SystemUpdatesModal({
 
   // Permitir que el modal abra siempre que isOpen sea true
   if (!isOpen) return null;
-
-  const [selectedCategory, setSelectedCategory] = useState('todas');
 
   const getCategoryBadge = (cat) => {
     switch (cat) {

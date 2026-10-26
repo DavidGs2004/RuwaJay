@@ -3,16 +3,16 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Menu, X, User, PlusCircle, Search, MapPin, Home, Building,
   Compass, Mountain, Palmtree, Landmark, Settings, Heart, LogOut, ChevronDown,
-  MessageSquare, Calculator, Building2, Shield, Megaphone, Smartphone,
-  Sun, Moon
+  MessageSquare, Calculator, Building2, Shield, Megaphone, Smartphone
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
-import { useTheme } from '../../context/ThemeContext';
+
 import { AVATAR_OPTIONS } from '../../data/avatars';
 import SystemUpdatesModal from '../ui/SystemUpdatesModal';
 import MobileAppConnectModal from '../ui/MobileAppConnectModal';
-import ThemeToggle from '../ui/ThemeToggle';
+import LogoutConfirmModal from '../ui/LogoutConfirmModal';
+
 import { subscribeToSystemUpdates } from '../../lib/adminService';
 
 /* ── Category tabs ── */
@@ -46,7 +46,7 @@ const propertyTypes = [
 export default function Header() {
   const { user, logout, isAdmin } = useAuth();
   const { totalUnreadCount } = useChat();
-  const { theme, toggleTheme, isDark } = useTheme();
+
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showUpdatesModal, setShowUpdatesModal] = useState(false);
@@ -57,12 +57,26 @@ export default function Header() {
   const [updatesLoading, setUpdatesLoading] = useState(true);
   const [hasNewChanges, setHasNewChanges] = useState(false);
   const [noUpdatesNotice, setNoUpdatesNotice] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = async () => {
+  const handleOpenLogoutModal = () => {
     setUserMenuOpen(false);
     setMobileOpen(false);
-    await logout();
-    navigate('/login', { replace: true });
+    setShowLogoutModal(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      setShowLogoutModal(false);
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.warn('Error al cerrar sesión:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
   const [activeField, setActiveField] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -251,7 +265,7 @@ export default function Header() {
 
   return (
     <>
-      <header className={`fixed top-0 left-0 right-0 z-50 bg-white border-b border-[#EBEBEB] transition-shadow duration-300 ${scrolled ? 'shadow-sm' : ''}`}>
+      <header className={`fixed top-0 left-0 right-0 z-50 bg-white border-b border-[#EBEBEB] transition-shadow duration-300 animate-fade-in ${scrolled ? 'shadow-sm' : ''}`}>
 
         {/* ═══════════ ROW 1: Logo — Categories — User ═══════════ */}
         <div className="border-b border-[#EBEBEB]">
@@ -302,8 +316,7 @@ export default function Header() {
               )}
             </Link>
 
-            {/* Mobile Theme Toggle Button */}
-            <ThemeToggle size="md" className="lg:hidden shrink-0" />
+
 
             {/* Center: Category tabs */}
             <div className="hidden min-w-0 flex-1 items-center justify-center gap-3 min-[1450px]:flex 2xl:gap-6">
@@ -375,8 +388,7 @@ export default function Header() {
                 <span className="h-2 w-2 rounded-full bg-jade animate-pulse" />
               </button>
 
-              {/* Desktop Theme Toggle Button */}
-              <ThemeToggle size="md" className="hidden lg:inline-flex shrink-0" />
+
 
               {user ? (
                 <div className="relative" ref={userMenuRef}>
@@ -534,28 +546,13 @@ export default function Header() {
                           <Settings size={17} className="text-[#717171]" />
                           Configuración
                         </Link>
-                        {/* Tema visual: Claro / Oscuro */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            toggleTheme();
-                          }}
-                          className="flex w-full items-center justify-between px-4 py-2.5 text-[14px] font-semibold text-[#222222] transition-colors hover:bg-[#F7F7F7] cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3">
-                            {isDark ? <Sun size={17} className="text-amber-400" /> : <Moon size={17} className="text-[#717171]" />}
-                            <span>{isDark ? 'Modo claro' : 'Modo oscuro'}</span>
-                          </div>
-                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-forest/10 text-forest">
-                            {isDark ? '🌙 Oscuro' : '☀️ Claro'}
-                          </span>
-                        </button>
+
                       </div>
                       {/* Logout */}
                       <div className="border-t border-[#EBEBEB] py-1.5">
                         <button
                           type="button"
-                          onClick={handleLogout}
+                          onClick={handleOpenLogoutModal}
                           className="flex w-full items-center gap-3 px-4 py-2.5 text-[14px] font-semibold text-[#E00B41] transition-colors hover:bg-red-50 cursor-pointer"
                         >
                           <LogOut size={17} />
@@ -1072,7 +1069,7 @@ export default function Header() {
                   </Link>
                   <button
                     type="button"
-                    onClick={handleLogout}
+                    onClick={handleOpenLogoutModal}
                     className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-[14px] font-bold text-[#E00B41] transition-colors hover:bg-red-50 cursor-pointer"
                   >
                     <LogOut size={18} /> Cerrar sesión
@@ -1117,6 +1114,14 @@ export default function Header() {
         isOpen={showMobileAppModal}
         onClose={() => setShowMobileAppModal(false)}
         targetPath={location.pathname}
+      />
+
+      {/* Modal de Confirmación de Cierre de Sesión */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+        isBusy={isLoggingOut}
       />
     </>
   );

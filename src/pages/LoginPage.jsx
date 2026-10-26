@@ -75,6 +75,42 @@ export default function LoginPage() {
   }, [searchParams]);
   const strongPassword = (text) => text.length >= 8 && /[A-Z]/.test(text) && /[a-z]/.test(text) && /\d/.test(text) && /[^A-Za-z0-9]/.test(text);
 
+  const getAuthErrorMessage = (err, currentMode) => {
+    const code = err?.code || '';
+    const raw = String(err?.message || '');
+
+    if (code === 'auth/invalid-credential' || raw.includes('auth/invalid-credential')) {
+      return 'Correo o contraseña incorrectos. Si creaste tu cuenta con Google, ingresa con el botón de Google o pulsa "¿Olvidaste tu contraseña?" para crear una.';
+    }
+    if (code === 'auth/user-not-found' || raw.includes('auth/user-not-found')) {
+      return 'No encontramos una cuenta con este correo. Puedes crear una nueva en la pestaña "Registrarme".';
+    }
+    if (code === 'auth/wrong-password' || raw.includes('auth/wrong-password')) {
+      return 'Contraseña incorrecta. Si no la recuerdas, pulsa "¿Olvidaste tu contraseña?".';
+    }
+    if (code === 'auth/email-already-in-use' || raw.includes('auth/email-already-in-use')) {
+      return 'Este correo ya está registrado. Si es tuyo, inicia sesión o pulsa "¿Olvidaste tu contraseña?".';
+    }
+    if (code === 'auth/weak-password' || raw.includes('auth/weak-password')) {
+      return 'La contraseña debe tener al menos 8 caracteres combinando mayúsculas, minúsculas, números y símbolos.';
+    }
+    if (code === 'auth/too-many-requests' || raw.includes('auth/too-many-requests')) {
+      return 'Demasiados intentos fallidos. Por tu seguridad, espera unos minutos o restablece tu contraseña.';
+    }
+    if (code === 'auth/invalid-email' || raw.includes('auth/invalid-email')) {
+      return 'El formato del correo electrónico ingresado no es válido.';
+    }
+    if (code === 'auth/network-request-failed' || raw.includes('auth/network-request-failed')) {
+      return 'Error de conexión. Revisa tu acceso a internet e intenta de nuevo.';
+    }
+    if (raw && !raw.startsWith('Firebase:')) {
+      return raw;
+    }
+    return currentMode === 'register'
+      ? 'No se pudo crear la cuenta. Por favor verifica tus datos e intenta de nuevo.'
+      : 'No se pudo iniciar sesión. Por favor verifica tus credenciales.';
+  };
+
   const submitAuth = async (event) => {
     event.preventDefault(); notify('');
     if (mode === 'register' && !strongPassword(password)) return notify('Completa todos los requisitos de una contraseña fuerte.', true);
@@ -82,14 +118,16 @@ export default function LoginPage() {
       if (mode === 'register') await register(name, email, password, role, phone);
       else await login(email, password);
       navigate('/');
-    } catch (err) { notify(err.message, true); }
+    } catch (err) {
+      notify(getAuthErrorMessage(err, mode), true);
+    }
   };
 
   const handleGoogleLogin = async () => {
     notify('');
     setBusy(true);
     try {
-      await loginWithGoogle();
+      await loginWithGoogle({ role: mode === 'register' ? role : undefined });
       navigate('/');
     } catch (err) {
       const messages = {
@@ -111,9 +149,9 @@ export default function LoginPage() {
     event.preventDefault(); setBusy(true); notify('');
     try {
       await requestPasswordReset(email);
-      notify('Enlace enviado. Revisa tu correo electrónico para cambiar tu contraseña.');
+      notify('Enlace de recuperación enviado. Revisa tu correo electrónico para cambiar o definir tu contraseña.');
     } catch (err) {
-      notify(err.message, true);
+      notify(getAuthErrorMessage(err, 'reset'), true);
     } finally {
       setBusy(false);
     }
@@ -121,7 +159,7 @@ export default function LoginPage() {
 
   return <main className="relative flex min-h-[calc(100dvh-72px)] items-start justify-center overflow-hidden bg-[#FAF5EE] px-3 py-6 sm:items-center sm:px-4 sm:py-10 md:min-h-[calc(100dvh-162px)]">
     <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-dorado/15 blur-3xl" /><div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-forest/10 blur-3xl" />
-    <div className="relative z-10 w-full max-w-[500px] overflow-hidden rounded-[24px] border border-[#E8D9C8] bg-white shadow-[0_20px_60px_rgba(45,24,16,0.12)] sm:rounded-[32px]">
+    <div className="relative z-10 w-full max-w-[500px] overflow-hidden rounded-[24px] border border-[#E8D9C8] bg-white shadow-[0_20px_60px_rgba(45,24,16,0.12)] sm:rounded-[32px] animate-fade-in">
       <div className="h-2 bg-gradient-to-r from-forest via-dorado to-terracota" />
       <div className="p-5 min-[380px]:p-7 sm:p-10">
         <div className="mb-5 flex justify-end"><span className="rounded-full border border-dorado/20 bg-dorado/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.2em] text-dorado">Acceso seguro</span></div>
@@ -132,24 +170,46 @@ export default function LoginPage() {
         {message && (
           <div
             role={error ? 'alert' : 'status'}
-            className={`mb-5 flex items-center gap-2.5 rounded-2xl border p-3.5 text-xs font-bold ${
-              error ? 'border-red-300 bg-red-50 text-red-700 shadow-xs' : 'border-jade/30 bg-jade/15 text-forest'
+            className={`mb-5 rounded-2xl border p-3.5 text-xs font-bold ${
+              error ? 'border-red-200 bg-red-50 text-red-700 shadow-xs' : 'border-jade/30 bg-jade/15 text-forest'
             }`}
           >
-            {error ? <ShieldAlert size={18} className="shrink-0 text-red-600" /> : <ShieldCheck size={18} className="shrink-0" />}
-            <span className="leading-relaxed">{message}</span>
+            <div className="flex items-start gap-2.5">
+              {error ? <ShieldAlert size={18} className="shrink-0 text-red-600 mt-0.5" /> : <ShieldCheck size={18} className="shrink-0 text-forest mt-0.5" />}
+              <div className="min-w-0 flex-1">
+                <span className="leading-relaxed block">{message}</span>
+                {error && mode === 'login' && (
+                  <div className="mt-2 flex items-center justify-between border-t border-red-200/60 pt-2">
+                    <span className="text-[11px] text-red-600/90 font-medium">¿Deseas asignar una contraseña a tu correo?</span>
+                    <button
+                      type="button"
+                      onClick={startReset}
+                      className="text-[11px] font-black text-terracota hover:underline cursor-pointer"
+                    >
+                      Restablecer / Crear contraseña
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {mode !== 'reset' && <>
-          <button type="button" onClick={handleGoogleLogin} disabled={isLoading || busy} className="mb-4 flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 text-sm font-bold text-cafe shadow-sm transition-all duration-200 hover:border-[#d1c4b0] hover:bg-[#FDFBF7] hover:shadow-md active:scale-[0.98] disabled:opacity-60">
+          <button type="button" onClick={handleGoogleLogin} disabled={isLoading || busy} className="mb-4 flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 text-sm font-bold text-cafe shadow-sm transition-all duration-200 hover:border-[#d1c4b0] hover:bg-[#FDFBF7] hover:shadow-md active:scale-[0.98] disabled:opacity-60 cursor-pointer">
             <svg width="20" height="20" viewBox="0 0 48 48" className="shrink-0">
               <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
               <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
               <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
               <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
             </svg>
-            <span>{isLoading || busy ? 'Sincronizando...' : 'Continuar con Google'}</span>
+            <span>
+              {isLoading || busy
+                ? 'Sincronizando...'
+                : mode === 'register'
+                  ? 'Registrarme con Google'
+                  : 'Iniciar sesión con Google'}
+            </span>
           </button>
 
           <div className="mb-4 flex items-center gap-3">

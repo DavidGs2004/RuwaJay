@@ -90,12 +90,18 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#FAF5EE] text-[#2D1810] font-sans">
+    <main className="min-h-screen bg-[#FAF5EE] text-[#2D1810] font-sans home-page-enter relative overflow-hidden">
+
+      {/* Soft warm ambient lighting at the top */}
+      <div 
+        aria-hidden="true" 
+        className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-[#D4962A]/10 via-[#FBF3E8]/40 to-transparent blur-3xl -z-10" 
+      />
 
       {/* ============================================================ */}
       {/* 1. HERO BANNER CAROUSEL                                       */}
       {/* ============================================================ */}
-      <section className="w-full relative">
+      <section className="w-full relative hero-enter-smooth">
         <div className="relative w-full shadow-lg border-b border-[#D4962A]/40 bg-[#FAF5EE]">
 
           {/* === MOBILE CAROUSEL === */}
@@ -119,7 +125,7 @@ export default function HomePage() {
               </h1>
               <Link
                 to="/explorar"
-                className="mt-6 inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-extrabold text-forest shadow-lg"
+                className="mt-6 inline-flex min-h-12 items-center justify-center rounded-full bg-white px-6 text-sm font-extrabold text-forest shadow-lg transition-transform duration-300 hover:scale-105 active:scale-95"
               >
                 Explorar hogares
               </Link>
@@ -196,17 +202,19 @@ export default function HomePage() {
       {/* ============================================================ */}
       {/* 2. CATEGORIES SECTION                                         */}
       {/* ============================================================ */}
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-20">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-20 home-section-stagger-1">
         <h2 className="mb-6 text-2xl font-black leading-tight tracking-tight text-[#0B5D3B] sm:mb-8 sm:text-3xl lg:text-4xl">
           Descubre casas para alquilar indefinidamente
         </h2>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-          {categories.map((cat) => (
+          {categories.map((cat, idx) => (
             <Link
               key={cat.title}
               to={cat.link}
-              className="group relative block h-60 overflow-hidden rounded-2xl border border-[#E8D9C8] shadow-md transition-all duration-300 hover:shadow-xl sm:h-72"
+              className={`group relative block h-60 overflow-hidden rounded-2xl border border-[#E8D9C8] shadow-md transition-all duration-300 hover:shadow-xl sm:h-72 ${
+                idx === 0 ? 'home-card-stagger-1' : idx === 1 ? 'home-card-stagger-2' : 'home-card-stagger-3'
+              }`}
             >
               {/* Category Image */}
               <img
@@ -234,18 +242,20 @@ export default function HomePage() {
       {/* ============================================================ */}
       {/* 3. BENEFITS SECTION                                           */}
       {/* ============================================================ */}
-      <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-10 lg:px-8 lg:pb-20 lg:pt-14">
+      <section className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-10 lg:px-8 lg:pb-20 lg:pt-14 home-section-stagger-2">
         <h2 className="mb-7 text-2xl font-black leading-tight tracking-tight text-[#0B5D3B] sm:mb-10 sm:text-3xl lg:text-4xl">
           Entendemos por qué quieres alquilar indefinidamente
         </h2>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-          {benefits.map((b) => {
+          {benefits.map((b, idx) => {
             const Icon = b.icon;
             return (
               <div
                 key={b.title}
-                className="flex items-start gap-4 rounded-2xl border border-[#E8D9C8]/80 bg-white p-5 shadow-xs transition-all hover:shadow-md sm:p-6"
+                className={`flex items-start gap-4 rounded-2xl border border-[#E8D9C8]/80 bg-white p-5 shadow-xs transition-all hover:shadow-md sm:p-6 ${
+                  idx === 0 ? 'home-benefit-stagger-1' : idx === 1 ? 'home-benefit-stagger-2' : 'home-benefit-stagger-3'
+                }`}
               >
                 {/* Circular Gold Icon Container */}
                 <div className="w-14 h-14 rounded-full bg-[#F0E2CF] border-2 border-[#D4962A] flex items-center justify-center flex-shrink-0 shadow-xs">

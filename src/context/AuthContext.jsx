@@ -17,7 +17,7 @@ import {
   verifyPasswordResetCode,
   confirmPasswordReset
 } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, onSnapshot, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { firebaseAuth, firestore, firebaseWebEnabled, googleProvider } from '../lib/firebase';
 
 const AuthContext = createContext(null);
@@ -29,8 +29,7 @@ export const isGlobalAdminEmail = (email) => GLOBAL_ADMIN_EMAILS.includes(String
  * Resuelve el estado canónico de la cuenta.
  * Si está en 'active', NINGUNA restricción aplica (se remueve suspensión o inactividad).
  */
-export function resolveUserStatus(data, email = '') {
-  if (isGlobalAdminEmail(email || data?.email)) return 'active';
+export function resolveUserStatus(data, _email = '') {
   if (!data) return 'active';
   // 1. Fuente canónica: si accountStatus está activo, NINGUNA restricción aplica
   if (data.accountStatus === 'active') return 'active';
@@ -44,6 +43,14 @@ export function resolveUserStatus(data, email = '') {
 }
 
 export { AVATAR_OPTIONS } from '../data/avatars';
+
+const fetchAuthoritativeDoc = async (docRef) => {
+  try {
+    return await getDocFromServer(docRef);
+  } catch {
+    return await getDoc(docRef);
+  }
+};
 
 // Configuración de tiempos y almacenamiento
 const IDLE_TIME_BEFORE_WARNING_MS = 15 * 60 * 1000; // 15 minutos de inactividad
@@ -206,45 +213,31 @@ export function AuthProvider({ children }) {
         if (currentGeneration !== generation) return;
         unsubscribeProfile = onSnapshot(doc(firestore, 'users', account.uid), async (snapshot) => {
           if (currentGeneration !== generation) return;
-          if (!snapshot.exists()) { setUser(null); setIsInitializing(false); return; }
+          if (!snapshot.exists()) {
+            // Auto-crear documento en Firestore si el usuario está autenticado en Firebase Auth pero no tiene perfil (ej. Google Sign-In)
+            const isSuperAdmin = isGlobalAdminEmail(account.email);
+            try {
+              await setDoc(doc(firestore, 'users', account.uid), {
+                name: account.displayName || 'Usuario',
+                email: account.email,
+                avatarImage: account.photoURL || null,
+                phone: null,
+                role: isSuperAdmin ? 'admin' : 'seeker',
+                createdAt: serverTimestamp(),
+              });
+              return;
+            } catch (autoCreateErr) {
+              console.warn('No se pudo auto-crear perfil en Firestore:', autoCreateErr);
+              setUser(null);
+              setIsInitializing(false);
+              return;
+            }
+          }
           const profile = snapshot.data() || {};
-          const isSuperAdmin = isGlobalAdminEmail(account.email);
-
           const userStatus = resolveUserStatus(profile, account.email);
+          const effectiveRole = profile.role || (claims.claims.role === 'admin' ? 'admin' : 'seeker');
 
-          // Desconectar inmediatamente si la cuenta está suspendida
-          if (userStatus === 'suspended') {
-            setUser(null);
-            setIsInitializing(false);
-            try {
-              sessionStorage.setItem('ruwajay_auth_alert', 'Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
-              await signOut(firebaseAuth);
-            } catch {}
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login?suspended=true';
-            }
-            return;
-          }
-
-          // Desconectar si la cuenta está inactiva
-          if (userStatus === 'inactive') {
-            setUser(null);
-            setIsInitializing(false);
-            try {
-              sessionStorage.setItem('ruwajay_auth_alert', 'Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
-              await signOut(firebaseAuth);
-            } catch {}
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login?inactive=true';
-            }
-            return;
-          }
-
-          const effectiveRole = isSuperAdmin ? 'admin' : (claims.claims.role === 'admin' ? 'admin' : (profile.role || 'seeker'));
-
-          if (isSuperAdmin && profile.role !== 'admin') {
-            updateDoc(doc(firestore, 'users', account.uid), { role: 'admin' }).catch(() => {});
-          }
+          const isUserVerified = Boolean(profile.verified && profile.dpiData?.cui && profile.verificationStatus === 'aprobada');
 
           setUser({
             ...profile,
@@ -254,9 +247,11 @@ export function AuthProvider({ children }) {
             avatarImage: profile.avatarImage || profile.avatar || profile.photoURL || account.photoURL,
             emailVerified: account.emailVerified,
             role: effectiveRole,
+            verified: isUserVerified,
             accountStatus: userStatus,
             status: userStatus,
             suspended: userStatus === 'suspended',
+            authProviders: account.providerData?.map((p) => p.providerId) || [],
           });
           setIsInitializing(false);
         }, () => { setUser(null); setIsInitializing(false); });
@@ -278,24 +273,10 @@ export function AuthProvider({ children }) {
     const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
     const account=credential.user,ref=doc(firestore,'users',account.uid);
     const isSuperAdmin = isGlobalAdminEmail(account.email);
-    const snap = await getDoc(ref);
+    const snap = await fetchAuthoritativeDoc(ref);
     if(!snap.exists()) {
       await setDoc(ref,{name:account.displayName||'Usuario',email:account.email,
         phone:null,role:isSuperAdmin ? 'admin' : 'seeker',accountStatus:'active',createdAt:serverTimestamp()});
-    } else {
-      const data = snap.data();
-      const status = resolveUserStatus(data, account.email);
-      if (status === 'suspended') {
-        await signOut(firebaseAuth);
-        throw new Error('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
-      }
-      if (status === 'inactive') {
-        await signOut(firebaseAuth);
-        throw new Error('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
-      }
-      if (isSuperAdmin && data?.role !== 'admin') {
-        await updateDoc(ref, { role: 'admin' }).catch(() => {});
-      }
     }
     return account;
   });
@@ -306,27 +287,17 @@ export function AuthProvider({ children }) {
     const account = credential.user;
     const ref = doc(firestore, 'users', account.uid);
     const isSuperAdmin = isGlobalAdminEmail(account.email);
-    const snap = await getDoc(ref);
+    const snap = await fetchAuthoritativeDoc(ref);
     if (!snap.exists()) {
+      const chosenRole = payload.role === 'owner' ? 'owner' : 'seeker';
       await setDoc(ref, {
-        name: account.displayName || 'Usuario', email: account.email,
-        avatarImage: account.photoURL || null, phone: null,
-        role: isSuperAdmin ? 'admin' : 'seeker', accountStatus: 'active', createdAt: serverTimestamp(),
+        name: account.displayName || 'Usuario',
+        email: account.email,
+        avatarImage: account.photoURL || null,
+        phone: null,
+        role: isSuperAdmin ? 'admin' : chosenRole,
+        createdAt: serverTimestamp(),
       });
-    } else {
-      const data = snap.data();
-      const status = resolveUserStatus(data, account.email);
-      if (status === 'suspended') {
-        await signOut(firebaseAuth);
-        throw new Error('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
-      }
-      if (status === 'inactive') {
-        await signOut(firebaseAuth);
-        throw new Error('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
-      }
-      if (isSuperAdmin && data?.role !== 'admin') {
-        await updateDoc(ref, { role: 'admin' }).catch(() => {});
-      }
     }
     return account;
   });
@@ -369,8 +340,28 @@ export function AuthProvider({ children }) {
   };
   const changePassword = async (currentPassword, newPassword) => {
     const account = requireAccount();
-    await reauthenticateWithCredential(account, EmailAuthProvider.credential(account.email, currentPassword));
-    await updatePassword(account, newPassword);
+    try {
+      await reauthenticateWithCredential(account, EmailAuthProvider.credential(account.email, currentPassword));
+      await updatePassword(account, newPassword);
+    } catch (err) {
+      const code = err?.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+        throw new Error('La contraseña actual ingresada es incorrecta. Por favor verifícala.');
+      }
+      if (code === 'auth/requires-recent-login') {
+        throw new Error('Por motivos de seguridad, debes volver a iniciar sesión antes de cambiar tu contraseña.');
+      }
+      if (code === 'auth/weak-password') {
+        throw new Error('La nueva contraseña debe tener al menos 8 caracteres combinando mayúsculas, números y símbolos.');
+      }
+      if (code === 'auth/too-many-requests') {
+        throw new Error('Demasiados intentos fallidos. Por tu seguridad, espera unos minutos antes de intentar de nuevo.');
+      }
+      if (code === 'auth/user-mismatch' || code === 'auth/user-not-found') {
+        throw new Error('No se pudo validar la sesión actual. Por favor inicia sesión nuevamente.');
+      }
+      throw new Error(err.message || 'No se pudo actualizar la contraseña.');
+    }
   };
   const requestVerification = async (data = {}) => {
     const account = requireAccount();
@@ -400,23 +391,62 @@ export function AuthProvider({ children }) {
       createdAt: serverTimestamp(),
     };
     await setDoc(doc(firestore, 'verification_requests', account.uid), payload);
+    const cleanDpi = {
+      ...(user?.dpiData || {}),
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
     await setDoc(doc(firestore, 'users', account.uid), {
       verificationStatus: 'pendiente',
       verificationRejectionReason: null,
       verificationRequestedAt: serverTimestamp(),
+      dpiData: cleanDpi,
     }, { merge: true }).catch(() => {});
+    setUser((prev) => (prev ? {
+      ...prev,
+      verificationStatus: 'pendiente',
+      verificationRejectionReason: null,
+      dpiData: cleanDpi,
+    } : prev));
     return { success: true, pending: true };
   };
+  const updateDpiData = async (updatedDpi) => {
+    const account = requireAccount();
+    const cleanDpi = {
+      ...(user?.dpiData || {}),
+      ...updatedDpi,
+      updatedAt: new Date().toISOString(),
+    };
+    await setDoc(doc(firestore, 'users', account.uid), {
+      dpiData: cleanDpi,
+    }, { merge: true });
+    await setDoc(doc(firestore, 'verification_requests', account.uid), {
+      ...cleanDpi,
+    }, { merge: true }).catch(() => {});
+    return true;
+  };
+
   const purgeDpiData = async () => {
     const account = requireAccount();
     const { deleteDoc, updateDoc } = await import('firebase/firestore');
-    await deleteDoc(doc(firestore, 'verification_requests', account.uid)).catch(() => {});
+    await deleteDoc(doc(firestore, 'verification_requests', account.uid)).catch((err) => {
+      console.warn('Error borrando solicitud de verificación:', err);
+    });
+    // Solo enviamos los campos autorizados en las reglas de Firestore para evitar error de permisos
     await updateDoc(doc(firestore, 'users', account.uid), {
+      dpiData: null,
+      verificationStatus: null,
+      verificationRejectionReason: null,
+    });
+    // Actualizamos el estado en memoria de React inmediatamente
+    setUser((prev) => (prev ? {
+      ...prev,
       dpiData: null,
       verified: false,
       verificationStatus: null,
       verificationRejectionReason: null,
-    }).catch(() => {});
+    } : null));
+    return true;
   };
 
   return (
@@ -432,11 +462,12 @@ export function AuthProvider({ children }) {
       updateProfile, 
       changePassword, 
       requestVerification, 
+      updateDpiData,
       purgeDpiData, 
       requestPasswordReset,
       verifyResetCode,
       resetPassword,
-      isAdmin: user?.role === 'admin' || isGlobalAdminEmail(user?.email),
+      isAdmin: user?.role === 'admin',
     }}>
       {children}
 
@@ -527,6 +558,7 @@ export function useAuth() {
       updateProfile: async () => {},
       changePassword: async () => {},
       requestVerification: () => Promise.resolve({ success: false }),
+      updateDpiData: async () => {},
       purgeDpiData: () => {},
       requestPasswordReset: async () => {},
       verifyResetCode: async () => {},

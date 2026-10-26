@@ -9,15 +9,13 @@ service cloud.firestore {
     }
     function signedIn() {
       return request.auth != null && (
-        request.auth.token.get('email', '').lower() == 'xleon04gd@gmail.com'
-        || !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid))
         || isAccountActive(get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
       );
     }
     function isAdmin() {
       return signedIn() && (
         request.auth.token.get('role', '') == 'admin'
-        || request.auth.token.get('email', '').lower() == 'xleon04gd@gmail.com'
         || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'
       );
     }
@@ -33,10 +31,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
       allow create: if signedIn() && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt'])
-        && request.resource.data.role in ['seeker','owner'] && validProfile(request.resource.data);
+        && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt','accountStatus','status'])
+        && (request.resource.data.role in ['seeker','owner','admin'])
+        && validProfile(request.resource.data);
       allow update: if isAdmin() || (validProfile(request.resource.data) && signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','verificationStatus','verificationRequestedAt','verificationRejectionReason','dpiData'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','verificationStatus','verificationRequestedAt','verificationRejectionReason','dpiData','accountStatus','status'])
         && (request.resource.data.get('role','seeker') == resource.data.get('role','seeker')
           || (resource.data.get('role','seeker') in ['seeker','owner'] && request.resource.data.role in ['seeker','owner'])));
       allow delete: if isAdmin();
@@ -104,7 +103,8 @@ service cloud.firestore {
     }
     match /visits/{visitId} {
       allow read: if signedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
-      allow write: if false; // Atomic slot reservations and state transitions run on the server.
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
+      allow create, update: if false; // Atomic slot reservations and state transitions run on the server.
     }
     match /visit_slots/{slotId} { allow read, write: if false; }
     match /lease_drafts/{leaseId} {

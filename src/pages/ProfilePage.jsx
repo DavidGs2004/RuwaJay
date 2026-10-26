@@ -20,10 +20,11 @@ import PropertyCard from '../components/property/PropertyCard';
 import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
 import EditPropertyModal from '../components/property/EditPropertyModal';
+import LogoutConfirmModal from '../components/ui/LogoutConfirmModal';
 import { sanitizeText, validateImageFile, maskSensitive } from '../utils/security';
 import { firebaseAuth } from '../lib/firebase';
 import { deleteOwnedProperty, subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
-import { changeVisitStatus, deleteVisit, setVisitConversationId, subscribeToUserVisits } from '../lib/visitService';
+import { changeVisitStatus, deleteVisit, hideVisitLocally, setVisitConversationId, subscribeToUserVisits } from '../lib/visitService';
 import { getOrCreateConversation } from '../lib/chatService';
 import {
   subscribeToUsers,
@@ -138,7 +139,7 @@ export default function ProfilePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const activeTab = searchParams.get('tab') || 'perfil';
-  const { user, logout, updateProfile, changePassword, requestVerification, purgeDpiData, isAdmin } = useAuth();
+  const { user, logout, updateProfile, changePassword, requestPasswordReset, requestVerification, updateDpiData, purgeDpiData, isAdmin } = useAuth();
   const { favorites, recentSearches } = useFavorites();
   const [editingProperty, setEditingProperty] = useState(null);
   const [myProperties, setMyProperties] = useState([]);
@@ -169,10 +170,15 @@ export default function ProfilePage() {
   const [pwMessage, setPwMessage] = useState('');
   const [pwError, setPwError] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
+  const [resetEmailBusy, setResetEmailBusy] = useState(false);
 
   /* ── Verification State ── */
   const [showDpiModal, setShowDpiModal] = useState(false);
   const [showDpiDetailsModal, setShowDpiDetailsModal] = useState(false);
+  const [showDpiSuccessModal, setShowDpiSuccessModal] = useState(false);
+  const [showDpiEditSuccessModal, setShowDpiEditSuccessModal] = useState(false);
+  const [showPurgeDpiModal, setShowPurgeDpiModal] = useState(false);
+  const [purgingDpi, setPurgingDpi] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false);
   const [dpiError, setDpiError] = useState('');
@@ -214,6 +220,25 @@ export default function ProfilePage() {
   const [newUpdatePriority, setNewUpdatePriority] = useState('normal');
   const [isPostingUpdate, setIsPostingUpdate] = useState(false);
   const [adminNotice, setAdminNotice] = useState('');
+  const [deletingUpdate, setDeletingUpdate] = useState(null);
+  const [isDeletingUpdateBusy, setIsDeletingUpdateBusy] = useState(false);
+  const [statusModalTarget, setStatusModalTarget] = useState(null);
+  const [isUpdatingStatusBusy, setIsUpdatingStatusBusy] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      setShowLogoutModal(false);
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.warn('Error al cerrar sesión:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   /* ── Admin Verification Requests State ── */
   const [verificationRequests, setVerificationRequests] = useState([]);
@@ -228,7 +253,21 @@ export default function ProfilePage() {
 
   const handleOpenDpiModal = () => {
     setDpiError('');
-    if (user?.verificationStatus === 'rechazada' || !user?.dpiData) {
+    if (user?.dpiData) {
+      setDpiForm({
+        cui: formatDpiCui(user.dpiData.cui || ''),
+        department: user.dpiData.department || 'Guatemala',
+        municipality: user.dpiData.municipality || 'Guatemala',
+        birthDate: user.dpiData.birthDate || '',
+        expirationDate: user.dpiData.expirationDate || '',
+        legalAddress: user.dpiData.legalAddress || '',
+        emergencyName: user.dpiData.emergencyName || '',
+        emergencyPhone: user.dpiData.emergencyPhone || '',
+        emergencyRelation: user.dpiData.emergencyRelation || 'Familiar',
+        documentPhoto: user.dpiData.documentPhoto || null,
+        swornDeclaration: true,
+      });
+    } else {
       setDpiForm({
         cui: '',
         department: 'Guatemala',
@@ -391,25 +430,40 @@ export default function ProfilePage() {
     }
   };
 
-  const handleDeleteVisit = async (visitId) => {
-    if (!window.confirm('¿Deseas eliminar esta cita del historial para ambos participantes?')) return;
+  const [deletingVisitId, setDeletingVisitId] = useState(null);
+  const [isDeletingVisitBusy, setIsDeletingVisitBusy] = useState(false);
+  const [deletingPropertyTarget, setDeletingPropertyTarget] = useState(null);
+  const [isDeletingPropertyBusy, setIsDeletingPropertyBusy] = useState(false);
+
+  const handleConfirmDeleteVisit = async () => {
+    if (!deletingVisitId) return;
+    const targetId = deletingVisitId;
+    setIsDeletingVisitBusy(true);
     try {
-      await deleteVisit(visitId);
+      await deleteVisit(targetId);
     } catch (error) {
       console.warn('No se pudo eliminar la cita:', error);
+      hideVisitLocally(targetId);
+    } finally {
+      setVisits((prev) => prev.filter((v) => v.id !== targetId));
+      setDeletingVisitId(null);
+      setIsDeletingVisitBusy(false);
+      window.dispatchEvent(new Event('ruwajay:visits-changed'));
     }
   };
 
-  const handleDeleteOwnedProperty = async (property) => {
-    const confirmed = window.confirm(
-      `¿Eliminar permanentemente "${property.title || 'esta vivienda'}"? Dejará de aparecer para todos los usuarios.`
-    );
-    if (!confirmed) return;
-
+  const handleConfirmDeleteProperty = async () => {
+    if (!deletingPropertyTarget) return;
+    const targetId = deletingPropertyTarget.id;
+    setIsDeletingPropertyBusy(true);
     try {
-      await deleteOwnedProperty(property.id, currentUserId);
+      await deleteOwnedProperty(targetId, currentUserId);
     } catch (error) {
-      window.alert(error?.message || 'No se pudo eliminar la vivienda.');
+      console.warn('No se pudo eliminar la vivienda:', error);
+    } finally {
+      setMyProperties((prev) => prev.filter((p) => p.id !== targetId));
+      setDeletingPropertyTarget(null);
+      setIsDeletingPropertyBusy(false);
     }
   };
 
@@ -552,6 +606,28 @@ export default function ProfilePage() {
 
     setVerifyBusy(true);
     try {
+      if (isVerified) {
+        // Para usuario ya verificado: actualización directa de datos de contacto sin revocar certificación
+        await updateDpiData({
+          cui: cleanCui,
+          department: sanitizeText(dpiForm.department),
+          municipality: sanitizeText(dpiForm.municipality),
+          birthDate: sanitizeText(dpiForm.birthDate),
+          expirationDate: sanitizeText(dpiForm.expirationDate),
+          legalAddress: sanitizeText(dpiForm.legalAddress),
+          emergencyName: sanitizeText(dpiForm.emergencyName),
+          emergencyPhone: sanitizeText(dpiForm.emergencyPhone),
+          emergencyRelation: sanitizeText(dpiForm.emergencyRelation),
+          ...(dpiForm.documentPhoto ? { documentPhoto: dpiForm.documentPhoto } : {}),
+        });
+        setVerifyBusy(false);
+        setShowDpiModal(false);
+        setShowDpiEditSuccessModal(true);
+        setProfileSaved(true);
+        setTimeout(() => setProfileSaved(false), 3500);
+        return;
+      }
+
       await requestVerification({
         cui: cleanCui,
         department: sanitizeText(dpiForm.department),
@@ -566,8 +642,8 @@ export default function ProfilePage() {
       });
       setVerifyBusy(false);
       setVerifyDone(true);
-      window.alert('¡Solicitud de verificación enviada! Tu solicitud para ser casero está siendo revisada por el equipo administrador. Recibirás una notificación en tiempo real en cuanto sea procesada.');
       setShowDpiModal(false);
+      setShowDpiSuccessModal(true);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3500);
     } catch {
@@ -576,21 +652,55 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSendResetEmail = async () => {
+    const targetEmail = user?.email || firebaseAuth?.currentUser?.email;
+    if (!targetEmail) {
+      setPwMessage('No se encontró un correo electrónico asociado a la cuenta.');
+      setPwError(true);
+      return;
+    }
+    setResetEmailBusy(true);
+    setPwMessage('');
+    try {
+      await requestPasswordReset(targetEmail);
+      setPwMessage(`Hemos enviado un enlace seguro para restablecer o crear tu contraseña a: ${targetEmail}. Revisa tu bandeja de entrada o spam.`);
+      setPwError(false);
+    } catch (err) {
+      setPwMessage(err.message || 'No se pudo enviar el correo de recuperación.');
+      setPwError(true);
+    } finally {
+      setResetEmailBusy(false);
+    }
+  };
+
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPwMessage(''); setPwError(false);
     if (!currentPw) { setPwMessage('Ingresa tu contraseña actual.'); setPwError(true); return; }
-    if (!isStrongPassword(newPw)) { setPwMessage('Tu nueva contraseña no cumple todos los requisitos.'); setPwError(true); return; }
+    if (!isStrongPassword(newPw)) { setPwMessage('Tu nueva contraseña debe tener al menos 8 caracteres con mayúsculas, minúsculas, números y símbolos.'); setPwError(true); return; }
     if (newPw !== confirmPw) { setPwMessage('Las contraseñas nuevas no coinciden.'); setPwError(true); return; }
     setPwBusy(true);
     try {
       await changePassword(currentPw, newPw);
-      setPwMessage('¡Contraseña actualizada correctamente!');
+      setPwMessage('¡Contraseña actualizada exitosamente!');
       setPwError(false);
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
-      setTimeout(() => { setShowPasswordForm(false); setPwMessage(''); }, 2500);
+      setTimeout(() => { setShowPasswordForm(false); setPwMessage(''); }, 3000);
     } catch (err) {
-      setPwMessage(err.message || 'Error al cambiar la contraseña.');
+      const raw = err?.message || '';
+      let cleanMsg = 'Error al cambiar la contraseña.';
+      if (raw.includes('auth/invalid-credential') || raw.includes('auth/wrong-password') || raw.includes('incorrecta')) {
+        cleanMsg = 'La contraseña actual ingresada es incorrecta. Por favor verifícala.';
+      } else if (raw.includes('auth/requires-recent-login')) {
+        cleanMsg = 'Por motivos de seguridad, debes cerrar sesión y volver a entrar antes de cambiar tu contraseña.';
+      } else if (raw.includes('auth/weak-password')) {
+        cleanMsg = 'La nueva contraseña debe tener al menos 8 caracteres combinando mayúsculas, números y símbolos.';
+      } else if (raw.includes('auth/too-many-requests')) {
+        cleanMsg = 'Demasiados intentos fallidos. Por tu seguridad, espera unos minutos antes de intentar de nuevo.';
+      } else if (raw && !raw.startsWith('Firebase:')) {
+        cleanMsg = raw;
+      }
+      setPwMessage(cleanMsg);
       setPwError(true);
     } finally { setPwBusy(false); }
   };
@@ -607,7 +717,7 @@ export default function ProfilePage() {
     catch(error) { window.alert(error.message || 'No se pudo actualizar la vivienda.'); }
   };
 
-  const isVerified = Boolean(user?.verified);
+  const isVerified = Boolean(user?.verified && user?.dpiData?.cui && user?.verificationStatus === 'aprobada');
 
   /* ── Admin: subscribe to all users, properties, system updates, and verification requests ── */
   useEffect(() => {
@@ -790,56 +900,69 @@ export default function ProfilePage() {
             <div className="min-w-0 flex-1 text-center sm:text-left">
               <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                 <h1 className="break-words text-2xl font-extrabold text-cafe">{user?.name}</h1>
-                {isVerified && (
-                  <button
-                    type="button"
-                    onClick={() => setShowDpiDetailsModal(true)}
-                    className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-dorado/20 to-dorado/10 px-2.5 py-0.5 text-[11px] font-black text-dorado hover:ring-2 hover:ring-dorado/40 transition-all cursor-pointer"
-                    title="Ver credencial de verificación"
+                {isAdmin ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-forest/15 px-3 py-1 text-xs font-black text-forest border border-forest/30 shadow-xs"
+                    title="Cuenta con permisos de super administrador"
                   >
-                    <BadgeCheck size={14} className="text-dorado" /> Verificado con DPI
-                  </button>
-                )}
-                {!isVerified && user?.verificationStatus === 'pendiente' && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-black text-amber-700 border border-amber-300">
-                    <Clock3 size={13} className="text-amber-600 animate-pulse" /> Verificación DPI en revisión
+                    <ShieldCheck size={14} className="text-forest" /> Administrador Verificado
                   </span>
-                )}
-                {!isVerified && user?.verificationStatus === 'rechazada' && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDpiModal()}
-                    className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-black text-red-700 border border-red-300 hover:bg-red-500/25 transition-all cursor-pointer"
-                    title="Ver motivo y corregir"
-                  >
-                    <AlertTriangle size={13} className="text-red-600" /> Solicitud DPI rechazada (Corregir)
-                  </button>
+                ) : (
+                  <>
+                    {isVerified && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDpiDetailsModal(true)}
+                        className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-dorado/20 to-dorado/10 px-2.5 py-0.5 text-[11px] font-black text-dorado hover:ring-2 hover:ring-dorado/40 transition-all cursor-pointer"
+                        title="Ver credencial de verificación"
+                      >
+                        <BadgeCheck size={14} className="text-dorado" /> Verificado con DPI
+                      </button>
+                    )}
+                    {!isVerified && user?.verificationStatus === 'pendiente' && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-black text-amber-700 border border-amber-300">
+                        <Clock3 size={13} className="text-amber-600 animate-pulse" /> Verificación DPI en revisión
+                      </span>
+                    )}
+                    {!isVerified && user?.verificationStatus === 'rechazada' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDpiModal()}
+                        className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-black text-red-700 border border-red-300 hover:bg-red-500/25 transition-all cursor-pointer"
+                        title="Ver motivo y corregir"
+                      >
+                        <AlertTriangle size={13} className="text-red-600" /> Solicitud DPI rechazada (Corregir)
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
               <p className="break-all text-sm text-text-secondary">{user?.email}</p>
               {user?.bio && <p className="mt-1.5 text-xs text-text-muted italic">"{user.bio}"</p>}
               <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
-                <button
-                  type="button"
-                  onClick={() => (isVerified ? setShowDpiDetailsModal(true) : handleOpenDpiModal())}
-                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
-                    isVerified
-                      ? 'bg-dorado/10 text-cafe hover:bg-dorado/20'
+                {!isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => (isVerified || user?.verificationStatus === 'pendiente' ? setShowDpiDetailsModal(true) : handleOpenDpiModal())}
+                    className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                      isVerified
+                        ? 'bg-dorado/10 text-cafe hover:bg-dorado/20'
+                        : user?.verificationStatus === 'pendiente'
+                        ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                        : user?.verificationStatus === 'rechazada'
+                        ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                        : 'bg-dorado/10 text-cafe hover:bg-dorado/20'
+                    }`}
+                  >
+                    {isVerified
+                      ? '✓ Identidad DPI validada'
                       : user?.verificationStatus === 'pendiente'
-                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      ? '⏳ Solicitud en revisión'
                       : user?.verificationStatus === 'rechazada'
-                      ? 'bg-red-100 text-red-800 hover:bg-red-200'
-                      : 'bg-dorado/10 text-cafe hover:bg-dorado/20'
-                  }`}
-                >
-                  {isVerified
-                    ? '✓ Identidad DPI validada'
-                    : user?.verificationStatus === 'pendiente'
-                    ? '⏳ Solicitud en revisión'
-                    : user?.verificationStatus === 'rechazada'
-                    ? '⚠️ Solicitud rechazada (Reintentar)'
-                    : '🛡️ Solicitar verificación con DPI'}
-                </button>
+                      ? '⚠️ Solicitud rechazada (Reintentar)'
+                      : '🛡️ Solicitar verificación con DPI'}
+                  </button>
+                )}
                 <span className={`rounded-full px-3 py-1 text-xs font-bold transition-all ${
                   isAdmin ? 'bg-forest text-white shadow-xs' : 'bg-crema text-cafe'
                 }`}>
@@ -874,7 +997,7 @@ export default function ProfilePage() {
               </button>
               <button
                 type="button"
-                onClick={async () => { await logout(); navigate('/login', { replace: true }); }}
+                onClick={() => setShowLogoutModal(true)}
                 className="flex min-h-11 items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-xs font-bold text-terracota transition-all hover:bg-red-100 cursor-pointer"
               >
                 <LogOut size={16} /> Cerrar sesión
@@ -1196,20 +1319,45 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Validación e Identidad DPI */}
+            {/* Validación e Identidad DPI / Estado Administrador */}
             <SectionCard>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe">
-                  <ShieldCheck size={20} className="text-dorado" /> Validación de Identidad con DPI
+                  <ShieldCheck size={20} className={isAdmin ? 'text-forest' : 'text-dorado'} />
+                  {isAdmin ? 'Cuenta de Administrador Autorizada' : 'Validación de Identidad con DPI'}
                 </h3>
-                {isVerified && (
+                {isAdmin ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-forest/20 px-2.5 py-0.5 text-[10px] font-black text-forest">
+                    <BadgeCheck size={13} /> Acceso Maestro Total
+                  </span>
+                ) : isVerified ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-dorado/20 px-2.5 py-0.5 text-[10px] font-black text-dorado">
                     <BadgeCheck size={13} /> Certificado Oficial
                   </span>
-                )}
+                ) : user?.verificationStatus === 'pendiente' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-[10px] font-black text-amber-800">
+                    <Clock3 size={12} className="text-amber-600 animate-pulse" /> Verificación en Proceso
+                  </span>
+                ) : user?.verificationStatus === 'rechazada' ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 border border-red-300 px-2.5 py-0.5 text-[10px] font-black text-red-800">
+                    <AlertTriangle size={12} /> Solicitud Rechazada
+                  </span>
+                ) : null}
               </div>
 
-              {isVerified ? (
+              {isAdmin ? (
+                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-forest/30 bg-gradient-to-br from-forest/10 via-[#FAF5EE] to-forest/5 p-4 sm:p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-forest/20 text-forest shadow-xs">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-cafe">Permisos y Privilegios Plenos de Administrador</p>
+                    <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                      Como administrador del sistema RuwaJay, tu cuenta posee permisos globales y acceso irrestricto para publicar inmuebles, gestionar citas y administrar la plataforma sin requerimiento de validación de DPI.
+                    </p>
+                  </div>
+                </div>
+              ) : isVerified ? (
                 <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-dorado/30 bg-gradient-to-br from-dorado/10 via-[#FAF5EE] to-dorado/5 p-4 sm:p-5">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/20 text-dorado">
                     <BadgeCheck size={28} />
@@ -1235,6 +1383,84 @@ export default function ProfilePage() {
                         <Edit3 size={13} /> Modificar datos de DPI
                       </button>
                     </div>
+                  </div>
+                </div>
+              ) : user?.verificationStatus === 'pendiente' ? (
+                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50/90 via-[#FAF5EE] to-amber-50/50 p-4 sm:p-5 shadow-xs">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 border border-amber-200 shadow-xs">
+                    <Clock3 size={28} className="animate-pulse" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-black text-cafe">Tu verificación de DPI está en proceso</p>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-200/90 px-2 py-0.5 text-[10px] font-black text-amber-900 border border-amber-300/60">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-600 animate-pulse" />
+                        En revisión por administración
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+                      Tu documento oficial y datos de DPI fueron recibidos y están siendo revisados por el equipo administrativo. En cuanto sea aprobada, obtendrás automáticamente tu insignia oficial de verificación y se habilitarán los permisos de casero.
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                      {user?.dpiData?.cui && (
+                        <div className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 border border-amber-200 text-cafe shadow-2xs">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-800">CUI:</span>
+                          <span className="font-mono font-bold">{formatDpiCui(user.dpiData.cui)}</span>
+                        </div>
+                      )}
+                      <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-800 bg-amber-100/60 px-2.5 py-1 rounded-lg border border-amber-200/60">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span>Monitoreando aprobación en tiempo real...</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowDpiDetailsModal(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-xs font-black text-white transition-colors cursor-pointer shadow-xs"
+                      >
+                        <FileCheck size={14} /> Ver estado de solicitud
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDpiModal()}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white hover:bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 transition-colors cursor-pointer"
+                      >
+                        <Edit3 size={13} /> Modificar datos enviados
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : user?.verificationStatus === 'rechazada' ? (
+                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-red-300 bg-gradient-to-br from-red-50/90 via-[#FAF5EE] to-red-50/50 p-4 sm:p-5 shadow-xs">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-700 border border-red-200 shadow-xs">
+                    <AlertTriangle size={28} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-black text-cafe">Solicitud de verificación rechazada</p>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-200/90 px-2 py-0.5 text-[10px] font-black text-red-900 border border-red-300/60">
+                        Requiere corrección
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+                      El administrador revisó tu solicitud y requiere que corrijas los datos o adjuntes una fotografía más legible.
+                    </p>
+                    {user?.verificationRejectionReason && (
+                      <div className="mt-2.5 rounded-xl bg-white p-3 border border-red-200 text-xs">
+                        <span className="text-[10px] font-extrabold uppercase text-red-700 block mb-0.5">Motivo del rechazo:</span>
+                        <p className="font-semibold text-cafe">"{user.verificationRejectionReason}"</p>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDpiModal()}
+                      className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2 text-xs font-black text-white transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Edit3 size={13} /> Corregir y reenviar solicitud
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -1810,7 +2036,7 @@ export default function ProfilePage() {
                             {(isCancelled || isRejected || isExpired) && (
                               <button
                                 type="button"
-                                onClick={() => handleDeleteVisit(v.id)}
+                                onClick={() => setDeletingVisitId(v.id)}
                                 title="Eliminar del historial"
                                 className="p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
                               >
@@ -1923,7 +2149,7 @@ export default function ProfilePage() {
                         </Link>
                         <button
                           type="button"
-                          onClick={() => handleDeleteOwnedProperty(property)}
+                          onClick={() => setDeletingPropertyTarget(property)}
                           className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-red-50 px-3 py-2 text-center text-xs font-black text-red-600 transition-colors hover:bg-red-100 min-[430px]:col-span-2 xl:col-span-1"
                           title="Eliminar permanentemente mi vivienda"
                         >
@@ -2531,17 +2757,9 @@ export default function ProfilePage() {
                               {item.active !== false ? '● Activo' : '○ Oculto'}
                             </button>
                             <button
-                              onClick={async () => {
-                                if (window.confirm('¿Deseas eliminar este comunicado?')) {
-                                  try {
-                                    await deleteSystemUpdate(item.id);
-                                    setAdminNotice('Comunicado eliminado.');
-                                  } catch (err) {
-                                    setAdminNotice(err.message);
-                                  }
-                                }
-                              }}
-                              className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
+                              type="button"
+                              onClick={() => setDeletingUpdate(item)}
+                              className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors cursor-pointer"
                               title="Eliminar comunicado"
                             >
                               <Trash2 size={14} />
@@ -2721,31 +2939,14 @@ export default function ProfilePage() {
                           return (
                             <select
                               value={currentStatus}
-                              onChange={async (e) => {
+                              onChange={(e) => {
                                 const newStatus = e.target.value;
                                 if (newStatus === currentStatus) return;
-                                if (newStatus === 'suspended') {
-                                  const confirmSuspend = window.confirm(
-                                    `¿Confirmas suspender la cuenta de "${u.name || u.email}"? El usuario será desconectado inmediatamente del sistema y no podrá volver a iniciar sesión hasta que sea reactivado.`
-                                  );
-                                  if (!confirmSuspend) return;
-                                } else if (newStatus === 'active' && currentStatus !== 'active') {
-                                  const confirmActivate = window.confirm(
-                                    `¿Confirmas reactivar la cuenta de "${u.name || u.email}"? Se levantarán todas las restricciones y el usuario podrá iniciar sesión y entrar a la plataforma normalmente.`
-                                  );
-                                  if (!confirmActivate) return;
-                                }
-                                try {
-                                  await updateUserStatus(u.id, newStatus);
-                                  const statusLabels = {
-                                    active: 'Activo (Acceso totalmente habilitado)',
-                                    inactive: 'Inactivo',
-                                    suspended: 'Suspendido (Acceso bloqueado)',
-                                  };
-                                  setAdminNotice(`Estado de cuenta de ${u.email} cambiado a ${statusLabels[newStatus] || newStatus}.`);
-                                } catch (err) {
-                                  window.alert(err.message || 'Error al actualizar estado.');
-                                }
+                                setStatusModalTarget({
+                                  user: u,
+                                  targetStatus: newStatus,
+                                  currentStatus,
+                                });
                               }}
                               className={`rounded-xl px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer border outline-none ${
                                 currentStatus === 'active'
@@ -2985,7 +3186,17 @@ export default function ProfilePage() {
                   { icon: User, label: 'Nombre', value: user?.name || 'Sin nombre', iconBg: 'bg-forest/10' },
                   { icon: Mail, label: 'Correo electrónico', value: user?.email || 'Sin correo', iconBg: 'bg-forest/10' },
                   { icon: Phone, label: 'Teléfono', value: user?.phone || 'No registrado', iconBg: 'bg-forest/10' },
-                  { icon: ShieldCheck, label: 'Tipo de cuenta', value: user?.role === 'owner' ? 'Propietario / Casero' : 'Inquilino / Buscador', iconBg: 'bg-dorado/10', iconColor: 'text-dorado' },
+                  {
+                    icon: ShieldCheck,
+                    label: 'Tipo de cuenta',
+                    value: (isAdmin || user?.role === 'admin')
+                      ? 'Super Administrador'
+                      : user?.role === 'owner'
+                      ? 'Propietario / Casero'
+                      : 'Inquilino / Buscador',
+                    iconBg: (isAdmin || user?.role === 'admin') ? 'bg-forest/15' : user?.role === 'owner' ? 'bg-dorado/10' : 'bg-forest/10',
+                    iconColor: (isAdmin || user?.role === 'admin') ? 'text-forest' : user?.role === 'owner' ? 'text-dorado' : 'text-forest',
+                  },
                   { icon: FileText, label: 'Biografía', value: user?.bio || 'Sin biografía — edita tu perfil para agregar una', iconBg: 'bg-forest/10' },
                 ].map(({ icon: Icon, label, value, iconBg, iconColor }) => (
                   <div key={label} className="flex items-center gap-4 rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-4">
@@ -3001,119 +3212,208 @@ export default function ProfilePage() {
               </div>
             </SectionCard>
 
-            {/* Security — Change Password */}
+            {/* Security — Password & Authentication */}
             <SectionCard>
               <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe mb-5">
-                <Lock size={20} className="text-forest" /> Seguridad
+                <Lock size={20} className="text-forest" /> Seguridad y Acceso
               </h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-4">
-                  <div className="flex items-center gap-3">
-                    <Lock size={18} className="text-text-muted" />
-                    <div>
-                      <p className="text-sm font-bold text-cafe">Contraseña</p>
-                      <p className="text-[11px] text-text-muted">Última actualización: reciente</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setShowPasswordForm(!showPasswordForm); setPwMessage(''); setCurrentPw(''); setNewPw(''); setConfirmPw(''); }}
-                    className="flex items-center gap-1.5 rounded-xl bg-crema px-4 py-2 text-xs font-bold text-cafe transition-colors hover:bg-[#E8D9C8]"
-                  >
-                    {showPasswordForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    {showPasswordForm ? 'Cerrar' : 'Cambiar'}
-                  </button>
-                </div>
+              <div className="space-y-4">
+                {(() => {
+                  const isGoogleUser = Boolean(
+                    user?.authProviders?.includes('google.com') ||
+                    firebaseAuth?.currentUser?.providerData?.some((p) => p.providerId === 'google.com')
+                  );
+                  const hasPasswordProvider = Boolean(
+                    user?.authProviders?.includes('password') ||
+                    firebaseAuth?.currentUser?.providerData?.some((p) => p.providerId === 'password')
+                  );
+                  const isGoogleOnly = isGoogleUser && !hasPasswordProvider;
 
-                {/* Password change form */}
-                {showPasswordForm && (
-                  <form onSubmit={handleChangePassword} className="rounded-2xl border border-forest/20 bg-forest/5 p-5 space-y-4" style={{ animation: 'slide-up 0.3s ease-out' }}>
-                    {pwMessage && (
-                      <div className={`flex items-center gap-2 rounded-xl p-3 text-xs font-bold ${pwError ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-jade/15 text-forest border border-jade/30'}`}>
-                        {pwError ? <AlertTriangle size={14} /> : <Check size={14} />}
-                        {pwMessage}
-                      </div>
-                    )}
-
-                    {/* Current password */}
-                    <div>
-                      <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">Contraseña actual</label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
-                        <Lock size={16} className="text-forest/70" />
-                        <input
-                          type={showCurrentPw ? 'text' : 'password'}
-                          value={currentPw}
-                          onChange={(e) => setCurrentPw(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
-                        />
-                        <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} className="text-text-muted hover:text-cafe">
-                          {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* New password */}
-                    <div>
-                      <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">Nueva contraseña</label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
-                        <Lock size={16} className="text-forest/70" />
-                        <input
-                          type={showNewPw ? 'text' : 'password'}
-                          value={newPw}
-                          onChange={(e) => setNewPw(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
-                        />
-                        <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="text-text-muted hover:text-cafe">
-                          {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                      {/* Strength meter */}
-                      {newPw && (
-                        <div className="mt-2.5" aria-live="polite">
-                          <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold">
-                            <span className="text-text-muted">Seguridad</span>
-                            <span className={pwStrength.color}>{pwStrength.text}</span>
-                          </div>
-                          <div className="h-2 w-full overflow-hidden rounded-full bg-[#E8D9C8]/60">
-                            <div className={`h-full rounded-full transition-all duration-300 ${pwStrength.width} ${pwStrength.bg}`} />
+                  return (
+                    <>
+                      {/* Google Authentication Status Card */}
+                      {isGoogleUser && (
+                        <div className="rounded-2xl border border-[#E8D9C8]/80 bg-[#FDFBF7] p-4 sm:p-5">
+                          <div className="flex items-start gap-3.5">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white border border-[#E8D9C8] shadow-xs">
+                              <svg width="22" height="22" viewBox="0 0 48 48">
+                                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                              </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-sm font-extrabold text-cafe">Acceso vinculado con Google</h4>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-forest/10 px-2 py-0.5 text-[10px] font-black text-forest">
+                                  ✓ Protegido
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-text-secondary leading-relaxed">
+                                Tu sesión y credenciales están administradas directamente por Google (<strong className="text-cafe font-bold">{user?.email}</strong>). No requieres recordar una contraseña local para ingresar.
+                              </p>
+                              {isGoogleOnly && (
+                                <div className="mt-3.5 pt-3 border-t border-[#E8D9C8]/60 flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-[11px] text-text-muted font-bold">¿Deseas poder entrar también con contraseña escrita?</span>
+                                  <button
+                                    type="button"
+                                    onClick={handleSendResetEmail}
+                                    disabled={resetEmailBusy}
+                                    className="text-xs font-black text-forest hover:text-forest-dark hover:underline disabled:opacity-60 cursor-pointer"
+                                  >
+                                    {resetEmailBusy ? 'Enviando enlace...' : 'Crear contraseña vía correo'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
-                    </div>
 
-                    {/* Confirm password */}
-                    <div>
-                      <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">Confirmar nueva contraseña</label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
-                        <Lock size={16} className="text-forest/70" />
-                        <input
-                          type="password"
-                          value={confirmPw}
-                          onChange={(e) => setConfirmPw(e.target.value)}
-                          placeholder="••••••••"
-                          required
-                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
-                        />
+                      {/* Password Row */}
+                      <div className="flex items-center justify-between rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-forest/10 text-forest">
+                            <Lock size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-cafe">
+                              {isGoogleOnly ? 'Contraseña local (opcional)' : 'Contraseña de la cuenta'}
+                            </p>
+                            <p className="text-[11px] text-text-muted">
+                              {isGoogleOnly ? 'No configurada (acceso vía Google)' : 'Protección con contraseña activa'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setShowPasswordForm(!showPasswordForm); setPwMessage(''); setCurrentPw(''); setNewPw(''); setConfirmPw(''); }}
+                          className="flex items-center gap-1.5 rounded-xl bg-crema px-4 py-2 text-xs font-bold text-cafe transition-colors hover:bg-[#E8D9C8] cursor-pointer"
+                        >
+                          {showPasswordForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          {showPasswordForm ? 'Cerrar' : isGoogleOnly ? 'Configurar' : 'Cambiar'}
+                        </button>
                       </div>
-                      {confirmPw && newPw && (
-                        <p className={`mt-1.5 text-[11px] font-bold ${confirmPw === newPw ? 'text-forest' : 'text-red-600'}`}>
-                          {confirmPw === newPw ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
-                        </p>
-                      )}
-                    </div>
 
-                    <button
-                      type="submit"
-                      disabled={pwBusy}
-                      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-forest to-forest-dark px-4 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-                    >
-                      {pwBusy ? 'Procesando...' : 'Actualizar contraseña'}
-                    </button>
-                  </form>
-                )}
+                      {/* Password change form */}
+                      {showPasswordForm && (
+                        <form onSubmit={handleChangePassword} className="rounded-2xl border border-forest/20 bg-forest/5 p-5 space-y-4" style={{ animation: 'slide-up 0.3s ease-out' }}>
+                          {pwMessage && (
+                            <div className={`flex flex-col gap-1.5 rounded-xl p-3.5 text-xs font-bold ${pwError ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-jade/15 text-forest border border-jade/30'}`}>
+                              <div className="flex items-center gap-2">
+                                {pwError ? <AlertTriangle size={15} className="shrink-0 text-red-600" /> : <Check size={15} className="shrink-0 text-forest" />}
+                                <span>{pwMessage}</span>
+                              </div>
+                              {pwError && (
+                                <div className="mt-1 flex items-center justify-between border-t border-red-200/60 pt-2">
+                                  <span className="text-[11px] text-red-600/90 font-medium">¿Olvidaste tu contraseña actual?</span>
+                                  <button
+                                    type="button"
+                                    onClick={handleSendResetEmail}
+                                    disabled={resetEmailBusy}
+                                    className="text-[11px] font-black text-terracota hover:underline disabled:opacity-60 cursor-pointer"
+                                  >
+                                    {resetEmailBusy ? 'Enviando...' : 'Restablecer por correo'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Current password */}
+                          <div>
+                            <div className="mb-1.5 flex items-center justify-between">
+                              <label className="block text-xs font-extrabold uppercase tracking-wider text-cafe">Contraseña actual</label>
+                              <button
+                                type="button"
+                                onClick={handleSendResetEmail}
+                                disabled={resetEmailBusy}
+                                className="text-[11px] font-extrabold text-terracota hover:underline disabled:opacity-60 cursor-pointer"
+                              >
+                                {resetEmailBusy ? 'Enviando...' : '¿La olvidaste? Restablecer'}
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
+                              <Lock size={16} className="text-forest/70" />
+                              <input
+                                type={showCurrentPw ? 'text' : 'password'}
+                                value={currentPw}
+                                onChange={(e) => setCurrentPw(e.target.value)}
+                                placeholder="••••••••"
+                                required
+                                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
+                              />
+                              <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} className="text-text-muted hover:text-cafe cursor-pointer">
+                                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* New password */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">Nueva contraseña</label>
+                            <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
+                              <Lock size={16} className="text-forest/70" />
+                              <input
+                                type={showNewPw ? 'text' : 'password'}
+                                value={newPw}
+                                onChange={(e) => setNewPw(e.target.value)}
+                                placeholder="Mínimo 8 caracteres"
+                                required
+                                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
+                              />
+                              <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="text-text-muted hover:text-cafe cursor-pointer">
+                                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                            {/* Strength meter */}
+                            {newPw && (
+                              <div className="mt-2.5" aria-live="polite">
+                                <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold">
+                                  <span className="text-text-muted">Nivel de seguridad</span>
+                                  <span className={pwStrength.color}>{pwStrength.text}</span>
+                                </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-[#E8D9C8]/60">
+                                  <div className={`h-full rounded-full transition-all duration-300 ${pwStrength.width} ${pwStrength.bg}`} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Confirm password */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">Confirmar nueva contraseña</label>
+                            <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
+                              <Lock size={16} className="text-forest/70" />
+                              <input
+                                type="password"
+                                value={confirmPw}
+                                onChange={(e) => setConfirmPw(e.target.value)}
+                                placeholder="Repite la nueva contraseña"
+                                required
+                                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-cafe outline-none"
+                              />
+                            </div>
+                            {confirmPw && newPw && (
+                              <p className={`mt-1.5 text-[11px] font-bold ${confirmPw === newPw ? 'text-forest' : 'text-red-600'}`}>
+                                {confirmPw === newPw ? '✓ Las contraseñas coinciden' : '✗ Las contraseñas no coinciden'}
+                              </p>
+                            )}
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={pwBusy}
+                            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-forest to-forest-dark px-4 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer"
+                          >
+                            {pwBusy ? 'Actualizando contraseña...' : 'Actualizar contraseña'}
+                          </button>
+                        </form>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </SectionCard>
 
@@ -3121,9 +3421,14 @@ export default function ProfilePage() {
             <SectionCard>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe">
-                  <BadgeCheck size={20} className="text-dorado" /> Verificación oficial de identidad
+                  <BadgeCheck size={20} className={isAdmin ? 'text-forest' : 'text-dorado'} />
+                  {isAdmin ? 'Verificación de Super Administrador' : 'Verificación oficial de identidad'}
                 </h3>
-                {isVerified && (
+                {isAdmin ? (
+                  <span className="rounded-full bg-forest/20 px-2.5 py-0.5 text-[10px] font-black text-forest">
+                    Maestro Activo
+                  </span>
+                ) : isVerified ? (
                   <button
                     type="button"
                     onClick={() => setShowDpiModal(true)}
@@ -3131,10 +3436,36 @@ export default function ProfilePage() {
                   >
                     Actualizar datos
                   </button>
-                )}
+                ) : null}
               </div>
 
-              {isVerified ? (
+              {dpiPurgedNotice && (
+                <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-800 animate-[fade-in_0.2s_ease-out]">
+                  <Check size={16} className="text-red-600 shrink-0" />
+                  <span>Datos de DPI purgados con éxito. Tu cuenta ha vuelto al estado no verificado.</span>
+                </div>
+              )}
+
+              {isAdmin ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-forest/30 bg-gradient-to-br from-forest/10 via-[#FAF5EE] to-forest/5 p-5 shadow-xs">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-forest/20 text-forest shadow-xs">
+                      <ShieldCheck size={32} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-black text-cafe">Identidad con Autorización Administrativa</p>
+                        <span className="rounded-full bg-forest/20 px-2.5 py-0.5 text-[10px] font-black text-forest">
+                          Exento de DPI
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                        La verificación con DPI aplica exclusivamente a los roles de inquilino y propietario para generar confianza en la comunidad. Tu rol de administrador cuenta con privilegios superiores directos del sistema.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : isVerified ? (
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-dorado/30 bg-gradient-to-br from-dorado/10 via-[#FAF5EE] to-dorado/5 p-5 shadow-xs">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-dorado/20 text-dorado shadow-xs">
@@ -3195,21 +3526,15 @@ export default function ProfilePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setShowDpiModal(true)}
-                          className="flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors"
+                          onClick={() => handleOpenDpiModal()}
+                          className="flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors cursor-pointer"
                         >
                           <Edit3 size={13} /> Modificar datos
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm('¿Estás seguro de purgar y eliminar tus datos de verificación de DPI de este dispositivo?')) {
-                              purgeDpiData();
-                              setDpiPurgedNotice(true);
-                              setTimeout(() => setDpiPurgedNotice(false), 4000);
-                            }
-                          }}
-                          className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
+                          onClick={() => setShowPurgeDpiModal(true)}
+                          className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer"
                           title="Eliminar datos de DPI del dispositivo"
                         >
                           <Trash2 size={13} /> Purgar datos de DPI
@@ -3391,7 +3716,7 @@ export default function ProfilePage() {
               <p className="text-xs text-text-muted mb-4">Al cerrar sesión deberás ingresar tus credenciales nuevamente para acceder a tu cuenta.</p>
               <button
                 type="button"
-                onClick={async () => { await logout(); navigate('/login', { replace: true }); }}
+                onClick={() => setShowLogoutModal(true)}
                 className="flex min-h-11 items-center gap-2 rounded-xl bg-[#E00B41]/10 px-5 py-2.5 text-sm font-bold text-[#E00B41] transition-all hover:bg-[#E00B41] hover:text-white cursor-pointer"
               >
                 <LogOut size={16} /> Cerrar sesión
@@ -3419,11 +3744,15 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-black text-cafe sm:text-xl flex items-center gap-2">
-                    Verificación de Identidad con DPI
-                    <span className="text-[10px] uppercase font-black bg-dorado/20 text-dorado px-2 py-0.5 rounded-full">Oficial</span>
+                    {isVerified ? 'Modificar Datos de Verificación' : 'Verificación de Identidad con DPI'}
+                    <span className="text-[10px] uppercase font-black bg-dorado/20 text-dorado px-2 py-0.5 rounded-full">
+                      {isVerified ? 'Certificado Activo' : 'Oficial'}
+                    </span>
                   </h2>
                   <p className="text-xs text-text-secondary font-medium">
-                    Datos personales para generar máxima confianza en la comunidad RuwaJay
+                    {isVerified
+                      ? 'Actualiza tu contacto de respaldo y dirección manteniendo tu certificación activa'
+                      : 'Datos personales para generar máxima confianza en la comunidad RuwaJay'}
                   </p>
                 </div>
               </div>
@@ -3467,19 +3796,27 @@ export default function ProfilePage() {
                 <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-cafe">
                   Número de CUI / DPI (13 dígitos) *
                 </label>
-                <div className="flex items-center gap-3 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
-                  <FileCheck size={18} className="text-dorado" />
+                <div className={`flex items-center gap-3 rounded-2xl border border-[#E8D9C8] px-4 py-3 focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20 ${isVerified ? 'bg-black/5 opacity-80' : 'bg-[#FDFBF7]'}`}>
+                  <FileCheck size={18} className="text-dorado shrink-0" />
                   <input
                     type="text"
                     required
+                    readOnly={isVerified}
                     maxLength={16}
                     value={dpiForm.cui}
                     onChange={(e) => setDpiForm({ ...dpiForm, cui: formatDpiCui(e.target.value) })}
                     placeholder="Ej. 2450 12345 0101"
-                    className="min-w-0 flex-1 bg-transparent text-sm font-extrabold tracking-wider text-cafe outline-none"
+                    className={`min-w-0 flex-1 bg-transparent text-sm font-extrabold tracking-wider text-cafe outline-none ${isVerified ? 'cursor-not-allowed text-cafe/80' : ''}`}
                   />
+                  {isVerified && <Lock size={15} className="text-text-muted shrink-0" title="CUI validado oficialmente" />}
                 </div>
-                <p className="text-[11px] text-text-muted mt-1">El número único de identificación de tu DPI emitido por RENAP.</p>
+                {isVerified ? (
+                  <p className="text-[11px] text-forest font-bold mt-1 flex items-center gap-1">
+                    <Check size={12} /> CUI oficial certificado por el administrador.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-muted mt-1">El número único de identificación de tu DPI emitido por RENAP.</p>
+                )}
               </div>
 
               {/* Lugar de Emisión (Departamento y Municipio) */}
@@ -3666,7 +4003,7 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={() => setShowDpiModal(false)}
-                  className="rounded-xl px-5 py-3 text-xs font-bold text-text-muted hover:text-cafe transition-colors"
+                  className="rounded-xl px-5 py-3 text-xs font-bold text-text-muted hover:text-cafe transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -3675,7 +4012,7 @@ export default function ProfilePage() {
                   disabled={verifyBusy}
                   className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-dorado to-[#C5850F] px-6 py-3 text-xs font-black text-white shadow-lg hover:opacity-95 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {verifyBusy ? 'Guardando...' : 'Validar y Obtener Insignia Oficial'}
+                  {verifyBusy ? 'Guardando...' : isVerified ? 'Guardar Cambios de Verificación' : 'Validar y Obtener Insignia Oficial'}
                   <CheckCircle2 size={15} />
                 </button>
               </div>
@@ -3683,6 +4020,473 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ═══════ Modal de Confirmación de Solicitud de Verificación ═══════ */}
+      {showDpiSuccessModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => setShowDpiSuccessModal(false)}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-md rounded-3xl bg-white shadow-2xl border border-[#E8D9C8] overflow-hidden animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top golden / forest accent line */}
+            <div className="h-2 bg-gradient-to-r from-dorado via-amber-400 to-forest" />
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowDpiSuccessModal(false)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl bg-[#FAF5EE] text-text-muted hover:bg-border-light hover:text-cafe transition-colors border border-border-light cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              {/* Icon badge */}
+              <div className="w-16 h-16 rounded-2xl bg-forest/10 text-forest flex items-center justify-center mx-auto mb-4 ring-8 ring-forest/5 shadow-sm">
+                <ShieldCheck size={36} className="text-forest" />
+              </div>
+
+              {/* Title & Badge */}
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¡Solicitud de Verificación Enviada!
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-forest/10 border border-forest/20 text-forest text-xs font-bold mx-auto">
+                <Clock size={13} />
+                <span>En proceso de revisión</span>
+              </div>
+
+              {/* Message */}
+              <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mt-3.5">
+                Tu solicitud para ser casero está siendo revisada por el equipo administrador. Recibirás una notificación en tiempo real en cuanto sea procesada.
+              </p>
+
+              {/* Info steps card */}
+              <div className="mt-5 rounded-2xl bg-[#FAF5EE] border border-border-light p-4 text-left space-y-2.5 text-xs text-text-secondary">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-dorado/25 text-dorado flex items-center justify-center font-bold shrink-0 mt-0.5 text-[10px]">
+                    1
+                  </div>
+                  <span>Revisión y validación de los datos de tu DPI por el equipo de moderación.</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-forest/20 text-forest flex items-center justify-center font-bold shrink-0 mt-0.5 text-[10px]">
+                    2
+                  </div>
+                  <span>Activación de la insignia <strong className="text-cafe">Casero Verificado</strong> en tu cuenta.</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold shrink-0 mt-0.5 text-[10px]">
+                    3
+                  </div>
+                  <span>Publicación y gestión de viviendas con máxima confianza para inquilinos.</span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowDpiSuccessModal(false)}
+                className="mt-6 w-full py-3 px-5 rounded-2xl font-black text-xs sm:text-sm bg-gradient-to-r from-forest to-emerald-700 hover:from-forest-dark hover:to-forest text-white shadow-lg shadow-forest/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Check size={18} />
+                <span>Entendido</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Modal de Confirmación de Edición de DPI (Usuario Verificado) ═══════ */}
+      {showDpiEditSuccessModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => setShowDpiEditSuccessModal(false)}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-md rounded-3xl bg-white shadow-2xl border border-[#E8D9C8] overflow-hidden animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top golden / forest accent line */}
+            <div className="h-2 bg-gradient-to-r from-forest via-emerald-500 to-dorado" />
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowDpiEditSuccessModal(false)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl bg-[#FAF5EE] text-text-muted hover:bg-border-light hover:text-cafe transition-colors border border-border-light cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              {/* Icon badge */}
+              <div className="w-16 h-16 rounded-2xl bg-forest/10 text-forest flex items-center justify-center mx-auto mb-4 ring-8 ring-forest/5 shadow-sm">
+                <CheckCircle2 size={36} className="text-forest" />
+              </div>
+
+              {/* Title & Badge */}
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¡Datos Actualizados!
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-forest/10 border border-forest/20 text-forest text-xs font-bold mx-auto">
+                <BadgeCheck size={13} />
+                <span>Certificado Oficial Vigente</span>
+              </div>
+
+              {/* Message */}
+              <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mt-3.5">
+                Tus datos de contacto de respaldo y dirección se han actualizado correctamente sin alterar tu estado de verificación ni requerir nueva aprobación.
+              </p>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setShowDpiEditSuccessModal(false)}
+                className="mt-6 w-full py-3 px-5 rounded-2xl font-black text-xs sm:text-sm bg-gradient-to-r from-forest to-emerald-700 hover:from-forest-dark hover:to-forest text-white shadow-lg shadow-forest/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Check size={18} />
+                <span>Entendido</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Modal de Confirmación para Purgar Datos de DPI ═══════ */}
+      {showPurgeDpiModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => setShowPurgeDpiModal(false)}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-md rounded-3xl bg-white shadow-2xl border border-red-200/60 overflow-hidden animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top red/amber warning accent line */}
+            <div className="h-2 bg-gradient-to-r from-red-500 via-amber-500 to-red-600" />
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowPurgeDpiModal(false)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl bg-[#FAF5EE] text-text-muted hover:bg-border-light hover:text-cafe transition-colors border border-border-light cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              {/* Danger Icon badge */}
+              <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 ring-8 ring-red-50/50 shadow-sm border border-red-100">
+                <Trash2 size={30} className="text-red-600" />
+              </div>
+
+              {/* Title & Badge */}
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¿Purgar datos de DPI?
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold mx-auto">
+                <AlertTriangle size={13} />
+                <span>Baja de acreditación oficial</span>
+              </div>
+
+              {/* Message */}
+              <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mt-3.5">
+                ¿Estás seguro de purgar y eliminar tus datos de verificación de DPI? Al purgar tus datos, tu documento será eliminado, perderás tu insignia de verificación oficial y el estatus de casero verificado hasta que vuelvas a registrarte.
+              </p>
+
+              {/* Security info card */}
+              <div className="mt-4 rounded-2xl bg-[#FFF8F7] border border-red-100 p-3.5 text-left text-xs text-red-950/80 leading-relaxed">
+                <p className="font-bold text-red-800 flex items-center gap-1.5 mb-1">
+                  <AlertTriangle size={14} className="text-red-600" /> Pérdida de privilegios:
+                </p>
+                Tu cuenta volverá al estado no verificado y deberás presentar una nueva solicitud si deseas publicar o certificar propiedades nuevamente.
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={purgingDpi}
+                  onClick={() => setShowPurgeDpiModal(false)}
+                  className="flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-bold text-text-muted hover:bg-crema hover:text-cafe border border-border transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={purgingDpi}
+                  onClick={async () => {
+                    setPurgingDpi(true);
+                    try {
+                      await purgeDpiData();
+                      setShowPurgeDpiModal(false);
+                      setDpiPurgedNotice(true);
+                      setTimeout(() => setDpiPurgedNotice(false), 5000);
+                    } catch (err) {
+                      console.error('Error al purgar datos:', err);
+                      window.alert('No se pudieron purgar los datos. Intenta nuevamente.');
+                    } finally {
+                      setPurgingDpi(false);
+                    }
+                  }}
+                  className="flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-black text-white bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 shadow-md shadow-red-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 size={15} />
+                  <span>{purgingDpi ? 'Purgando...' : 'Sí, purgar'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Modal de Confirmación para Eliminar Comunicado ═══════ */}
+      {deletingUpdate && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => {
+            if (!isDeletingUpdateBusy) setDeletingUpdate(null);
+          }}
+        >
+          <div
+            className="relative w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden border border-red-100 animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top red danger bar */}
+            <div className="h-2 bg-gradient-to-r from-red-500 via-rose-500 to-red-600" />
+
+            <button
+              type="button"
+              disabled={isDeletingUpdateBusy}
+              onClick={() => setDeletingUpdate(null)}
+              className="absolute top-4 right-4 text-text-muted hover:text-cafe p-2 rounded-full hover:bg-crema transition-colors cursor-pointer disabled:opacity-50"
+              title="Cerrar"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              {/* Danger Icon badge */}
+              <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 ring-8 ring-red-50/50 shadow-sm border border-red-100">
+                <Trash2 size={30} className="text-red-600" />
+              </div>
+
+              {/* Title & Badge */}
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¿Eliminar comunicado?
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold mx-auto">
+                <AlertTriangle size={13} />
+                <span>Acción irreversible</span>
+              </div>
+
+              {/* Comunicado Preview Card */}
+              <div className="mt-4 rounded-2xl bg-[#FFF8F7] border border-red-100 p-3.5 text-left text-xs leading-relaxed">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-black uppercase text-red-800 shrink-0">
+                    {deletingUpdate.category || 'comunicado'}
+                  </span>
+                  <span className="font-extrabold text-cafe text-sm truncate block flex-1">
+                    {deletingUpdate.title}
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary line-clamp-2 mt-1">
+                  {deletingUpdate.content}
+                </p>
+              </div>
+
+              <p className="text-xs text-text-secondary leading-relaxed mt-3">
+                Este comunicado será removido permanentemente y ya no aparecerá en la web ni en la app móvil para los usuarios.
+              </p>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingUpdateBusy}
+                  onClick={() => setDeletingUpdate(null)}
+                  className="flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-bold text-text-muted hover:bg-crema hover:text-cafe border border-border transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingUpdateBusy}
+                  onClick={async () => {
+                    setIsDeletingUpdateBusy(true);
+                    try {
+                      await deleteSystemUpdate(deletingUpdate.id);
+                      setAdminNotice('Comunicado eliminado exitosamente.');
+                      setDeletingUpdate(null);
+                    } catch (err) {
+                      setAdminNotice(err.message || 'Error al eliminar comunicado.');
+                    } finally {
+                      setIsDeletingUpdateBusy(false);
+                    }
+                  }}
+                  className="flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-black text-white bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 shadow-md shadow-red-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 size={15} />
+                  <span>{isDeletingUpdateBusy ? 'Eliminando...' : 'Sí, eliminar'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Modal de Confirmación para Cambiar Estado de Usuario ═══════ */}
+      {statusModalTarget && (() => {
+        const { user: targetUser, targetStatus } = statusModalTarget;
+        const isSuspending = targetStatus === 'suspended';
+        const isActivating = targetStatus === 'active';
+
+        const config = isSuspending ? {
+          gradient: 'from-red-500 via-rose-500 to-red-600',
+          borderColor: 'border-red-100',
+          badgeBg: 'bg-red-50 border-red-200 text-red-700',
+          badgeText: 'Acceso bloqueado',
+          iconBg: 'bg-red-50 text-red-600 ring-red-50/50 border-red-100',
+          icon: <AlertTriangle size={30} className="text-red-600" />,
+          title: '¿Suspender cuenta de usuario?',
+          description: `El usuario "${targetUser.name || targetUser.email}" será desconectado inmediatamente del sistema y no podrá volver a iniciar sesión hasta que sea reactivado.`,
+          cardBg: 'bg-[#FFF8F7] border-red-100',
+          btnGradient: 'from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 shadow-red-600/20',
+          btnText: 'Sí, suspender cuenta',
+          btnLoadingText: 'Suspendiendo...',
+        } : isActivating ? {
+          gradient: 'from-emerald-500 via-teal-500 to-forest',
+          borderColor: 'border-emerald-100',
+          badgeBg: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+          badgeText: 'Restablecimiento de acceso',
+          iconBg: 'bg-emerald-50 text-emerald-600 ring-emerald-50/50 border-emerald-100',
+          icon: <ShieldCheck size={30} className="text-emerald-600" />,
+          title: '¿Reactivar cuenta de usuario?',
+          description: `Se levantarán todas las restricciones sobre la cuenta de "${targetUser.name || targetUser.email}". El usuario podrá iniciar sesión y entrar a la plataforma normalmente.`,
+          cardBg: 'bg-[#F0FAF5] border-emerald-100',
+          btnGradient: 'from-emerald-600 to-forest hover:from-emerald-700 hover:to-forest-dark shadow-emerald-600/20',
+          btnText: 'Sí, reactivar cuenta',
+          btnLoadingText: 'Reactivando...',
+        } : {
+          gradient: 'from-amber-400 via-amber-500 to-amber-600',
+          borderColor: 'border-amber-100',
+          badgeBg: 'bg-amber-50 border-amber-200 text-amber-800',
+          badgeText: 'Pausa de acceso',
+          iconBg: 'bg-amber-50 text-amber-600 ring-amber-50/50 border-amber-100',
+          icon: <Clock3 size={30} className="text-amber-600" />,
+          title: '¿Marcar cuenta como inactiva?',
+          description: `La cuenta de "${targetUser.name || targetUser.email}" quedará inactiva y no podrá navegar activamente hasta que contacte a un administrador o sea reactivada.`,
+          cardBg: 'bg-[#FDFBF7] border-amber-100',
+          btnGradient: 'from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-amber-500/20',
+          btnText: 'Sí, marcar inactiva',
+          btnLoadingText: 'Actualizando...',
+        };
+
+        return (
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+            onClick={() => {
+              if (!isUpdatingStatusBusy) setStatusModalTarget(null);
+            }}
+          >
+            <div
+              className={`relative w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden border ${config.borderColor} animate-[scale-up_0.25s_ease-out]`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top Accent Gradient */}
+              <div className={`h-2 bg-gradient-to-r ${config.gradient}`} />
+
+              <button
+                type="button"
+                disabled={isUpdatingStatusBusy}
+                onClick={() => setStatusModalTarget(null)}
+                className="absolute top-4 right-4 text-text-muted hover:text-cafe p-2 rounded-full hover:bg-crema transition-colors cursor-pointer disabled:opacity-50"
+                title="Cerrar"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="p-6 sm:p-7 text-center">
+                {/* Icon Badge */}
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-8 shadow-sm border ${config.iconBg}`}>
+                  {config.icon}
+                </div>
+
+                {/* Title & Badge */}
+                <h3 className="text-xl font-black text-cafe tracking-tight">
+                  {config.title}
+                </h3>
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full border text-xs font-bold mx-auto ${config.badgeBg}`}>
+                  <Shield size={13} />
+                  <span>{config.badgeText}</span>
+                </div>
+
+                {/* User Info Card */}
+                <div className={`mt-4 rounded-2xl border p-3.5 text-left text-xs ${config.cardBg}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-cafe/10 flex items-center justify-center font-bold text-cafe shrink-0 overflow-hidden">
+                      {targetUser.avatarImage ? (
+                        <img src={targetUser.avatarImage} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        (targetUser.name?.[0] || targetUser.email?.[0] || 'U').toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-extrabold text-cafe text-sm truncate">{targetUser.name || 'Usuario'}</p>
+                      <p className="text-xs text-text-muted truncate">{targetUser.email}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-secondary leading-relaxed mt-3">
+                  {config.description}
+                </p>
+
+                {/* Action Buttons */}
+                <div className="mt-6 flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={isUpdatingStatusBusy}
+                    onClick={() => setStatusModalTarget(null)}
+                    className="flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-bold text-text-muted hover:bg-crema hover:text-cafe border border-border transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isUpdatingStatusBusy}
+                    onClick={async () => {
+                      setIsUpdatingStatusBusy(true);
+                      try {
+                        await updateUserStatus(targetUser.id, targetStatus);
+                        const statusLabels = {
+                          active: 'Activo (Acceso totalmente habilitado)',
+                          inactive: 'Inactivo',
+                          suspended: 'Suspendido (Acceso bloqueado)',
+                        };
+                        setAdminNotice(`Estado de cuenta de ${targetUser.email} cambiado a ${statusLabels[targetStatus] || targetStatus}.`);
+                        setStatusModalTarget(null);
+                      } catch (err) {
+                        console.error('Error al actualizar estado:', err);
+                        window.alert(err.message || 'Error al actualizar estado.');
+                      } finally {
+                        setIsUpdatingStatusBusy(false);
+                      }
+                    }}
+                    className={`flex-1 py-3 px-4 rounded-2xl text-xs sm:text-sm font-black text-white bg-gradient-to-r ${config.btnGradient} shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50`}
+                  >
+                    {isSuspending ? <AlertTriangle size={15} /> : isActivating ? <ShieldCheck size={15} /> : <Clock3 size={15} />}
+                    <span>{isUpdatingStatusBusy ? config.btnLoadingText : config.btnText}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ═══════ Modal de Credencial Digital de Verificación ═══════ */}
       {showDpiDetailsModal && (
@@ -4076,6 +4880,156 @@ export default function ProfilePage() {
           );
         }}
       />
+
+      {/* Modal de Confirmación para Cerrar Sesión */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+        isBusy={isLoggingOut}
+      />
+
+      {/* ═══════ Modal de Confirmación para Eliminar Cita ═══════ */}
+      {Boolean(deletingVisitId) && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => { if (!isDeletingVisitBusy) setDeletingVisitId(null); }}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-md rounded-3xl bg-white shadow-2xl border border-red-200/60 overflow-hidden animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-2 bg-gradient-to-r from-red-500 via-rose-500 to-red-600" />
+
+            <button
+              type="button"
+              disabled={isDeletingVisitBusy}
+              onClick={() => setDeletingVisitId(null)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl bg-[#FAF5EE] text-text-muted hover:bg-border-light hover:text-cafe transition-colors border border-border-light cursor-pointer disabled:opacity-50"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 ring-8 ring-red-50/50 shadow-sm border border-red-100">
+                <Trash2 size={30} className="text-red-600" />
+              </div>
+
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¿Eliminar cita del historial?
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold mx-auto">
+                <AlertTriangle size={13} />
+                <span>Acción irreversible</span>
+              </div>
+
+              <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mt-3.5">
+                ¿Deseas eliminar esta cita del historial para ambos participantes? Se borrará de los registros de forma permanente.
+              </p>
+
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingVisitBusy}
+                  onClick={() => setDeletingVisitId(null)}
+                  className="flex-1 rounded-2xl border border-border bg-white px-5 py-3 text-xs font-black text-cafe hover:bg-crema active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingVisitBusy}
+                  onClick={handleConfirmDeleteVisit}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-[0.98] px-5 py-3 text-xs font-black text-white shadow-lg shadow-red-600/20 transition-all cursor-pointer disabled:opacity-75"
+                >
+                  {isDeletingVisitBusy ? (
+                    <>
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={15} />
+                      <span>Eliminar cita</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════ Modal de Confirmación para Eliminar Vivienda ═══════ */}
+      {Boolean(deletingPropertyTarget) && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => { if (!isDeletingPropertyBusy) setDeletingPropertyTarget(null); }}
+        >
+          <div
+            className="relative flex flex-col w-full max-w-md rounded-3xl bg-white shadow-2xl border border-red-200/60 overflow-hidden animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-2 bg-gradient-to-r from-red-500 via-rose-500 to-red-600" />
+
+            <button
+              type="button"
+              disabled={isDeletingPropertyBusy}
+              onClick={() => setDeletingPropertyTarget(null)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-xl bg-[#FAF5EE] text-text-muted hover:bg-border-light hover:text-cafe transition-colors border border-border-light cursor-pointer disabled:opacity-50"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="p-6 sm:p-7 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 ring-8 ring-red-50/50 shadow-sm border border-red-100">
+                <Trash2 size={30} className="text-red-600" />
+              </div>
+
+              <h3 className="text-xl font-black text-cafe tracking-tight">
+                ¿Eliminar vivienda?
+              </h3>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold mx-auto">
+                <AlertTriangle size={13} />
+                <span>Acción permanente</span>
+              </div>
+
+              <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mt-3.5">
+                ¿Estás seguro de eliminar permanentemente <strong className="text-cafe">"{deletingPropertyTarget?.title || 'esta vivienda'}"</strong>? Dejará de aparecer para todos los usuarios y en los resultados de búsqueda.
+              </p>
+
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={isDeletingPropertyBusy}
+                  onClick={() => setDeletingPropertyTarget(null)}
+                  className="flex-1 rounded-2xl border border-border bg-white px-5 py-3 text-xs font-black text-cafe hover:bg-crema active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingPropertyBusy}
+                  onClick={handleConfirmDeleteProperty}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-[0.98] px-5 py-3 text-xs font-black text-white shadow-lg shadow-red-600/20 transition-all cursor-pointer disabled:opacity-75"
+                >
+                  {isDeletingPropertyBusy ? (
+                    <>
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={15} />
+                      <span>Eliminar vivienda</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

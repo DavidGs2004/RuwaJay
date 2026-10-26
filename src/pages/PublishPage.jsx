@@ -100,7 +100,7 @@ function dataUrlToJpegFile(dataUrl, fileName) {
 export default function PublishPage() {
   const navigate = useNavigate();
   const { editId } = useParams();
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, isAdmin } = useAuth();
   const [step, setStep] = useState(1);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editPropertyData, setEditPropertyData] = useState(null);
@@ -393,13 +393,13 @@ export default function PublishPage() {
 
   const ownerPhoneDigits = String(user?.phone || '').replace(/\D/g, '');
   const hasValidPhone = ownerPhoneDigits.length >= 8;
-  const isSuperAdmin = user?.role === 'admin';
-  const isPendingVerification = user?.verificationStatus === 'pendiente';
-  const isRejectedVerification = user?.verificationStatus === 'rechazada';
+  const isSuperAdmin = Boolean(isAdmin || user?.role === 'admin');
+  const isPendingVerification = !isSuperAdmin && user?.verificationStatus === 'pendiente';
+  const isRejectedVerification = !isSuperAdmin && user?.verificationStatus === 'rechazada';
   const isApproved = isSuperAdmin || ((user?.role === 'owner' || user?.verified) && user?.verificationStatus === 'aprobada') || (Boolean(user?.verified) && Boolean(user?.dpiData?.cui) && !isPendingVerification && !isRejectedVerification);
 
   // 1. Caso: Solicitud pendiente de revisión por el administrador
-  if (isPendingVerification) {
+  if (!isSuperAdmin && isPendingVerification) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center bg-[#FAF5EE] px-4 py-12">
         <div className="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-card sm:p-10 animate-fade-in">
@@ -479,7 +479,7 @@ export default function PublishPage() {
   }
 
   // 3. Caso: Falta enviar solicitud o falta teléfono válido
-  if (!isApproved || !hasValidPhone) {
+  if (!isSuperAdmin && (!isApproved || !hasValidPhone)) {
     return (
       <main className="flex min-h-[70vh] items-center justify-center bg-[#FAF5EE] px-4 py-12">
         <div className="w-full max-w-lg rounded-3xl border border-[#E8D9C8] bg-white p-8 text-center shadow-card sm:p-10 animate-fade-in">
