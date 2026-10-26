@@ -1,0 +1,76 @@
+CAMBIOS DE PUBLICACIÓN, DPI Y APARIENCIA
+26 de octubre de 2026
+
+Implementado en Android:
+- Botón circular central + en la barra inferior para cuentas activas.
+  Abre publicación; quien necesita verificar el DPI recibe una explicación
+  y puede abrir directamente el formulario de verificación en su perfil.
+- Ajuste de ventana al teclado y consumo de insets. El buscador de Explorar
+  queda fijo en el encabezado, con resultados desplazables y acción Buscar
+  que cierra el teclado. No se programan desplazamientos al escribir.
+- Registro y actualización del DPI para usuarios con o sin datos previos,
+  incluso con solicitudes pendientes o rechazadas. Precarga datos guardados
+  y permite conservar la foto existente o elegir otra.
+- Subida de DPI al gateway Supabase cuando está configurado; Firebase queda
+  como alternativa del modo anterior. Las imágenes privadas de Supabase se
+  resuelven antes de mostrarse al usuario o al administrador.
+- Fechas con calendario y entrada manual DD/MM/AAAA. Compatibilidad con
+  fechas anteriores DD/MM/AAAA e ISO. Guardado ISO yyyy-MM-dd sin hora,
+  validación estricta de días/meses, nacimiento anterior a hoy y DPI vigente.
+  Las fechas no pasan por la zona horaria del teléfono al guardar/mostrar.
+- Solicitud y estado de verificación se escriben atómicamente. La revisión
+  administrativa también es atómica y rechaza decisiones sobre solicitudes
+  que cambiaron mientras se revisaban. No borra el documento aprobado previo
+  al enviar una sustitución ni al rechazarla; el estado indica la revisión.
+- Confirmaciones antes de publicar/guardar una vivienda, enviar el DPI,
+  abandonar el formulario DPI y cerrar sesión. Errores visibles al enviar.
+- Modo claro permanente: retirados estado de tema, preferencias, paleta
+  oscura, controles del encabezado/perfil y oscurecimiento automático Android.
+
+Implementado en React:
+- Botón + central en navegación móvil para cuentas activas; usa la ruta y
+  control de verificación existentes. Acción destacada en el encabezado web.
+- Modo claro permanente mediante color-scheme light. Retirados el contexto
+  de tema, componente de cambio y variantes dark de Tailwind restantes.
+- No se añadieron mensajes nuevos de confirmación a la web.
+
+VALIDACIÓN
+- Web: build de producción correcto; 7 pruebas de contratos y 4 de servidor
+  correctas. Las 9 pruebas de navegador completaron sus comprobaciones con
+  estado OK: modo claro con SO oscuro/preferencia antigua, botón centrado,
+  acceso a verificación, cuenta suspendida, portada pública, rutas privadas
+  y errores Google. El ejecutor quedó esperando al cierre y se interrumpió
+  después de observar los nueve resultados OK.
+- Android: assembleDebug y testDebugUnitTest correctos. 10 pruebas, 0 fallos,
+  incluyendo fechas inválidas, año bisiesto, vencimiento y round-trip de
+  fechas en Guatemala, UTC, Los Ángeles y Kiritimati.
+- Gradle compila desde la ruta con acentos, pero su ejecutor de pruebas no
+  carga clases desde ella. Se validó una copia temporal ASCII con Java 21 y
+  SDK local; APK y XML de pruebas están en entrega/. El script de validación
+  permite repetir ese procedimiento. Se retiran las copias y cachés temporales.
+- No se probó visualmente el teclado en un teléfono ni se realizaron envíos
+  de DPI reales. No se desplegaron cambios ni se modificaron cuentas/datos de
+  producción. La validación real de subida requiere configurar el mismo
+  backend en Android y web y probar con una cuenta de pruebas.
+
+ENTREGA
+entrega/RuwaJay-publicacion-dpi-claro-debug.apk
+entrega/pruebas-android/TEST-*.xml
+validacion-android.log
+pruebas-android/DpiDatesTest.kt
+
+El APK es debug. Las URLs y credenciales públicas se toman de la configuración
+local o del entorno al compilar; no se inventó una URL de servidor ni se
+incluyeron credenciales de servidor. El APK anterior de app/distribucion no
+se reemplazó: la nueva compilación generada se guarda en recuros ia.
+
+PRUEBA MANUAL EN TELÉFONO
+1. Con cuenta activa, comprobar + central y abrir publicación.
+2. Sin verificación, continuar a DPI, introducir fechas y elegir documento.
+3. Cancelar confirmación para revisar y luego confirmar envío.
+4. Reabrir perfil y comprobar fechas/foto. Modificar datos sin nueva foto;
+   después sustituir la foto y comprobar revisión pendiente.
+5. Probar decisión administrativa y otra edición concurrente.
+6. Buscar viviendas con teclado abierto en vertical y horizontal; comprobar
+   campo visible, lista desplazable y cierre mediante Buscar.
+7. Activar tema oscuro del teléfono: RuwaJay debe permanecer claro.

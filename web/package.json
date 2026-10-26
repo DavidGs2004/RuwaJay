@@ -1,0 +1,44 @@
+{
+  "name": "ruwajay",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:frontend": "vite",
+    "build": "vite build",
+    "build:vps": "vite build --base=/ruwajay/",
+    "preview": "vite preview",
+    "test": "node --test tests/contracts.test.js",
+    "test:rules": "node scripts/run-emulators.mjs firestore \"node --test tests/firestore.rules.test.js\"",
+    "test:integration": "node scripts/run-emulators.mjs auth,firestore,functions \"node --test tests/integration.test.js\"",
+    "test:browser": "node scripts/run-emulators.mjs auth,firestore,functions,storage \"playwright test\"",
+    "test:web:public": "playwright test --config=playwright.public.config.js",
+    "test:storage": "node scripts/run-emulators.mjs firestore,storage \"node --test tests/storage.rules.test.js\"",
+    "test:supabase": "node scripts/run-emulators.mjs auth,firestore \"node --test tests/supabase.backend.test.js\"",
+    "test:backend:unit": "node --test tests/backend.unit.test.js"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.0",
+    "firebase-tools": "^15.33.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@simplewebauthn/browser": "^13.3.0",
+    "firebase": "^12.19.0",
+    "framer-motion": "^13.1.1",
+    "gsap": "^3.15.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.34.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.2"
+  }
+}

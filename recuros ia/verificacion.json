@@ -1,0 +1,1479 @@
+{
+  "archivos_inventariados": 248,
+  "archivos_verificados": 248,
+  "errores": [],
+  "archivos": [
+    {
+      "original": ".env.example",
+      "actual": "web/.env.example",
+      "sha256": "7678543BC741C8297288E62A1D7067B9AEDFAAA55609988B742469D5E44890A8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": ".firebaserc",
+      "actual": "archivos varios/servicios/.firebaserc",
+      "sha256": "F264E23F6305BF1F7FAAA37C19FC80BE4A2B933A69AA06976D5D7322B5949CC3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": ".github/workflows/deploy-vps.yml",
+      "actual": ".github/workflows/deploy-vps.yml",
+      "sha256": "529E076CC0BAA2B9D6B6A38BDEE7845B8D3D58228CFC0BDEFF434178F32AFB92",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": ".gitignore",
+      "actual": ".gitignore",
+      "sha256": "C9E5D182D3239B1E8D9A20091A55A6A9B4CE47D83507FA338D20BB7DE89F8076",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "Dockerfile",
+      "actual": "web/Dockerfile",
+      "sha256": "041E918723FDFFA82DED845EF47696295AA6FBC6B1D9BF0BCE45B021BD474F84",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "Documentacion_Tecnica_RuwaJay.md",
+      "actual": "archivos varios/documentacion/Documentacion_Tecnica_RuwaJay.md",
+      "sha256": "025537EF4EE80C46504F24513E02C6425B8E4E92413B99E3F839C5F9566C8173",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "Documentacion_Tecnica_RuwaJayV1.docx",
+      "actual": "archivos varios/documentacion/Documentacion_Tecnica_RuwaJayV1.docx",
+      "sha256": "76EEEB812D2D5E59B53C58670FC8F99FB8EC53C7C792131356AD886FA8503F48",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "Documentacion_Tecnica_RuwaJay_Ingenieria.docx",
+      "actual": "archivos varios/documentacion/Documentacion_Tecnica_RuwaJay_Ingenieria.docx",
+      "sha256": "A911BEAD105C6AECF3699BF5EF38DCBDFE3FCCF5614F60577A547F7BDB26660B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "Documentación Técnica del Proyecto.docx",
+      "actual": "archivos varios/documentacion/Documentación Técnica del Proyecto.docx",
+      "sha256": "DB4F5DF69B167B4A7F3DC3BAD04EC837778844D3F02E6D252F45BC5E0CAC70F0",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "InformeFase1y2_Lic_Queche.docx",
+      "actual": "archivos varios/documentacion/InformeFase1y2_Lic_Queche.docx",
+      "sha256": "79417444311039B578B689ADDDC45E7288707D1C9ECFE5014028FE2AA17F6368",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "README.md",
+      "actual": "archivos varios/documentacion/README.md",
+      "sha256": "8D8A51B157CC72B63C2D059CFB9A18B88CA974EE97ABC7C18C2034BEC51491C4",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "android-app/.gitignore",
+      "actual": "app/.gitignore",
+      "sha256": "9C8DB52985E5456A85E490B6D799AC3222704D7E42C773E31AD032B034C300BD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/.gitignore",
+      "actual": "app/app/.gitignore",
+      "sha256": "5C3174B74EDC6F2B9E0743594B8BD3C7F31E4F4405758CC9872B3FE1DE1D28B4",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/build.gradle.kts",
+      "actual": "app/app/build.gradle.kts",
+      "sha256": "34931E33CDB2BC4401CE0E33034E1051BA7840F1EACC50096B713087B57FFFE8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/google-services.json",
+      "actual": "app/app/google-services.json",
+      "sha256": "4C3B1B90E946C43077FE9A7BA27948994DE472A0BB1937433D19513E4D04E3FB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/proguard-rules.pro",
+      "actual": "app/app/proguard-rules.pro",
+      "sha256": "427B2815868B97FC3BE4123696094F491A87B23404FE24115B024A4F0DC911AD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/androidTest/java/com/example/ruwajay/ExampleInstrumentedTest.kt",
+      "actual": "app/app/src/androidTest/java/com/example/ruwajay/ExampleInstrumentedTest.kt",
+      "sha256": "79697EF5FCD7F009EA6FC8498BE47CE9D41BE8A7D5C4AC7B3871849D1C183189",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/AndroidManifest.xml",
+      "actual": "app/app/src/main/AndroidManifest.xml",
+      "sha256": "98531F77A59563CA249968EABA1C97308DE65BA7C8D35422697D20EC6016D778",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/MainActivity.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/MainActivity.kt",
+      "sha256": "6A101B07B4CD77920563987BBCC93DC7B742897372D6C60C233D72DA35748907",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/RuwaApplication.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/RuwaApplication.kt",
+      "sha256": "1FEB5211CC51797601DC7533531C253319D30B3DA3661398DDEF662DFF56CAB8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/RuwaMessagingService.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/RuwaMessagingService.kt",
+      "sha256": "18EA8E53F78232AE2E93BA94C1A5B1F2BFB83D44209D9C74D04598454E76441F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/Chat.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/Chat.kt",
+      "sha256": "659AF51A82E982C793FE47F05522A1E0C54353B41D781AE2D10A34F488FC8905",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/Owner.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/Owner.kt",
+      "sha256": "1BD77AB488847D8FEF2DCAC013016B1B0C05C2483C9AD290DD1290D6EBE991C7",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/Property.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/Property.kt",
+      "sha256": "FC096C2FF667BB30B5223082C6FCA1891C0295C150FF779FF08364FAA3BD815D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/Review.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/Review.kt",
+      "sha256": "B4BA209D4D6E6477BCAC0C79C50209DEC9B9723D3734B72BACC3DAFE08BE2125",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/SharedContract.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/SharedContract.kt",
+      "sha256": "A119F2A0C5B034BB22A3BA5B4E21BA5A460AD32ACD961B3926BC29EDC19795F9",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/SystemUpdate.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/SystemUpdate.kt",
+      "sha256": "26EEFC0E910BA9D7180538DF705295DD926F945F5D2267BEA8CA4C6BC47EB157",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/model/VerificationRequest.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/model/VerificationRequest.kt",
+      "sha256": "31148DF0DA9E8FCAF387644BC49263C30BFB418020C9498EDD74784C8F10AD03",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/AuthRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/AuthRepository.kt",
+      "sha256": "417AE7472499D35744739FAED90C48C403B3901AE8E0ECF17BEBEB649B3F5021",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/CallRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/CallRepository.kt",
+      "sha256": "FBF0EA450A054379040D1D10D60089A792853477FE9A253034E2A2BE3ED6C9F4",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/ChatRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/ChatRepository.kt",
+      "sha256": "FFD77334BF740223D70D8146CFED097A3C72AC45CF3E0B95865759D8732E28C7",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/ForegroundNotifications.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/ForegroundNotifications.kt",
+      "sha256": "1DD938E7D5DC6C51A1E1BAD67FF3C4CA05DCE51B878CECAFCA66A0F961207EFB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/IncomingMessageTracker.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/IncomingMessageTracker.kt",
+      "sha256": "4485C55975038FF21583FC7041A47A4041B7483D6979DDD11108A69CDC2DC80A",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/MockDataRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/MockDataRepository.kt",
+      "sha256": "FE3F34E76C14A69AE3A83CEE15F6350DAA57989500F66BA191117C9E5FC10D9B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/NotificationRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/NotificationRepository.kt",
+      "sha256": "33E79004E90BC9DBA9E245B520D98384E9E783A3655F110E60E78941FD6E718F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/PropertyRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/PropertyRepository.kt",
+      "sha256": "E19201DDD685CEE960DA2144E7E765E2382891B2885107EBBABE8C560E5F0662",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/RouteRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/RouteRepository.kt",
+      "sha256": "411991E303CED70B2B9A80F0AD124CB50A3696DB4C1AAA7C4B1B2EF12A02D5DD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/RuwaBackend.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/RuwaBackend.kt",
+      "sha256": "BE4F78CEE5BD2D81B320969DB197FBB558C7D84EB6AAB7DC808F096A2EABA437",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/SystemUpdatesRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/SystemUpdatesRepository.kt",
+      "sha256": "D62485F4AE1F54D034C630841F294F76D0B3F372825C23D7198A1F844B5AD632",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/VerificationRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/VerificationRepository.kt",
+      "sha256": "6B3C262CDE5419834DCDD208F42848BEE9E51E7B35BB6DFB7377C929E6D5874D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/repository/VisitRepository.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/repository/VisitRepository.kt",
+      "sha256": "C4563AF4B57B7E1C9B1D1A30189A8B4BC17594196BFE2D1372B79813C29F5F97",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/data/webrtc/WebRtcManager.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/data/webrtc/WebRtcManager.kt",
+      "sha256": "ED94E883CE6C63E4404663052DEB89E93B97724845BBF25E09AB2F397FA72077",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/BottomNavBar.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/BottomNavBar.kt",
+      "sha256": "9DF88C1EEDBC59FE9BDB21ED87A875423ADE0DC889A6F2E83D82E5AA92226152",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/GlobalCallOverlay.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/GlobalCallOverlay.kt",
+      "sha256": "87CE2E5CAAA76FD400BDD247DE8907F36DAED9CD2F61ACE513CB9978AE4B6694",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/GpsPosition.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/GpsPosition.kt",
+      "sha256": "ABCE864AC5973DB12D81901E2DCE841E8C5E2B3F89E4752B7C27F3C01502ABDA",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/OsmLocationPickerMap.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/OsmLocationPickerMap.kt",
+      "sha256": "C17E240CEC6F55A8DAC65DDD918701200E3325F0FCC0B0521A47CA5106E78799",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/OsmMapView.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/OsmMapView.kt",
+      "sha256": "CA0A3367F609A0574896774CE04E3C73271A92C890D5DE31A2AE7426110DB58C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCard.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCard.kt",
+      "sha256": "B52AAD11EC21BA18E2B158415925D9261385F594E37519E3A340460E9F7221E5",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCompareDialog.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/PropertyCompareDialog.kt",
+      "sha256": "68CD628B892D2110C4DEA52B029D257CC799212DFAB891B6A8DFF3F5B1D5CA56",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/PropertyReviews.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/PropertyReviews.kt",
+      "sha256": "7DC3B36426605C408EC3B4FA730DBA9BA812786134C2F2BA8735CA44592115E2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/RentCalculatorDialog.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/RentCalculatorDialog.kt",
+      "sha256": "62D8EC1DE0342AF60CC21EB77D41D25446C0185ED5CD07C93418FF3FD02D40A4",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/RuwaFooter.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/RuwaFooter.kt",
+      "sha256": "2EC6802EE46DCFD7F8D70EBFE7F4E6F70ABC6608870E2186B70A6710235A5F00",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/RuwaHeader.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/RuwaHeader.kt",
+      "sha256": "1B987121E9A7023B368017623352126BB9484E5E34BAE8CD0DA26125EB4A669C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/components/SharedLeaseDraft.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/components/SharedLeaseDraft.kt",
+      "sha256": "03754805CDA00386D764E788FDC63102656BDAD94AAC9A81BABF262DE0DB0641",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/navigation/AppNavigation.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/navigation/AppNavigation.kt",
+      "sha256": "642677380E2E03B937DFF5CADE6A69449F59B99C462320FA44036EFE5D8AE4CC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/navigation/Screen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/navigation/Screen.kt",
+      "sha256": "61F81C19C87BB0FE709EC16B30A8BF5DFDFCA2995172A842DA7D7E1E2F0E224E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/AccountTools.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/AccountTools.kt",
+      "sha256": "120A2F84A03A21BB397F94DB52CB94AFA52CB0CB33640B4EC1B670C9B2A1AE72",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ChatScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/ChatScreen.kt",
+      "sha256": "CE77E84ABA1234BFB165FA974C6AA1000BE5A55B9838C8DE2B7825B31D2205DD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ExploreScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/ExploreScreen.kt",
+      "sha256": "5493A1AE95550D077BF03DCCF17D05C38BDBFEBC7902675190F64C8EECDAEE06",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/HomeScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/HomeScreen.kt",
+      "sha256": "A2D6F3ED0FFB2ABA3E7EBA04CBA8BC6D1F61C7B67C36714EDE370E62877A256F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/InboxScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/InboxScreen.kt",
+      "sha256": "5D2963B1A4936DFCBA526E981AE466A19FA2167501BBC2DBC02F02421D1132B3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/LoginScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/LoginScreen.kt",
+      "sha256": "42EE21E8E4476F1A414A7429FE39E433F808638D1A3CD6757469616720FC975E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/ProfileScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/ProfileScreen.kt",
+      "sha256": "18F03DE7F09ECFC1FB0A9BC91748502E668215A844636F0C680E2A293254E836",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/PropertyDetailScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/PropertyDetailScreen.kt",
+      "sha256": "A0AF89502146ABFFF7F366D0604F5FD9E8452A6E5D69030F9F864581085AF8CA",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/PublishScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/PublishScreen.kt",
+      "sha256": "0BF535711B0C7634D48A62780EA5A85457D57034BDAE809AA1C16B06EFD47B3B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/screens/RouteScreen.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/screens/RouteScreen.kt",
+      "sha256": "5284C4E00FA45239D3E7F436EC8F55DF1B8E9AB514EAAAFA41C33395088C9B1B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Color.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/theme/Color.kt",
+      "sha256": "7EB606B91ABAD5517103E0EF840F880289B5A2FF0B4D6C4792A1587FB62D97DC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Theme.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/theme/Theme.kt",
+      "sha256": "CA7727C9FE2C6AEFC863AE98439D574C7D1E8E1E5B63ED02812F72127881AE4A",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/ui/theme/Type.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/ui/theme/Type.kt",
+      "sha256": "C01BE1400F1565BF37315C3CD64EB412390B098DC15EF9D995AE2D91D65BADFD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/java/com/example/ruwajay/util/SoundManager.kt",
+      "actual": "app/app/src/main/java/com/example/ruwajay/util/SoundManager.kt",
+      "sha256": "A70189B4869FCF13E04098BC5ABCD9327EE48570F3E0658305A8DD5C4AEB3832",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/keepRules/rules.keep",
+      "actual": "app/app/src/main/keepRules/rules.keep",
+      "sha256": "9E920813DBF36DB3BDCC279837AAC74DB4C80647585A84D3E3F0C23D700105F2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/banner_1.png",
+      "actual": "app/app/src/main/res/drawable/banner_1.png",
+      "sha256": "E8819D64499E91FD08A7AF974F5FB0EA83C9566237F7C72308CCFE9BD06B7CAC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/banner_2.png",
+      "actual": "app/app/src/main/res/drawable/banner_2.png",
+      "sha256": "791A83510B72053C99E682957B786F63C0C9609B638697AFC6B91B2729FDB01D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/banner_3.png",
+      "actual": "app/app/src/main/res/drawable/banner_3.png",
+      "sha256": "B8478BA229D1A473BCE763D553F69AB85D877BFE91E7C5F53CEE72E61625781F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/banner_4.png",
+      "actual": "app/app/src/main/res/drawable/banner_4.png",
+      "sha256": "F7A60559C5D67FE3F0A628A20D6C4DD7FFB0078121B56AB7D9FCD055C46148F2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/banner_5.png",
+      "actual": "app/app/src/main/res/drawable/banner_5.png",
+      "sha256": "94DA0BD774FCA2AC6EEC1DDB9DB164A1551B3B0972B3B675EC6FC34EEAD8D236",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/hero_banner.jpg",
+      "actual": "app/app/src/main/res/drawable/hero_banner.jpg",
+      "sha256": "77B03BB707E57702701ABD5FBA03F89B446E64A4374144349DFC6E18498731E3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/ic_launcher_background.xml",
+      "actual": "app/app/src/main/res/drawable/ic_launcher_background.xml",
+      "sha256": "38381D0D0A64770D992C98E5B5E492555690AF40E2FC6EE59E5A1C2A7C0FDCDE",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "actual": "app/app/src/main/res/drawable/ic_launcher_foreground.xml",
+      "sha256": "6E3C1BB64D9BEC079CF0030D867C58B064D2FB19CA6C5A691543C43134F64A2A",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/ic_logo.png",
+      "actual": "app/app/src/main/res/drawable/ic_logo.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/drawable/ic_notification.xml",
+      "actual": "app/app/src/main/res/drawable/ic_notification.xml",
+      "sha256": "3D3AD5975B2536761F9DF43D3770B9F96734B0AEFD3614ED99BBBBDA49D4C967",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "actual": "app/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "sha256": "71C11A863499BFB1014C5851E42F258E72C49AD7AD5DAE025DB5EAFCA75B6C48",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "actual": "app/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "sha256": "71C11A863499BFB1014C5851E42F258E72C49AD7AD5DAE025DB5EAFCA75B6C48",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "actual": "app/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "actual": "app/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "actual": "app/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "actual": "app/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "actual": "app/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "actual": "app/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "actual": "app/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "actual": "app/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "actual": "app/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "actual": "app/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/values/colors.xml",
+      "actual": "app/app/src/main/res/values/colors.xml",
+      "sha256": "4C32E0693E10D37D41FBF70D1C6DD1D00CC011130580AF05CEB86F4E6BB75F8C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/values/strings.xml",
+      "actual": "app/app/src/main/res/values/strings.xml",
+      "sha256": "28E0F81EC849C9528874565424C64406ABFF43381802AB9A5A5D3C564D471B19",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/values/themes.xml",
+      "actual": "app/app/src/main/res/values/themes.xml",
+      "sha256": "0F99D175D203F5654347345FC7E8BC218796ACC1D02CCFA0D11E806BD2953369",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/xml/backup_rules.xml",
+      "actual": "app/app/src/main/res/xml/backup_rules.xml",
+      "sha256": "FACAAEF2162BE6DD86544A819278042729ED481C38933A410651B81424DA7EA7",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/xml/data_extraction_rules.xml",
+      "actual": "app/app/src/main/res/xml/data_extraction_rules.xml",
+      "sha256": "940F48FB2BA4D9EC5A55671126796FEFA71661C0A5D7B434DC1E9BE23DA41690",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/main/res/xml/file_paths.xml",
+      "actual": "app/app/src/main/res/xml/file_paths.xml",
+      "sha256": "43EDD57CC039AB33924D4BFB9003F5BFF37071805CDE8DF730652C53BB281DAC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/test/java/com/example/ruwajay/ExampleUnitTest.kt",
+      "actual": "app/app/src/test/java/com/example/ruwajay/ExampleUnitTest.kt",
+      "sha256": "3C87924C9834D1BBB09A52165CB091B24303AF67FCEC8DB1499BB3F0838C1B3E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/test/java/com/example/ruwajay/IncomingMessageTrackerTest.kt",
+      "actual": "app/app/src/test/java/com/example/ruwajay/IncomingMessageTrackerTest.kt",
+      "sha256": "992D7AC64904E96E963B41A5ABFB4CD21C91C6E7563F3D471B033DE5D6D9AFC5",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/app/src/test/java/com/example/ruwajay/SharedContractTest.kt",
+      "actual": "app/app/src/test/java/com/example/ruwajay/SharedContractTest.kt",
+      "sha256": "3B4D2462022E295D8AD3E66E2A96F50BF7C5FF89EBBEC80D0CF5D4277352DEEB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/build.gradle.kts",
+      "actual": "app/build.gradle.kts",
+      "sha256": "3E6DB2E6C3108FFA35FC85ADCA726EFC467BCE48CD411213B418A34BE2BCA99E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradle.properties",
+      "actual": "app/gradle.properties",
+      "sha256": "E57BF446480AF2DF43D33DB7DA42458A5C7EBB5063B3E10B5607CA25E09D5B53",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradle/gradle-daemon-jvm.properties",
+      "actual": "app/gradle/gradle-daemon-jvm.properties",
+      "sha256": "30299B8D38EA0F14E4BE6B26E258BA9F4C9EF183E765F3FED07F5DABAF14B17E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradle/libs.versions.toml",
+      "actual": "app/gradle/libs.versions.toml",
+      "sha256": "39FD7C829A1A924FCF16F75B595646F70FAA56C9BCA87B4789BCC5A8BDE32960",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradle/wrapper/gradle-wrapper.jar",
+      "actual": "app/gradle/wrapper/gradle-wrapper.jar",
+      "sha256": "76805E32C009C0CF0DD5D206BDDC9FB22EA42E84DB904B764F3047DE095493F3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradle/wrapper/gradle-wrapper.properties",
+      "actual": "app/gradle/wrapper/gradle-wrapper.properties",
+      "sha256": "503F66CC4CDE5FABA7601F8C0EFDA41D38E4FBD490FB30F6559F623BDA40DF97",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradlew",
+      "actual": "app/gradlew",
+      "sha256": "8CD81D7A40A14119B8E9E64647E02822B3511E9E4A536AB92C88DAA3B0E170BC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/gradlew.bat",
+      "actual": "app/gradlew.bat",
+      "sha256": "1D297E00BD21DE3ACE22B4D7F2DE1F9DFA858883D66BBF7C1CCBECCCEC8F4F3B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "android-app/settings.gradle.kts",
+      "actual": "app/settings.gradle.kts",
+      "sha256": "316C69BD4D06769482DBE58372ED2E7163AA69D7B9B62F9E9150EC5985AACD3F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "bitacora.txt",
+      "actual": "recuros ia/historico/bitacora.txt",
+      "sha256": "3BB891A0BCA12AEFE2AE3C0DA80D531E4159898D9112DF9DE659F90E008D79AD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "cloudflared.exe",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "firebase.json",
+      "actual": "archivos varios/servicios/firebase.json",
+      "sha256": "F19F992FA88B5AF568E475C64F53142BE4CAAE595946B80761715C4057997835",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "firestore.indexes.json",
+      "actual": "archivos varios/servicios/firestore.indexes.json",
+      "sha256": "8BDBF1ADD0A335E382A889C07EE6A58685709C3BE2E96154A83614F046C4E6AF",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "firestore.rules",
+      "actual": "archivos varios/servicios/firestore.rules",
+      "sha256": "9C649588983831FBA7DC99E710537059ED998A79BDABDE2C198243AF153526AD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/domain.js",
+      "actual": "archivos varios/servicios/functions/domain.js",
+      "sha256": "9D4F35C9A8EDB231329D716E4DC730330A993F8C1B86613089BE1C2853453993",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/index.js",
+      "actual": "archivos varios/servicios/functions/index.js",
+      "sha256": "85EBD9A786896CB9FE2E863C042E241BA05D6214637F0F226F18758F4446527C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/package-lock.json",
+      "actual": "archivos varios/servicios/functions/package-lock.json",
+      "sha256": "3F220350275EE94B38CF1A3BBD1D8666575FD5B324EBE7321953A0A1A090E951",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/package.json",
+      "actual": "archivos varios/servicios/functions/package.json",
+      "sha256": "155CDC0588B4C667861868AA9445658861097DE55E462FC36095541BAE0C782B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/scripts/backup-codec.js",
+      "actual": "archivos varios/servicios/functions/scripts/backup-codec.js",
+      "sha256": "BE1C922843F81AD536DA2F376702FACED6B78658DFB12ADBED48F9CED1A1C645",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/scripts/backup-codec.test.js",
+      "actual": "archivos varios/servicios/functions/scripts/backup-codec.test.js",
+      "sha256": "0C6AAD29508E9E1E280AA68AB16A76DBF1537C886C028350F948F68D725AB5EC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "functions/scripts/migrate-data.js",
+      "actual": "archivos varios/servicios/functions/scripts/migrate-data.js",
+      "sha256": "CFD757C75A69EF8849A94E3810F9823A52AC749DA4A4801AAD12555D26E480CE",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "generar_docs.py",
+      "actual": "archivos varios/herramientas/generar_docs.py",
+      "sha256": "B5394B372CCB14093A4A32617E4439322C9476F3E6B0BD3C62D2BA907CE839F4",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "index.html",
+      "actual": "web/index.html",
+      "sha256": "DC0B83F738F3D3D1F9666DE5C9FF3477898DC1C4A73CF141244E7B0FC0251CB6",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "lineamientos para informe.docx",
+      "actual": "archivos varios/documentacion/lineamientos para informe.docx",
+      "sha256": "3636913E0D2AB372CDBD63AB8454C52A0CD5F4503F4F42F2752D2A94A901DE1D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "nginx.conf",
+      "actual": "web/nginx.conf",
+      "sha256": "B5396441C15930B9F445680D55BBD6034D3AD98FE5D2CC26C784D4BED8DE725F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "package-lock.json",
+      "actual": "web/package-lock.json",
+      "sha256": "09A9F48906061388EEE75157E95AE9DA675690E2BA2B4FAC86DBD6D8C1BC5733",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "package.json",
+      "actual": "web/package.json",
+      "sha256": "7B59D79EA6103321243D1196FF86BCA38AFBF35F1E909DF479D53A2081B6D23E",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "playwright.config.js",
+      "actual": "web/playwright.config.js",
+      "sha256": "0F366C45B2619FE8D4C6D4CD01EA83E416A57B94AA02AB497BCD9F5F1E59BA00",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "playwright.public.config.js",
+      "actual": "web/playwright.public.config.js",
+      "sha256": "25486B64B6ED624C4EE517424EA63669DBD57D6B31FFE7F500F3BD6C496B2050",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "public/Banners/Bannder1.png",
+      "actual": "web/public/Banners/Bannder1.png",
+      "sha256": "E8819D64499E91FD08A7AF974F5FB0EA83C9566237F7C72308CCFE9BD06B7CAC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Banners/Banner2.png",
+      "actual": "web/public/Banners/Banner2.png",
+      "sha256": "791A83510B72053C99E682957B786F63C0C9609B638697AFC6B91B2729FDB01D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Banners/Banner3.png",
+      "actual": "web/public/Banners/Banner3.png",
+      "sha256": "B8478BA229D1A473BCE763D553F69AB85D877BFE91E7C5F53CEE72E61625781F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Banners/Banner4.png",
+      "actual": "web/public/Banners/Banner4.png",
+      "sha256": "F7A60559C5D67FE3F0A628A20D6C4DD7FFB0078121B56AB7D9FCD055C46148F2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Banners/Banner5.png",
+      "actual": "web/public/Banners/Banner5.png",
+      "sha256": "94DA0BD774FCA2AC6EEC1DDB9DB164A1551B3B0972B3B675EC6FC34EEAD8D236",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Casas/cat-acogedora.jpg",
+      "actual": "web/public/Casas/cat-acogedora.jpg",
+      "sha256": "74205EFA7EE9105DBE00FD73EC5B9C1D6BADC995A7C0081C4AEA68E4DA771B76",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Casas/cat-familiar.jpg",
+      "actual": "web/public/Casas/cat-familiar.jpg",
+      "sha256": "C08036FEEE01869D405EA65783F05927DF52ABC1B7095DBD38BC01F6AD183416",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Casas/cat-urbana.jpg",
+      "actual": "web/public/Casas/cat-urbana.jpg",
+      "sha256": "EC58AE81E4092EB5519CE3AACCA6FB114D767C57649487DEAF15B1DF2B81CCA0",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Casas/hero-banner-new.jpg",
+      "actual": "web/public/Casas/hero-banner-new.jpg",
+      "sha256": "561433CA70AD7E2D40927DFB7A12BEF7E1F619AC83436BE236FD09F7553A1E11",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/Casas/hero-bg.jpg",
+      "actual": "web/public/Casas/hero-bg.jpg",
+      "sha256": "AB183C2BD8A8B76C79E31D3D7E9B685CA4D65908A1A07CB7B1B6E4DE2EB6E8D8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/firebase-messaging-sw.js",
+      "actual": "web/public/firebase-messaging-sw.js",
+      "sha256": "467E3195D1B796F855CB4D2C315DCCAD85311288C665A105ED091A65163E9B48",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/logo/logo.png",
+      "actual": "web/public/logo/logo.png",
+      "sha256": "52F3B89E89AC2456A0292C85076A5416C0D6AE511B463871DAF6EFF4E5A7F920",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/manifest.json",
+      "actual": "web/public/manifest.json",
+      "sha256": "DC4E8AD54FFB95EBD1370564679A76A606140514149704A6DC574733E31040B1",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "public/web.config",
+      "actual": "web/public/web.config",
+      "sha256": "6A765D1868EB0EED05BDC5B22B0920030D1A17583BE4656D760628F3047DA680",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "scripts/deploy-iis.ps1",
+      "actual": "web/scripts/deploy-iis.ps1",
+      "sha256": "C2D61F66EB21CDD5F6BDB505D28F7703F9D07021C9CFA96228D2FEA9246A47CF",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "scripts/dev.mjs",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "scripts/run-emulators.mjs",
+      "actual": "web/scripts/run-emulators.mjs",
+      "sha256": "B13DA978F8886EF9F1B8D3CE75FA3B7AC3E6E29B6EBA8231E4BAD7FA9F84EDE8",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "src/App.jsx",
+      "actual": "web/src/App.jsx",
+      "sha256": "FCD9D1579B7994A65895FEA13D73E54FCD3E38AEA27AB0E16D025B26DC6BA0B5",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/assets/hero.png",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/assets/typescript.svg",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/assets/vite.svg",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/components/chat/ChatNotificationToast.jsx",
+      "actual": "web/src/components/chat/ChatNotificationToast.jsx",
+      "sha256": "C84FB077EF50D4D7207BE031840D831D871AE0BD7D0EF5A3D1BCFBD43994A08E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/ChatWallpaperModal.jsx",
+      "actual": "web/src/components/chat/ChatWallpaperModal.jsx",
+      "sha256": "62EABB72878C2AAD0B6138BDC5E0A1E80211A3FE803147DC576150240A16D825",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/FullEmojiPickerModal.jsx",
+      "actual": "web/src/components/chat/FullEmojiPickerModal.jsx",
+      "sha256": "BD8093F6896065694DE4F107AE22D81856A5F868626FB9188BC102BB59B4E1E3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/GlobalCallModal.jsx",
+      "actual": "web/src/components/chat/GlobalCallModal.jsx",
+      "sha256": "70D06BA37E44FBC27576BB6322898661BED0447CF450D60F25A91FAB9F652B6E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/MediaSendPreviewModal.jsx",
+      "actual": "web/src/components/chat/MediaSendPreviewModal.jsx",
+      "sha256": "056680496F58DDA262339563AFC946CF796334E0C8E0D7A160A3626769DD9EDF",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/MediaViewerModal.jsx",
+      "actual": "web/src/components/chat/MediaViewerModal.jsx",
+      "sha256": "F1603987CE9CEBFB216F4BF8A289D7E989630EE39BF810F2D80B89E8669312A0",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/chat/PrivateMedia.jsx",
+      "actual": "web/src/components/chat/PrivateMedia.jsx",
+      "sha256": "0192DAACB314855FB683656997C50910391C806536390CA75AAF038408C60A92",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/layout/Footer.jsx",
+      "actual": "web/src/components/layout/Footer.jsx",
+      "sha256": "F9E0B6334EDC6DA2D1C89525757A274160BBA5E2105CA7554F118B9EE6E3E9EB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/layout/Header.jsx",
+      "actual": "web/src/components/layout/Header.jsx",
+      "sha256": "6A7734C827461C0F9EE776C232E63E9BA8558F66641D0052AF8F219E1AA9E62E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/layout/MobileNav.jsx",
+      "actual": "web/src/components/layout/MobileNav.jsx",
+      "sha256": "9745E0268EE4A9C5E6B14BA1C5A56C970D2B8ABEFA2C3E98E15342073929ACE5",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/map/MapView.jsx",
+      "actual": "web/src/components/map/MapView.jsx",
+      "sha256": "5A5BDBD23295CFF6C042D95E530E6B76B537D87EFC9D9DED273D23A0734AEE35",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/map/PropertyLocationPickerMap.jsx",
+      "actual": "web/src/components/map/PropertyLocationPickerMap.jsx",
+      "sha256": "CE1E76B340A1C586B9D78B32CA8475D33CE52C80649C74BBBAE0F7D725417E86",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/map/RuwaJayNavigationView.jsx",
+      "actual": "web/src/components/map/RuwaJayNavigationView.jsx",
+      "sha256": "3E0FE7456C0943893643E418253901C1E374612004D3FD67A62742B7C2579D5D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/map/WazeNavigationView.jsx",
+      "actual": "web/src/components/map/WazeNavigationView.jsx",
+      "sha256": "05665D642EB434A24C87666A959CABE0CA487A63B0EFDE160AA822B9A8086895",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/EditPropertyModal.jsx",
+      "actual": "web/src/components/property/EditPropertyModal.jsx",
+      "sha256": "2CD01952819D5E831D8FB020FC7F2C330C344A9666AED1C4409EBBF55CDF7FE2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/LeaseContractModal.jsx",
+      "actual": "web/src/components/property/LeaseContractModal.jsx",
+      "sha256": "5FA774C36316D54D35EB2F971605B12F826852D7511B87FAD7BADA79E78DA569",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/PropertyCard.jsx",
+      "actual": "web/src/components/property/PropertyCard.jsx",
+      "sha256": "91C1AD40C6DE61CD59090A40B4304BD3C4BF898AC1F5DEC28028459D1DFA04B3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/PropertyCompareModal.jsx",
+      "actual": "web/src/components/property/PropertyCompareModal.jsx",
+      "sha256": "6A37DA8E20DB33D5AC5C55A9496A9E5D44130EB598D3E6D669611C3CC039CDDC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/PropertyLightbox.jsx",
+      "actual": "web/src/components/property/PropertyLightbox.jsx",
+      "sha256": "A9C1F925FA66AB2D2258008B075ABF547805F2AE595125E08B2E3214B26DF8A5",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/PropertyReviews.jsx",
+      "actual": "web/src/components/property/PropertyReviews.jsx",
+      "sha256": "460DFBBBA36F87774004ADA2AD372E69B4DD4F24538F1D5B8FE01F99D15419DD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/RentAffordabilityModal.jsx",
+      "actual": "web/src/components/property/RentAffordabilityModal.jsx",
+      "sha256": "120746D0F4BDBB882A7FA72FCD4ED47AAE59120DC719554FDFC1C390520AE568",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/property/SaveSearchModal.jsx",
+      "actual": "web/src/components/property/SaveSearchModal.jsx",
+      "sha256": "EA2873698369770E1DE072FDD2A2A2FC7C7277B57C4BCEE077F30EB5F2054BD6",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/ErrorBoundary.jsx",
+      "actual": "web/src/components/ui/ErrorBoundary.jsx",
+      "sha256": "7C42AC0F3C86D6B14BB5041DAB2821538C45EDAE089267C7588CAEDB189826A2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/LogoutConfirmModal.jsx",
+      "actual": "web/src/components/ui/LogoutConfirmModal.jsx",
+      "sha256": "8A62619CC73DCFBB0BAAC6BCA79D016CE4D79E294851D71F2A11D7D7A244B09F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/MobileAppBanner.jsx",
+      "actual": "web/src/components/ui/MobileAppBanner.jsx",
+      "sha256": "3BE8DBABF7099AB5003920CBF55A60043112AD8D60DFB0CE8DA2A7CDA82F0753",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/MobileAppConnectModal.jsx",
+      "actual": "web/src/components/ui/MobileAppConnectModal.jsx",
+      "sha256": "CF7B1233378B1CD186FA6E09640738FE49EC6FA3B63BA18B2C5E037694479910",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/NotificationCenter.jsx",
+      "actual": "web/src/components/ui/NotificationCenter.jsx",
+      "sha256": "85F8B1F91FA8047FA92CE20420ACDA5010876E42B07D84995042BB95921E5DE4",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/RuwaDatePicker.jsx",
+      "actual": "web/src/components/ui/RuwaDatePicker.jsx",
+      "sha256": "1635DFF14F5A476AD7A982403287944A623B959C9DED8FBF0715162C41EEE544",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/RuwaJayLoader.jsx",
+      "actual": "web/src/components/ui/RuwaJayLoader.jsx",
+      "sha256": "E94E30B8264D5E3459C80D9FC392FE2EC8D8E9AED43924D783B858BA4576A201",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/RuwaJayLogo.jsx",
+      "actual": "web/src/components/ui/RuwaJayLogo.jsx",
+      "sha256": "58FE1506E8C0B0367D7F2A787FB77FF1E7AB35AB63EFEE3AEFA42EBC7440CC18",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/RuwaPagination.jsx",
+      "actual": "web/src/components/ui/RuwaPagination.jsx",
+      "sha256": "E9B8E8A248080D2090DE02B12A88E14D6C2D40A9CE2E865796E5805525134727",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/RuwaSelect.jsx",
+      "actual": "web/src/components/ui/RuwaSelect.jsx",
+      "sha256": "BF4F456C2C0268091E1C74D0D30BB66E0117BFCBD4F4308B3AA4B2BD13CE49BE",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/SystemUpdatesModal.jsx",
+      "actual": "web/src/components/ui/SystemUpdatesModal.jsx",
+      "sha256": "DB6D86641C160ADF157D0F8F99579CC78AF52ED562E09CFCB79C8093CB596BEF",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/components/ui/ThemeToggle.jsx",
+      "actual": "web/src/components/ui/ThemeToggle.jsx",
+      "sha256": "BD3EBEBFA70E71034279A55506ABA13B5D410D28E14BB6FB7CBCBB8313CA3E55",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/AuthContext.jsx",
+      "actual": "web/src/context/AuthContext.jsx",
+      "sha256": "1E53295CE408CD82551EF17D1AC3E1CF9E8429E9B0AB0CA93945AED84493BAAD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/CallContext.jsx",
+      "actual": "web/src/context/CallContext.jsx",
+      "sha256": "802A0F49FB2A4C143BD0CB7D2A0F283851109FC81EA2056B1AF4F6235B6EC773",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/ChatContext.jsx",
+      "actual": "web/src/context/ChatContext.jsx",
+      "sha256": "FC9DE6F30A2CBCEE999D63D1923C3B669746CBE5B123A08F27EABEDDB7177E94",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/CompareContext.jsx",
+      "actual": "web/src/context/CompareContext.jsx",
+      "sha256": "C409B7FD330930836ECA8536AFB9C0428DF12A134297298BDF99D7D4064EF708",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/FavoritesContext.jsx",
+      "actual": "web/src/context/FavoritesContext.jsx",
+      "sha256": "2C82310F85EAC78C875CA81BBDE58D8CDB499009FEFE2D9440BF92C6A99490EC",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/context/ThemeContext.jsx",
+      "actual": "web/src/context/ThemeContext.jsx",
+      "sha256": "5C83BED1EC4B34FF50C17A76450ED073081A7D6972721B47EC31BF34552BD1F7",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/counter.ts",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/data/avatars.js",
+      "actual": "web/src/data/avatars.js",
+      "sha256": "D5D6D96F50F460DE1591B294509D4AFBF2BD0F0D8D271B0C76393995EC54B265",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/data/guatemalaLocations.js",
+      "actual": "web/src/data/guatemalaLocations.js",
+      "sha256": "6D379503E9BC721390B9ADB6297EE7C69385C4CC6A5366D63733A0ED65C9346C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/data/properties.js",
+      "actual": "web/src/data/properties.js",
+      "sha256": "FC7F4E27C1C54FEB8C0A130AA3B72F8E23EB84093CAA07B9F273D912366FE581",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/hooks/useGeolocation.js",
+      "actual": "web/src/hooks/useGeolocation.js",
+      "sha256": "EEE6EF7D16B48EFB0386BA8E1A34A3F74625E94DCD686DFF2CD78A47012E8E6D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/index.css",
+      "actual": "web/src/index.css",
+      "sha256": "AD3C6EB10804D189784C67F960EB6EAB432D98182CBBFB0F1ED859EDC716B01A",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/adminService.js",
+      "actual": "web/src/lib/adminService.js",
+      "sha256": "E3CAF5381885F6913645606CA43C037B2AC1258683CAA24CD8308E7CBF47AC07",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/backendService.js",
+      "actual": "web/src/lib/backendService.js",
+      "sha256": "93829DF5C330E4FD08353A415EBA919D58AA07C6549770036860FE0135FE3DC3",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/callService.js",
+      "actual": "web/src/lib/callService.js",
+      "sha256": "29D7A6EB8BC89B2AABEAD5294075C36EF636BBA237079E52FD053CF5E3CF7456",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/chatService.js",
+      "actual": "web/src/lib/chatService.js",
+      "sha256": "41DFF511651C823D6A9BEA771B31AEB4BAE9E01B3C05478554594C85141B697E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/contracts.js",
+      "actual": "web/src/lib/contracts.js",
+      "sha256": "5581205AF795D742E5755E10472334A8B5C213EECF2B8C6A175622E8F172A3CE",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/firebase.js",
+      "actual": "web/src/lib/firebase.js",
+      "sha256": "CCE8BC1341440C840BAC52D79E276FE9B2E7CB850EBB6DC5CF183BAFBADC0207",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/mediaService.js",
+      "actual": "web/src/lib/mediaService.js",
+      "sha256": "0CCA795B4453FD79AC840CD79A348C87BE654B16FEF799A56687F23E5638E666",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/notificationService.js",
+      "actual": "web/src/lib/notificationService.js",
+      "sha256": "5B90F652F584AB750BF25CF7D26677C385C9824E836722FD1D075B60DB218FAA",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/propertyService.js",
+      "actual": "web/src/lib/propertyService.js",
+      "sha256": "5F7BD6C2AC750AB2DC9EED68553C1B30ACDD40239E664C5FFC10FE170523BF2B",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/realtimeService.js",
+      "actual": "web/src/lib/realtimeService.js",
+      "sha256": "59A195B580840E48C876E8E18C5A4876E47C852F206BDD85FFC41E174B48B06D",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/savedSearchService.js",
+      "actual": "web/src/lib/savedSearchService.js",
+      "sha256": "F4B9B7E70E8E2084B1FED8DB196F17D427D455D35672783EC9A75D61456ACFC6",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/supabaseStorage.js",
+      "actual": "web/src/lib/supabaseStorage.js",
+      "sha256": "5D3EDBE1BF21630EA3629468E39FE2F440547792FEF540DB6300E90A9425C89F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/lib/visitService.js",
+      "actual": "web/src/lib/visitService.js",
+      "sha256": "85FABE17AE85DA813E49BF627FF741835CF61F890DC9E84560EB4BFEDF7EBF4C",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/main.jsx",
+      "actual": "web/src/main.jsx",
+      "sha256": "AAAFFFD5F1C0147CAC0174D504887126356A88E44BE31DC7CA971E3EF4E5545E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/main.ts",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/pages/ChatPage.jsx",
+      "actual": "web/src/pages/ChatPage.jsx",
+      "sha256": "7BA2CA5AF49B54466E8B30E86A54CA361B065E072249578416C69CCDF7BB65BF",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/ExplorePage.jsx",
+      "actual": "web/src/pages/ExplorePage.jsx",
+      "sha256": "EB86F50479DA4965785B1CA4CC0003C7544A51C5A9DE7B8AD5E8C5E46EB6D08E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/HomePage.jsx",
+      "actual": "web/src/pages/HomePage.jsx",
+      "sha256": "780F44C631AF0AF52E5C451ACECB58798D160A5884E2AF2B98E0C3E7B796CE71",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/LoginPage.jsx",
+      "actual": "web/src/pages/LoginPage.jsx",
+      "sha256": "44C9F6F892F613C62DFF04F49CA72723AAC9E7EEAAC033302D182B19D0A110CB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/ProfilePage.jsx",
+      "actual": "web/src/pages/ProfilePage.jsx",
+      "sha256": "F2EE05995BDF8F51DEB1BAD81D1B0EA5DEA73EAD2AD96877F2191A6DAE187B6F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/PropertyDetailPage.jsx",
+      "actual": "web/src/pages/PropertyDetailPage.jsx",
+      "sha256": "F67A7618C42027BE7F697E7B79769A4C48E50191B89615622887D7CED49F5AD8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/PublishPage.jsx",
+      "actual": "web/src/pages/PublishPage.jsx",
+      "sha256": "C35942F917F9B8C96578BF9ADBECA917B36AC1D5618DA4FA3C83B7E7DC2C5A84",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/ResetPasswordPage.jsx",
+      "actual": "web/src/pages/ResetPasswordPage.jsx",
+      "sha256": "3FD0256E8E9545C40613E03F1953E2B5540340B2CCEA5F7F2EF8A2C540EBFADD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/pages/RoutePage.jsx",
+      "actual": "web/src/pages/RoutePage.jsx",
+      "sha256": "BF60ED1C0BE852A02D692FD32862CA4AFFCC825EE0892F147BA6AB6F7FD335D8",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "src/style.css",
+      "estado": "eliminacion autorizada: herramienta sin referencias o plantilla sin uso"
+    },
+    {
+      "original": "src/utils/security.js",
+      "actual": "web/src/utils/security.js",
+      "sha256": "FDF79D92B98BF6824E32F11456587010283EEB4F694E61F2CFEBB26F4178EAD7",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "storage.rules",
+      "actual": "archivos varios/servicios/storage.rules",
+      "sha256": "9EC11D6796B03864CA0022EF9015C667394ED879E82500E1708721A0DFACF590",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/config.toml",
+      "actual": "archivos varios/servicios/supabase/config.toml",
+      "sha256": "F8AD2C746955CBBCA5560B4B2EC9D7DE012297FBD0E7B0E9FE17A5F3EB26182E",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/cron_setup.sql",
+      "actual": "archivos varios/servicios/supabase/cron_setup.sql",
+      "sha256": "28894EBF69BB8021B16EA262EB8871F3E835398FC04D616D4B373FE76B030376",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/contracts.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/contracts.js",
+      "sha256": "D462F2F5CA0FE1032B5E66B95C1855D27BCB59C8A4B1900791357AF6BDEB6508",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/domain.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/domain.js",
+      "sha256": "9D4F35C9A8EDB231329D716E4DC730330A993F8C1B86613089BE1C2853453993",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/errors.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/errors.js",
+      "sha256": "8320D308EB7836CDC3848B9887A4F0289CF16315C521D5AC963A6602509BE465",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/firestore.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/firestore.js",
+      "sha256": "1E0C35B95601AC780274E6458EB2402D10FFC7968BC31F244DB8F21A38027FAE",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/google.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/google.js",
+      "sha256": "A6EA394818E99D4B9C5B91D685F1E516EE02EC1641D44D3A5F2564D86376CDCE",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/handler.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/handler.js",
+      "sha256": "71AEFF80424D27D5774F4B8CC03664D9712031E911EF119DFE527C5A23B92380",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/service.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/service.js",
+      "sha256": "91057D49479B63969261F9FB39017C8ACE2036B87B219E16D89040F68689A26F",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/_shared/storage.js",
+      "actual": "archivos varios/servicios/supabase/functions/_shared/storage.js",
+      "sha256": "3C9C74CA61E60055149EE83E955DC3E313504646D9AD181BFA56CD64C1401BE2",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/functions/ruwajay-api/index.ts",
+      "actual": "archivos varios/servicios/supabase/functions/ruwajay-api/index.ts",
+      "sha256": "F7BC55BDF6842031D7D562892E3CD8559A3C4948A947168635545BFF2E76BECD",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/storage_lockdown.sql",
+      "actual": "archivos varios/servicios/supabase/storage_lockdown.sql",
+      "sha256": "625A3AA019DD2BFBEE9666CDC82BFC5B890B52C4E46AB4162679FE1F712A14D0",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "supabase/storage_setup.sql",
+      "actual": "archivos varios/servicios/supabase/storage_setup.sql",
+      "sha256": "B7CD2FF3C0C0C31173BBD9BF06A197503D465853B8858A52FBF6E091C65F0C43",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "tests/backend.unit.test.js",
+      "actual": "web/tests/backend.unit.test.js",
+      "sha256": "85F6BBEF7A7EF5BE3B2247683072B20A3A67C71A9A8906F0B4576F504D3AD7F9",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tests/browser/shared-project.spec.js",
+      "actual": "web/tests/browser/shared-project.spec.js",
+      "sha256": "B6E4A87659D9ED62D411A38F0F631EFADBAFE7133E5B73FDBA69C3EF4E36A449",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "tests/contracts.test.js",
+      "actual": "web/tests/contracts.test.js",
+      "sha256": "8FE2F58324394683BC09195F016C4233746C04978C375446BDE147EB8BE9636A",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tests/firestore.rules.test.js",
+      "actual": "web/tests/firestore.rules.test.js",
+      "sha256": "7EAFFFBC8B3AA5F06B2B6DDC668F71AB9F589096EAEE50274C2E32C1EA378870",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tests/integration.test.js",
+      "actual": "web/tests/integration.test.js",
+      "sha256": "6910930DFED376C19E3E6A28C7F39637502E141093BE2B4E1F99EBC3FDFF2C3E",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tests/public-browser/public-access.spec.js",
+      "actual": "web/tests/public-browser/public-access.spec.js",
+      "sha256": "FB7F68059229AD5473824A4C31C60F0F5BDDE04E72AB3FFE641ECE1D849ECFDB",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "tests/storage.rules.test.js",
+      "actual": "web/tests/storage.rules.test.js",
+      "sha256": "81100448238424C603302CCFF9D979DEB675194C20D5A86A9BF472D85D768317",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tests/supabase.backend.test.js",
+      "actual": "web/tests/supabase.backend.test.js",
+      "sha256": "11461F2E8973EB33F7D5433C4B4B92C1C26A10DC53FC0780F40E25450B7A3141",
+      "estado": "rutas o configuracion actualizadas"
+    },
+    {
+      "original": "tsconfig.json",
+      "actual": "web/tsconfig.json",
+      "sha256": "6933BB7F71023B4B79AB72F3167F884D63C278088E36357E019171DCEBF14487",
+      "estado": "contenido intacto"
+    },
+    {
+      "original": "vite.config.js",
+      "actual": "web/vite.config.js",
+      "sha256": "554BE99AE69D4437249917DE4220DBD0C7400DDC542D0AAFB0526517AD9FD401",
+      "estado": "rutas o configuracion actualizadas"
+    }
+  ]
+}

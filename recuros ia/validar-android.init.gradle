@@ -1,0 +1,9 @@
+def resources = initscript.sourceFile.parentFile
+gradle.beforeProject { project ->
+    def directory = project.path == ':' ? 'raiz' : project.path.substring(1).replace(':', '/')
+    def validationRoot = project.findProperty('ruwaValidationRoot')
+    project.layout.buildDirectory.set(validationRoot ? new File(validationRoot.toString(), directory) : new File(resources, "validacion/android/${directory}"))
+    project.plugins.withId('com.android.application') {
+        project.extensions.getByName('android').sourceSets.getByName('test').kotlin.srcDir(new File(resources, 'pruebas-android'))
+    }
+}

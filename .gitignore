@@ -10,12 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-android-app/.gradle
-android-app/.idea
-android-app/.kotlin
-android-app/build
-android-app/app/build
-android-app/android-app
+app/.gradle
+app/.idea
+app/.kotlin
+app/build
+app/app/build
 *.local
 .env
 *.db
@@ -38,8 +37,14 @@ android-app/android-app
 
 
 # Local credentials and Supabase CLI cache
-android-app/local.properties
-supabase/.temp/
-supabase/.branches/
+app/local.properties
+archivos varios/servicios/supabase/.temp/
+archivos varios/servicios/supabase/.branches/
 .env.*
 !.env.example
+
+# Resultados locales de analisis y validacion
+/recuros ia/validacion/
+/recuros ia/pruebas/
+/recuros ia/respaldos/
+/app/distribucion/*.apk

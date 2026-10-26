@@ -1,0 +1,91 @@
+[
+  {
+    "ruta": "app/app/build",
+    "bytes": 209062974
+  },
+  {
+    "ruta": "web/node_modules",
+    "bytes": 533594210
+  },
+  {
+    "ruta": "web/dist",
+    "bytes": 21376753
+  },
+  {
+    "ruta": "archivos varios/servicios/functions/node_modules",
+    "bytes": 58205335
+  },
+  {
+    "ruta": "cloudflared.exe",
+    "bytes": 55329336
+  },
+  {
+    "ruta": "firestore-debug.log",
+    "bytes": 64591
+  },
+  {
+    "ruta": "web/firestore-debug.log",
+    "bytes": 116570
+  },
+  {
+    "ruta": "web/src/main.ts",
+    "bytes": 2524
+  },
+  {
+    "ruta": "web/src/counter.ts",
+    "bytes": 283
+  },
+  {
+    "ruta": "web/src/style.css",
+    "bytes": 5356
+  },
+  {
+    "ruta": "web/src/assets/hero.png",
+    "bytes": 13057
+  },
+  {
+    "ruta": "web/src/assets/typescript.svg",
+    "bytes": 1304
+  },
+  {
+    "ruta": "web/src/assets/vite.svg",
+    "bytes": 8710
+  },
+  {
+    "ruta": "web/scripts/dev.mjs",
+    "bytes": 1877
+  },
+  {
+    "ruta": "recuros ia/validacion",
+    "bytes": 21561979
+  },
+  {
+    "ruta": "recuros ia/pruebas",
+    "bytes": 51549
+  },
+  {
+    "ruta": ".artifacts",
+    "bytes": null,
+    "nota": "Retirado en una pasada anterior; tamano no registrado"
+  },
+  {
+    "ruta": "app/.artifacts",
+    "bytes": null,
+    "nota": "Retirado en una pasada anterior; tamano no registrado"
+  },
+  {
+    "ruta": "app/.gradle",
+    "bytes": null,
+    "nota": "Retirado en una pasada anterior; tamano no registrado"
+  },
+  {
+    "ruta": "app/.kotlin",
+    "bytes": null,
+    "nota": "Retirado en una pasada anterior; tamano no registrado"
+  },
+  {
+    "ruta": "app/build",
+    "bytes": null,
+    "nota": "Retirado en una pasada anterior; tamano no registrado"
+  }
+]

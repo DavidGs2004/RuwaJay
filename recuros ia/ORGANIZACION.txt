@@ -1,0 +1,128 @@
+ORGANIZACIÓN Y REVISIÓN DE RUWAJAY
+Fecha: 26 de octubre de 2026
+
+ESTRUCTURA
+app/
+  Proyecto Android nativo Kotlin/Jetpack Compose, Gradle Wrapper,
+  configuración Firebase y pruebas Android existentes.
+  distribucion/ conserva el APK debug 2.6.0 existente más reciente.
+web/
+  Proyecto React/Vite: src, public, configuración, manifiestos de npm,
+  pruebas existentes y scripts de desarrollo, emuladores y despliegue web.
+archivos varios/
+  servicios/: servidor Supabase, funciones Firebase anteriores y sus
+  herramientas de migración/respaldos, reglas, índices y configuración.
+  documentacion/: informes DOCX distintos, documentación técnica, README
+  y capturas originales del diagnóstico de base de datos.
+  herramientas/: generador de documentos existente.
+recuros ia/
+  Informe, inventario original SHA-256, verificación y registro de limpieza.
+  Scripts utilizados e histórico de la bitácora de continuidad.
+
+En la raíz se conservan .git, .github y .gitignore: historial del repositorio,
+automatización de publicación y exclusión de archivos locales. Moverlos a
+otra carpeta rompería sus funciones. No son carpetas de contenido sobrante.
+
+QUÉ SE CONSERVÓ Y POR QUÉ
+El servidor es compartido por Android y React; no es basura aunque esté
+fuera de los clientes. Las Cloud Functions anteriores se conservan porque
+los clientes admiten ese modo y las pruebas de regresión lo utilizan.
+Se mantienen package-lock.json y Gradle Wrapper para poder reinstalar y
+compilar. Se conserva functions/.env.local sin mostrar su contenido.
+Los cinco DOCX tienen hashes diferentes; no se eliminaron por similitud
+de nombres. La documentación y bitácora anteriores describen momentos
+anteriores del proyecto y no son certificaciones del estado actual.
+
+LIMPIEZA
+Se retiran node_modules de web y Functions, dist, cachés .gradle/.kotlin,
+builds de Android, registros, .artifacts con JDK descargado y resultados
+anteriores, despliegues simulados y APK antiguos 2.4.0/2.5.0.
+También se retiran cloudflared.exe (sin referencias en el proyecto), la
+plantilla TypeScript de Vite sin uso y scripts/dev.mjs, reemplazado por vite
+en npm run dev. El backend Python al que apuntaba dev:backend no existe;
+se quitó ese comando inválido. El detalle de rutas y bytes está en limpieza.json.
+Al menos 0.84 GiB corresponden a la última pasada registrada de limpieza;
+también se retiraron .artifacts y cachés Gradle en pasadas anteriores cuyo
+tamaño no quedó registrado por las restricciones de Windows.
+Las salidas temporales de las comprobaciones de esta revisión se borran
+tras comprobarlas para no conservar más compilaciones ni capturas de error.
+
+AJUSTES
+Se actualizaron imports de pruebas y migraciones, ubicación de reglas,
+Firebase Hosting hacia web/dist, config del ejecutor de emuladores,
+salidas de Playwright hacia recuros ia, exclusiones de Git y workflow VPS.
+El generador de documentos existente ahora escribe en recuros ia/documentos.
+No se cambiaron las reglas de acceso ni la lógica de React, Android o del
+servidor. verificacion.json comprueba la conservación de los archivos
+inventariados y distingue los cambios de rutas de las eliminaciones previstas.
+Los enlaces del README que antes apuntaban a guías docs/ inexistentes ahora
+apuntan a este informe; esas guías completas no estaban en el repositorio.
+
+COMPROBACIONES
+Correctas:
+  npm test: 7 pruebas de contratos.
+  npm run test:backend:unit: 4 pruebas.
+  npm test en Functions: 2 pruebas de codificación de respaldos.
+  npm run check en Functions: sintaxis correcta.
+  npm run build: compilación React correcta, con avisos de tamaño de bundle
+  e imports dinámicos de Firebase que ya forman parte del código existente.
+  Integración Firebase: reserva concurrente, confirmación y chat.
+  Storage: descarga privada, validación de imágenes y suspensión.
+
+Incidencias observadas en las pruebas adicionales:
+  Cuatro pruebas de Firestore no cumplen sus expectativas actuales:
+  privacidad de perfiles, suplantación de remitentes, inmutabilidad de
+  participantes/marcas de lectura y escritura directa de llamadas.
+  Las reglas conservadas permiten accesos que las pruebas esperan bloquear.
+  Supabase rechaza video/mp4 en la prueba de videos/respuestas citadas:
+  el validador actual admite video/webm para chat.
+  Las seis pruebas de acceso público en navegador fallan al cargar su
+  simulación de AuthContext: falta exportar resolveUserStatus en esa
+  simulación. El módulo real sí exporta la función. Se interrumpió el
+  ejecutor después de observar los seis fallos y quedar esperando al cierre.
+  Los triggers Firebase anteriores también registraron errores por campos
+  body undefined al procesar algunos datos de las pruebas del gateway.
+Estas incidencias pertenecen a reglas, lógica o fixtures conservados;
+la revisión no las corrige ni declara que toda la aplicación pase pruebas.
+
+No se recompiló Android durante esta reorganización. Sus fuentes y archivos
+Gradle se verificaron por hash; el APK guardado es uno existente, no una
+compilación nueva. No se desplegó ni modificó ningún servicio de producción.
+
+USO CON LAS NUEVAS RUTAS (desde la raíz)
+Web:
+  cd web
+  npm ci
+  Copiar .env.example a .env.local y completar los valores públicos.
+  npm run dev
+  npm run build
+  npm run build:vps
+  Las compilaciones normales quedan en web/dist.
+
+Pruebas con emuladores:
+  Reinstalar npm en web y en archivos varios/servicios/functions.
+  Configurar Java 21 y ejecutar desde web los scripts test:rules,
+  test:integration, test:storage o test:supabase.
+  scripts/run-emulators.mjs ya usa la nueva ubicación de firebase.json.
+  Las incidencias anteriores seguirán necesitando corrección independiente.
+
+Android:
+  Abrir app en Android Studio. Configurar Java 21 y Android SDK 37.
+  Configurar SDK y URL de servidor en app/local.properties, si hace falta.
+  Desde app: .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+  La ruta local contiene acentos; comprobar compatibilidad del SDK/Gradle
+  del equipo antes de atribuir un fallo de compilación a las fuentes.
+
+Servicios:
+  Supabase CLI se ejecuta desde archivos varios/servicios, que contiene
+  supabase/config.toml y supabase/functions.
+  Desde web, Firebase CLI usa --config "../archivos varios/servicios/firebase.json".
+  Mantener la misma URL pública del servidor en web y Android.
+  Instalar Java/SDK fuera del repositorio; no volver a guardar un JDK en él.
+
+DESPLIEGUE
+El workflow .github/workflows/deploy-vps.yml ejecuta npm dentro de web y
+empaqueta web/dist. Sigue usando las variables y runner ya configurados.
+El Dockerfile se usa con contexto web: docker build -t ruwajay ./web
+Las operaciones Firebase/Supabase de despliegue siguen siendo separadas.
+La reorganización local no implica que estén desplegadas o configuradas.

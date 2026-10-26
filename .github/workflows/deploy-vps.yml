@@ -4,15 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
-      - 'public/**'
-      - 'tests/**'
-      - 'functions/**'
-      - 'supabase/functions/_shared/**'
-      - 'scripts/deploy-iis.ps1'
-      - 'index.html'
-      - 'package*.json'
-      - 'vite.config.js'
+      - 'web/**'
+      - 'archivos varios/servicios/**'
       - '.github/workflows/deploy-vps.yml'
   workflow_dispatch:
 
@@ -27,6 +20,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
     env:
       VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
       VITE_RUWA_BACKEND_URL: ${{ vars.VITE_RUWA_BACKEND_URL }}
@@ -40,6 +36,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Comprobar URL pública del backend
         if: vars.RUWAJAY_DEPLOY_ENABLED == 'true'
         shell: bash
@@ -61,7 +58,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: ruwajay-vps
-          path: release/
+          path: web/release/
           retention-days: 7
           if-no-files-found: error
 
