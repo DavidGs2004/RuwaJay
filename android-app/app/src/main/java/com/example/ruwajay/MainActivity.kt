@@ -88,33 +88,27 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
+        com.example.ruwajay.ui.theme.ThemePreferences.init(this)
         checkAndRequestNotificationPermission()
 
-        // Ejecutar inicialización y purga de caché de OSM en segundo plano para no demorar el primer cuadro de la app
+        // Inicialización ligera de OSM en segundo plano sin purgas de disco bloqueantes
         kotlin.concurrent.thread(name = "osm-init") {
             try {
-                val osmCacheDir = File(cacheDir, "osmdroid")
-                if (osmCacheDir.exists()) {
-                    osmCacheDir.deleteRecursively()
-                }
-                val osmFilesDir = File(filesDir, "osmdroid")
-                if (osmFilesDir.exists()) {
-                    osmFilesDir.deleteRecursively()
+                Configuration.getInstance().apply {
+                    load(applicationContext, applicationContext.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+                    userAgentValue = "RuwaJay-GT-App/3.0 (info@ruwajay.com)"
+                    
+                    val basePath = File(filesDir, "osmdroid")
+                    basePath.mkdirs()
+                    osmdroidBasePath = basePath
+                    
+                    val tileCache = File(cacheDir, "osmdroid_tiles_v4")
+                    tileCache.mkdirs()
+                    osmdroidTileCache = tileCache
+                    cacheMapTileCount = 150.toShort()
+                    cacheMapTileOvershoot = 30.toShort()
                 }
             } catch (_: Exception) {}
-
-            Configuration.getInstance().apply {
-                load(applicationContext, applicationContext.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
-                userAgentValue = "RuwaJay-GT-App/3.0 (info@ruwajay.com)"
-                
-                val basePath = File(filesDir, "osmdroid")
-                basePath.mkdirs()
-                osmdroidBasePath = basePath
-                
-                val tileCache = File(cacheDir, "osmdroid_tiles_v4")
-                tileCache.mkdirs()
-                osmdroidTileCache = tileCache
-            }
         }
 
         setContent {

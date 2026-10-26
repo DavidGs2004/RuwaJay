@@ -1,12 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Map, MessageSquare, Heart, User } from 'lucide-react';
+import { Home, Map, MessageSquare, User } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 
 const tabs = [
   { label: 'Inicio', path: '/', icon: Home },
   { label: 'Mapa', path: '/explorar?view=map', icon: Map },
   { label: 'Mensajes', path: '/chat', icon: MessageSquare, hasBadge: true },
-  { label: 'Favoritos', path: '/perfil?tab=favoritos', icon: Heart },
   { label: 'Perfil', path: '/perfil', icon: User },
 ];
 
@@ -26,10 +25,6 @@ export default function MobileNav() {
       return (targetParams.get('view') === 'map') === (currentParams.get('view') === 'map');
     }
 
-    if (basePath === '/perfil') {
-      return (targetParams.get('tab') === 'favoritos') === (currentParams.get('tab') === 'favoritos');
-    }
-
     return true;
   };
 
@@ -43,7 +38,7 @@ export default function MobileNav() {
       <div className="h-[3px] bg-gradient-to-r from-forest via-dorado to-terracota" />
 
       <div className="bg-glass border-t border-border-light/50">
-        <div className="mx-auto grid max-w-md grid-cols-5 items-center px-1 py-1.5">
+        <div className="mx-auto grid max-w-md grid-cols-4 items-center px-1 py-1.5">
           {tabs.map(({ label, path, icon: Icon, hasBadge }) => {
             const active = isActive(path);
             return (

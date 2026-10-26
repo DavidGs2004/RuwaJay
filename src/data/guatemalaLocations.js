@@ -538,3 +538,80 @@ export function isZoneValidForDepartment(zone, department) {
   return zones.includes(zone);
 }
 
+/**
+ * Finds the closest authentic Guatemalan department, zone and municipality by GPS coordinates
+ */
+export function findNearestGuatemalaLocation(lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    return {
+      department: 'Guatemala',
+      zone: 'Zona 1 (Centro Histórico)',
+      municipality: 'Guatemala',
+    };
+  }
+
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+
+  let closestKey = 'zona 1';
+  let minDistance = Infinity;
+
+  for (const [key, coords] of Object.entries(ZONE_COORDINATES)) {
+    const d = Math.hypot(coords.lat - numLat, coords.lng - numLng);
+    if (d < minDistance) {
+      minDistance = d;
+      closestKey = key;
+    }
+  }
+
+  // Determine department from closest key
+  let department = 'Guatemala';
+  for (const [dept, zones] of Object.entries(DEPARTMENT_ZONES_MAP)) {
+    if (dept === 'Todos') continue;
+    const match = zones.some((z) => z.toLowerCase().includes(closestKey));
+    if (match) {
+      department = dept;
+      break;
+    }
+  }
+
+  // Find exact zone label in that department
+  const zones = getZonesForDepartment(department).filter(
+    (z) => !z.toLowerCase().startsWith('todas') && !z.toLowerCase().startsWith('todos')
+  );
+  const zoneLabel = zones.find((z) => z.toLowerCase().includes(closestKey)) || zones[0] || `${department} Centro`;
+
+  // Determine municipality
+  let municipality = department;
+  if (department === 'Guatemala') {
+    if (closestKey.startsWith('zona')) municipality = 'Guatemala';
+    else if (closestKey.includes('mixco') || closestKey.includes('cristóbal') || closestKey.includes('naranjo')) municipality = 'Mixco';
+    else if (closestKey.includes('villa nueva')) municipality = 'Villa Nueva';
+    else if (closestKey.includes('pinula')) municipality = 'Santa Catarina Pinula';
+    else if (closestKey.includes('petapa')) municipality = 'San Miguel Petapa';
+    else if (closestKey.includes('amatitlán')) municipality = 'Amatitlán';
+    else if (closestKey.includes('fraijanes')) municipality = 'Fraijanes';
+    else municipality = 'Guatemala';
+  } else if (closestKey.includes('antigua')) {
+    municipality = 'Antigua Guatemala';
+  } else if (closestKey.includes('xela')) {
+    municipality = 'Quetzaltenango';
+  } else if (closestKey.includes('panajachel')) {
+    municipality = 'Panajachel';
+  } else if (closestKey.includes('puerto san josé')) {
+    municipality = 'Puerto San José';
+  } else if (closestKey.includes('isla de flores') || closestKey.includes('flores')) {
+    municipality = 'Flores';
+  } else if (closestKey.includes('cobán')) {
+    municipality = 'Cobán';
+  }
+
+  return {
+    department,
+    zone: zoneLabel,
+    municipality,
+    key: closestKey,
+  };
+}
+
+

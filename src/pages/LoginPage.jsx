@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, ShieldCheck, Sparkles, User, UserCheck } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, ShieldCheck, ShieldAlert, Sparkles, User, UserCheck } from 'lucide-react';
 import RuwaJayLogo from '../components/ui/RuwaJayLogo';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,6 +45,7 @@ function EmailField({ value, onChange, autoComplete = 'email' }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, loginWithGoogle, register, isLoading, requestPasswordReset } = useAuth();
   const [mode, setMode] = useState('login');
   const [role, setRole] = useState('seeker');
@@ -57,6 +58,21 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   const notify = (text, isError = false) => { setMessage(text); setError(isError); };
+
+  useEffect(() => {
+    const alertMsg = sessionStorage.getItem('ruwajay_auth_alert');
+    if (alertMsg) {
+      notify(alertMsg, true);
+      sessionStorage.removeItem('ruwajay_auth_alert');
+      window.history.replaceState({}, '', '/login');
+    } else if (searchParams.get('suspended') === 'true') {
+      notify('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.', true);
+      window.history.replaceState({}, '', '/login');
+    } else if (searchParams.get('inactive') === 'true') {
+      notify('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.', true);
+      window.history.replaceState({}, '', '/login');
+    }
+  }, [searchParams]);
   const strongPassword = (text) => text.length >= 8 && /[A-Z]/.test(text) && /[a-z]/.test(text) && /\d/.test(text) && /[^A-Za-z0-9]/.test(text);
 
   const submitAuth = async (event) => {
@@ -113,7 +129,17 @@ export default function LoginPage() {
 
         {mode !== 'reset' && <><div className="relative mb-6 grid grid-cols-2 border-b border-[#E8D9C8]"><span aria-hidden="true" className={`absolute bottom-[-1px] left-0 h-[3px] w-1/2 rounded-full transition-[transform,background-color] duration-500 ease-[cubic-bezier(.16,1,.3,1)] ${mode === 'register' ? 'translate-x-full bg-forest' : 'translate-x-0 bg-terracota'}`} /><button type="button" onClick={() => { setMode('login'); notify(''); setName(''); setEmail(''); setPassword(''); setPhone(''); }} className={`py-3 text-sm font-extrabold transition-colors duration-300 ${mode === 'login' ? 'text-terracota' : 'text-text-muted hover:text-cafe'}`}>Iniciar sesión</button><button type="button" onClick={() => { setMode('register'); notify(''); setName(''); setEmail(''); setPassword(''); setPhone(''); }} className={`py-3 text-sm font-extrabold transition-colors duration-300 ${mode === 'register' ? 'text-forest' : 'text-text-muted hover:text-cafe'}`}>Registrarme</button></div>{mode === 'register' && <div className="auth-panel-in mb-5"><p className="mb-2 text-xs font-extrabold uppercase tracking-wider text-cafe">¿Qué deseas hacer?</p><div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-[#E8D9C8]/60 bg-[#F5ECE0] p-1.5"><button type="button" onClick={() => setRole('seeker')} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-xs font-extrabold transition-all duration-500 ease-[cubic-bezier(.16,1,.3,1)] ${role === 'seeker' ? 'scale-[1.02] bg-forest text-white shadow-md' : 'text-cafe/80 hover:bg-white/60'}`}><UserCheck size={17}/>Busco vivienda</button><button type="button" onClick={() => setRole('owner')} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-xs font-extrabold transition-all duration-500 ease-[cubic-bezier(.16,1,.3,1)] ${role === 'owner' ? 'scale-[1.02] bg-terracota text-white shadow-md' : 'text-cafe/80 hover:bg-white/60'}`}><Sparkles size={17}/>Quiero publicar</button></div><div key={role} className="auth-panel-in mt-2.5 rounded-xl bg-crema/60 px-3 py-2 text-[11px] font-semibold leading-relaxed text-text-secondary">{role === 'owner' ? 'Cuenta para propietarios: podrás publicar viviendas y recibir contactos. Necesitamos un teléfono para tus anuncios.' : 'Cuenta para buscar vivienda: podrás guardar favoritos, contactar propietarios y administrar tus búsquedas.'}</div></div>}</>}
 
-        {message && <div role={error ? 'alert' : 'status'} className={`mb-5 flex items-center gap-2.5 rounded-2xl border p-3.5 text-xs font-bold ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-jade/30 bg-jade/15 text-forest'}`}><ShieldCheck size={16} className="shrink-0"/><span>{message}</span></div>}
+        {message && (
+          <div
+            role={error ? 'alert' : 'status'}
+            className={`mb-5 flex items-center gap-2.5 rounded-2xl border p-3.5 text-xs font-bold ${
+              error ? 'border-red-300 bg-red-50 text-red-700 shadow-xs' : 'border-jade/30 bg-jade/15 text-forest'
+            }`}
+          >
+            {error ? <ShieldAlert size={18} className="shrink-0 text-red-600" /> : <ShieldCheck size={18} className="shrink-0" />}
+            <span className="leading-relaxed">{message}</span>
+          </div>
+        )}
 
         {mode !== 'reset' && <>
           <button type="button" onClick={handleGoogleLogin} disabled={isLoading || busy} className="mb-4 flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-[#E8D9C8] bg-white px-4 py-3 text-sm font-bold text-cafe shadow-sm transition-all duration-200 hover:border-[#d1c4b0] hover:bg-[#FDFBF7] hover:shadow-md active:scale-[0.98] disabled:opacity-60">

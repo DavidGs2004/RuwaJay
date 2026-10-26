@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -565,6 +566,24 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                             contentDescription = "Llamar",
                             tint = BrandForest,
                             modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    // Video Call Button
+                    IconButton(
+                        onClick = { requestCall() },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(BrandForest.copy(alpha = 0.08f))
+                    ) {
+                        Icon(
+                            Icons.Default.Videocam,
+                            contentDescription = "Videollamada",
+                            tint = BrandForest,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 

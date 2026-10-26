@@ -22,17 +22,25 @@ import { firebaseAuth, firestore, firebaseWebEnabled, googleProvider } from '../
 
 const AuthContext = createContext(null);
 
-export const ADMIN_EMAILS = [
-  'xleon04gd@gmail.com',
-  'admin@ruwajay.com',
-  'admin@gmail.com',
-  'administrador@ruwajay.com',
-];
+export const GLOBAL_ADMIN_EMAILS = ['xleon04gd@gmail.com'];
+export const isGlobalAdminEmail = (email) => GLOBAL_ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase());
 
-export function isUserAdminEmail(email) {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized) || normalized.startsWith('admin@') || normalized.includes('admin');
+/**
+ * Resuelve el estado canónico de la cuenta.
+ * Si está en 'active', NINGUNA restricción aplica (se remueve suspensión o inactividad).
+ */
+export function resolveUserStatus(data, email = '') {
+  if (isGlobalAdminEmail(email || data?.email)) return 'active';
+  if (!data) return 'active';
+  // 1. Fuente canónica: si accountStatus está activo, NINGUNA restricción aplica
+  if (data.accountStatus === 'active') return 'active';
+  if (data.accountStatus === 'suspended') return 'suspended';
+  if (data.accountStatus === 'inactive') return 'inactive';
+  // 2. Compatibilidad con registros antiguos
+  if (data.status === 'active') return 'active';
+  if (data.suspended === true || data.status === 'suspended') return 'suspended';
+  if (data.status === 'inactive') return 'inactive';
+  return 'active';
 }
 
 export { AVATAR_OPTIONS } from '../data/avatars';
@@ -57,7 +65,6 @@ export function AuthProvider({ children }) {
 
   const idleTimerRef = useRef(null);
   const isModalOpenRef = useRef(false);
-  const adminRoleSyncedRef = useRef(new Set());
 
   // Mantiene sincronizado el ref con el estado para que los event listeners lo lean en tiempo real
   useEffect(() => {
@@ -197,81 +204,47 @@ export function AuthProvider({ children }) {
       try {
         const claims = await account.getIdTokenResult();
         if (currentGeneration !== generation) return;
-
-        let unsubVerifiedSignal = () => {};
-        try {
-          unsubVerifiedSignal = onSnapshot(doc(firestore, 'active_calls', `verified_${account.uid}`), (snap) => {
-            if (snap.exists()) {
-              const sig = snap.data();
-              if (sig.status === 'aprobado' || sig.verified === true) {
-                try {
-                  const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-                  if (!list.includes(account.uid)) {
-                    list.push(account.uid);
-                    localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list));
-                  }
-                  const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-                  localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList.filter((id) => id !== account.uid)));
-                } catch {}
-                setUser((prev) => (prev ? {
-                  ...prev,
-                  verified: true,
-                  dpiData: prev.dpiData ? { ...prev.dpiData, status: 'aprobado' } : null,
-                } : prev));
-              } else if (sig.status === 'rechazado' || sig.verified === false) {
-                try {
-                  const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-                  localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list.filter((id) => id !== account.uid)));
-                  const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-                  if (!rejList.includes(account.uid)) {
-                    rejList.push(account.uid);
-                    localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList));
-                  }
-                } catch {}
-                setUser((prev) => (prev ? {
-                  ...prev,
-                  verified: false,
-                  dpiData: prev.dpiData ? { ...prev.dpiData, status: 'rechazado', rejectionReason: sig.rejectionReason } : null,
-                } : prev));
-              }
-            }
-          }, () => {});
-        } catch {}
-
-        unsubscribeProfile = onSnapshot(doc(firestore, 'users', account.uid), (snapshot) => {
+        unsubscribeProfile = onSnapshot(doc(firestore, 'users', account.uid), async (snapshot) => {
           if (currentGeneration !== generation) return;
           if (!snapshot.exists()) { setUser(null); setIsInitializing(false); return; }
           const profile = snapshot.data() || {};
-          const isEmailAdmin = isUserAdminEmail(account.email);
-          const computedRole = (claims.claims.role === 'admin' || profile.role === 'admin' || isEmailAdmin) ? 'admin' : (profile.role || 'seeker');
+          const isSuperAdmin = isGlobalAdminEmail(account.email);
 
-          if (isEmailAdmin && profile.role !== 'admin' && !adminRoleSyncedRef.current.has(account.uid)) {
-            adminRoleSyncedRef.current.add(account.uid);
-            updateDoc(doc(firestore, 'users', account.uid), { role: 'admin' }).catch(() => {});
+          const userStatus = resolveUserStatus(profile, account.email);
+
+          // Desconectar inmediatamente si la cuenta está suspendida
+          if (userStatus === 'suspended') {
+            setUser(null);
+            setIsInitializing(false);
+            try {
+              sessionStorage.setItem('ruwajay_auth_alert', 'Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
+              await signOut(firebaseAuth);
+            } catch {}
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login?suspended=true';
+            }
+            return;
           }
 
-          const isLocallyApproved = (() => {
+          // Desconectar si la cuenta está inactiva
+          if (userStatus === 'inactive') {
+            setUser(null);
+            setIsInitializing(false);
             try {
-              const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-              return list.includes(account.uid);
-            } catch {
-              return false;
+              sessionStorage.setItem('ruwajay_auth_alert', 'Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
+              await signOut(firebaseAuth);
+            } catch {}
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login?inactive=true';
             }
-          })();
+            return;
+          }
 
-          const isLocallyRejected = (() => {
-            try {
-              const list = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-              return !isLocallyApproved && list.includes(account.uid);
-            } catch {
-              return false;
-            }
-          })();
+          const effectiveRole = isSuperAdmin ? 'admin' : (claims.claims.role === 'admin' ? 'admin' : (profile.role || 'seeker'));
 
-          const isVerified = Boolean(
-            isLocallyApproved ||
-            (!isLocallyRejected && (profile.verified || profile.dpiData?.status === 'aprobado'))
-          );
+          if (isSuperAdmin && profile.role !== 'admin') {
+            updateDoc(doc(firestore, 'users', account.uid), { role: 'admin' }).catch(() => {});
+          }
 
           setUser({
             ...profile,
@@ -280,36 +253,50 @@ export function AuthProvider({ children }) {
             name: profile.name || account.displayName || 'Usuario',
             avatarImage: profile.avatarImage || profile.avatar || profile.photoURL || account.photoURL,
             emailVerified: account.emailVerified,
-            role: computedRole,
-            verified: isVerified,
+            role: effectiveRole,
+            accountStatus: userStatus,
+            status: userStatus,
+            suspended: userStatus === 'suspended',
           });
           setIsInitializing(false);
         }, () => { setUser(null); setIsInitializing(false); });
-
-        const prevUnsubProfile = unsubscribeProfile;
-        unsubscribeProfile = () => {
-          prevUnsubProfile();
-          unsubVerifiedSignal();
-        };
       } catch { if (currentGeneration === generation) setIsInitializing(false); }
     });
     return () => { generation++; unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
 
   const requireAccount = () => {
-    if (!firebaseAuth?.currentUser || !firestore) throw new Error('Debes iniciar sesi?n.');
+    if (!firebaseAuth?.currentUser || !firestore) throw new Error('Debes iniciar sesión.');
     return firebaseAuth.currentUser;
   };
   const authenticate = async (operation) => {
-    if (!firebaseAuth || !firestore) throw new Error('Firebase no est? configurado.');
+    if (!firebaseAuth || !firestore) throw new Error('Firebase no está configurado.');
     setIsLoading(true);
     try { return await operation(); } finally { setIsLoading(false); }
   };
   const login = (email, password) => authenticate(async () => {
     const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
     const account=credential.user,ref=doc(firestore,'users',account.uid);
-    if(!(await getDoc(ref)).exists()) await setDoc(ref,{name:account.displayName||'Usuario',email:account.email,
-      phone:null,role:'seeker',createdAt:serverTimestamp()});
+    const isSuperAdmin = isGlobalAdminEmail(account.email);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) {
+      await setDoc(ref,{name:account.displayName||'Usuario',email:account.email,
+        phone:null,role:isSuperAdmin ? 'admin' : 'seeker',accountStatus:'active',createdAt:serverTimestamp()});
+    } else {
+      const data = snap.data();
+      const status = resolveUserStatus(data, account.email);
+      if (status === 'suspended') {
+        await signOut(firebaseAuth);
+        throw new Error('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
+      }
+      if (status === 'inactive') {
+        await signOut(firebaseAuth);
+        throw new Error('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
+      }
+      if (isSuperAdmin && data?.role !== 'admin') {
+        await updateDoc(ref, { role: 'admin' }).catch(() => {});
+      }
+    }
     return account;
   });
   const loginWithGoogle = (payload = {}) => authenticate(async () => {
@@ -318,10 +305,29 @@ export function AuthProvider({ children }) {
       : await signInWithPopup(firebaseAuth, googleProvider);
     const account = credential.user;
     const ref = doc(firestore, 'users', account.uid);
-    if (!(await getDoc(ref)).exists()) await setDoc(ref, {
-      name: account.displayName || 'Usuario', email: account.email,
-      avatarImage: account.photoURL || null, phone: null, role: 'seeker', createdAt: serverTimestamp(),
-    });
+    const isSuperAdmin = isGlobalAdminEmail(account.email);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        name: account.displayName || 'Usuario', email: account.email,
+        avatarImage: account.photoURL || null, phone: null,
+        role: isSuperAdmin ? 'admin' : 'seeker', accountStatus: 'active', createdAt: serverTimestamp(),
+      });
+    } else {
+      const data = snap.data();
+      const status = resolveUserStatus(data, account.email);
+      if (status === 'suspended') {
+        await signOut(firebaseAuth);
+        throw new Error('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.');
+      }
+      if (status === 'inactive') {
+        await signOut(firebaseAuth);
+        throw new Error('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.');
+      }
+      if (isSuperAdmin && data?.role !== 'admin') {
+        await updateDoc(ref, { role: 'admin' }).catch(() => {});
+      }
+    }
     return account;
   });
   const register = (name, email, password, role = 'seeker', phone = '') => authenticate(async () => {
@@ -345,9 +351,20 @@ export function AuthProvider({ children }) {
     const patch = Object.fromEntries(Object.entries(updates).filter(([key]) => allowed.includes(key)));
     if (patch.role && !['owner', 'seeker'].includes(patch.role)) throw new Error('Rol no permitido.');
     if (patch.avatarImage && !/^https:\/\//.test(patch.avatarImage)) {
-      patch.avatarImage = await uploadProfileImage(patch.avatarImage);
+      try {
+        patch.avatarImage = await uploadProfileImage(patch.avatarImage);
+      } catch (uploadErr) {
+        console.warn('No se pudo subir la imagen de perfil al almacenamiento:', uploadErr);
+      }
     }
-    if(usesServerOperations){await callBackend('updateProfile',{profile:patch},{expectedUid:account.uid});return;}
+    if (usesServerOperations) {
+      try {
+        await callBackend('updateProfile', { profile: patch }, { expectedUid: account.uid });
+        return;
+      } catch (backendError) {
+        console.warn('Backend updateProfile no disponible, guardando directamente en Firestore:', backendError);
+      }
+    }
     await setDoc(doc(firestore, 'users', account.uid), patch, { merge: true });
   };
   const changePassword = async (currentPassword, newPassword) => {
@@ -357,122 +374,49 @@ export function AuthProvider({ children }) {
   };
   const requestVerification = async (data = {}) => {
     const account = requireAccount();
-    
-    // Si la foto es dataURL, intentar Storage con timeout corto de 2s para no demorar la respuesta
-    let finalPhoto = data.documentPhoto || null;
-    if (finalPhoto && typeof finalPhoto === 'string' && finalPhoto.startsWith('data:')) {
+    if (data.documentPhoto && typeof data.documentPhoto === 'string' && data.documentPhoto.startsWith('data:')) {
       try {
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(finalPhoto), 2000));
-        finalPhoto = await Promise.race([uploadVerificationDocument(finalPhoto), timeoutPromise]);
-      } catch (uploadErr) {
-        console.warn('[requestVerification] Fallback a foto directa:', uploadErr?.message);
+        data = { ...data, documentPhoto: await uploadVerificationDocument(data.documentPhoto) };
+      } catch (err) {
+        console.warn('No se pudo subir la foto del DPI al bucket de almacenamiento:', err);
       }
     }
+    const userDocSnap = await getDoc(doc(firestore, 'users', account.uid)).catch(() => null);
+    const userDoc = userDocSnap?.exists() ? userDocSnap.data() : {};
+    const effectiveName = user?.name || userDoc.name || account.displayName || (account.email ? account.email.split('@')[0] : 'Usuario');
+    const effectiveAvatar = user?.avatarImage || userDoc.avatarImage || userDoc.avatar || user?.photoURL || account.photoURL || '';
+    const effectiveEmail = user?.email || userDoc.email || account.email || '';
+    const effectivePhone = user?.phone || userDoc.phone || '';
 
-    // Sanitizar payload para evitar cualquier valor undefined que Firestore rechaza
-    const cleanData = {};
-    for (const [key, value] of Object.entries({ ...data, documentPhoto: finalPhoto })) {
-      if (value !== undefined) {
-        cleanData[key] = value;
-      }
-    }
-
-    const requestPayload = {
-      ...cleanData,
-      status: 'pendiente',
+    const payload = {
+      ...data,
       userId: account.uid,
-      userName: account.displayName || user?.name || 'Usuario',
-      userEmail: account.email || user?.email || '',
-      userPhone: user?.phone || cleanData.emergencyPhone || '',
-      submittedAt: new Date().toISOString(),
+      userName: effectiveName,
+      userEmail: effectiveEmail,
+      userPhone: effectivePhone,
+      userAvatar: effectiveAvatar,
+      status: 'pendiente',
+      rejectionReason: null,
       createdAt: serverTimestamp(),
     };
-
-    // 1. Guardar localmente para retención permanente en la interfaz del usuario
-    try {
-      if (finalPhoto) {
-        localStorage.setItem(`ruwajay_dpi_photo_${account.uid}`, finalPhoto);
-        localStorage.setItem('ruwajay_my_dpi_photo', finalPhoto);
-      }
-      localStorage.setItem(`ruwajay_dpi_req_${account.uid}`, JSON.stringify(requestPayload));
-      const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-      const filteredRej = rejList.filter((id) => id !== account.uid);
-      localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(filteredRej));
-    } catch (localErr) {
-      console.warn('[requestVerification] Error guardando en localStorage:', localErr);
-    }
-
-    // 2. BROADCAST MAESTRO en active_calls (100% garantizado para todos los usuarios autenticados)
-    try {
-      await setDoc(doc(firestore, 'active_calls', `dpi_req_${account.uid}`), {
-        ...requestPayload,
-        documentPhoto: finalPhoto,
-        status: 'pendiente',
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } catch (acErr) {
-      console.warn('[requestVerification] Error en broadcast active_calls:', acErr);
-    }
-
-    // 3. Guardar en verification_requests/{account.uid}
-    try {
-      await setDoc(doc(firestore, 'verification_requests', account.uid), requestPayload, { merge: true });
-    } catch (vrErr) {
-      console.warn('[requestVerification] verification_requests save warning:', vrErr?.message);
-    }
-
-    // 4. Guardar en users/{account.uid}
-    try {
-      const isShortPhoto = finalPhoto && typeof finalPhoto === 'string' && finalPhoto.startsWith('http');
-      const dpiBioMeta = {
-        cui: cleanData.cui,
-        department: cleanData.department,
-        municipality: cleanData.municipality,
-        birthDate: cleanData.birthDate,
-        expirationDate: cleanData.expirationDate,
-        legalAddress: cleanData.legalAddress,
-        emergencyName: cleanData.emergencyName,
-        emergencyPhone: cleanData.emergencyPhone,
-        emergencyRelation: cleanData.emergencyRelation,
-        documentPhoto: isShortPhoto ? finalPhoto : null,
-        status: 'pendiente',
-        submittedAt: new Date().toISOString(),
-      };
-
-      const bioTag = '__DPI__' + JSON.stringify(dpiBioMeta) + '__ENDDPI__';
-      const cleanPrevBio = (user?.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
-      const combinedBio = (cleanPrevBio ? cleanPrevBio + '\n' : '') + bioTag;
-
-      const userUpdates = {
-        bio: combinedBio.slice(0, 1990),
-      };
-      if (user?.name || account.displayName) {
-        userUpdates.name = user?.name || account.displayName;
-      }
-      if (user?.phone) {
-        userUpdates.phone = user.phone;
-      }
-
-      try {
-        await setDoc(doc(firestore, 'users', account.uid), {
-          ...userUpdates,
-          dpiData: { ...cleanData, status: 'pendiente' },
-          verified: false,
-        }, { merge: true });
-      } catch {
-        await setDoc(doc(firestore, 'users', account.uid), userUpdates, { merge: true });
-      }
-    } catch (userDocErr) {
-      console.warn('[requestVerification] users/{uid} sync error:', userDocErr?.code || userDocErr?.message);
-    }
-
+    await setDoc(doc(firestore, 'verification_requests', account.uid), payload);
+    await setDoc(doc(firestore, 'users', account.uid), {
+      verificationStatus: 'pendiente',
+      verificationRejectionReason: null,
+      verificationRequestedAt: serverTimestamp(),
+    }, { merge: true }).catch(() => {});
     return { success: true, pending: true };
   };
-
   const purgeDpiData = async () => {
     const account = requireAccount();
-    const { deleteDoc } = await import('firebase/firestore');
-    await deleteDoc(doc(firestore, 'verification_requests', account.uid));
+    const { deleteDoc, updateDoc } = await import('firebase/firestore');
+    await deleteDoc(doc(firestore, 'verification_requests', account.uid)).catch(() => {});
+    await updateDoc(doc(firestore, 'users', account.uid), {
+      dpiData: null,
+      verified: false,
+      verificationStatus: null,
+      verificationRejectionReason: null,
+    }).catch(() => {});
   };
 
   return (
@@ -492,7 +436,7 @@ export function AuthProvider({ children }) {
       requestPasswordReset,
       verifyResetCode,
       resetPassword,
-      isAdmin: user?.role === 'admin' || isUserAdminEmail(user?.email),
+      isAdmin: user?.role === 'admin' || isGlobalAdminEmail(user?.email),
     }}>
       {children}
 

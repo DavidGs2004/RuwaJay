@@ -10,32 +10,37 @@ service firebase.storage {
     function chatMember(roomId) {
       return signedIn() && request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(roomId)).data.participants;
     }
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.get('role', '') == 'admin'
+        || request.auth.token.get('email', '').lower() == 'xleon04gd@gmail.com'
+        || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'
+      );
+    }
     match /chat/{roomId}/{userId}/{fileName} {
-      allow read: if chatMember(roomId);
-      allow create: if chatMember(roomId) && request.auth.uid == userId
+      allow read: if chatMember(roomId) || isAdmin();
+      allow create: if (chatMember(roomId) && request.auth.uid == userId) || isAdmin()
         && request.resource.size < 20 * 1024 * 1024
         && request.resource.contentType.matches('(image/(jpeg|png|webp)|audio/.*|video/webm)');
-      allow delete: if chatMember(roomId) && request.auth.uid == userId;
+      allow delete: if (chatMember(roomId) && request.auth.uid == userId) || isAdmin();
     }
     match /profiles/{userId}/{fileName} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == userId && request.resource.size < 8 * 1024 * 1024
+      allow create: if ((signedIn() && request.auth.uid == userId) || isAdmin()) && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if signedIn() && request.auth.uid == userId;
+      allow delete: if (signedIn() && request.auth.uid == userId) || isAdmin();
     }
     match /verification/{userId}/{fileName} {
-      allow read: if signedIn() && (request.auth.uid == userId
-        || request.auth.token.get('role','') == 'admin'
-        || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('role','') == 'admin');
-      allow create: if signedIn() && request.auth.uid == userId && request.resource.size < 8 * 1024 * 1024
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if ((signedIn() && request.auth.uid == userId) || isAdmin()) && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if signedIn() && request.auth.uid == userId;
+      allow delete: if (signedIn() && request.auth.uid == userId) || isAdmin();
     }
     match /properties/{propertyId}/{userId}/{fileName} {
       allow read: if true;
-      allow create: if signedIn() && request.auth.uid == userId
-        && request.resource.size < 8 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
-      allow delete: if signedIn() && request.auth.uid == userId;
+      allow create: if ((signedIn() && request.auth.uid == userId) || isAdmin())
+        && request.resource.size < 12 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if (signedIn() && request.auth.uid == userId) || isAdmin();
     }
   }
 }

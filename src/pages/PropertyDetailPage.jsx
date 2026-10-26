@@ -110,6 +110,8 @@ function PropertyDetailContent({ property }) {
     );
   }, [existingVisits, property?.id, user?.id]);
 
+  const canAccessContract = Boolean(isCurrentUserOwner || hasConfirmedVisit);
+
   // Times already booked for this property on the selected visitDate
   const bookedTimesOnSelectedDate = useMemo(() => {
     if (!visitDate) return [];
@@ -176,6 +178,16 @@ function PropertyDetailContent({ property }) {
     e.preventDefault();
     setVisitConflictError('');
 
+    if (!user || !firebaseAuth?.currentUser) {
+      setVisitConflictError('Debes iniciar sesión con tu cuenta para agendar una visita.');
+      return;
+    }
+
+    if (isCurrentUserOwner) {
+      setVisitConflictError('No puedes agendar una visita en tu propia vivienda.');
+      return;
+    }
+
     if (!visitDate) {
       setVisitConflictError('Por favor selecciona una fecha para tu visita.');
       return;
@@ -223,8 +235,16 @@ function PropertyDetailContent({ property }) {
     try {
       await createVisit(newVisit);
       window.dispatchEvent(new Event('ruwajay:visits-changed'));
-    } catch {
-      setVisitConflictError('No se pudo enviar la solicitud. Verifica tu conexión e intenta nuevamente.');
+    } catch (err) {
+      console.error('Error agendando visita:', err);
+      const msg = err?.message || '';
+      if (msg.includes('sesión') || msg.includes('auth') || msg.includes('cuenta')) {
+        setVisitConflictError(msg || 'Debes iniciar sesión para agendar una visita.');
+      } else if (msg) {
+        setVisitConflictError(msg);
+      } else {
+        setVisitConflictError('No se pudo enviar la solicitud. Verifica tu conexión e intenta nuevamente.');
+      }
       return;
     }
 
@@ -704,7 +724,13 @@ function PropertyDetailContent({ property }) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setShowVisitModal(true)}
+                      onClick={() => {
+                        if (!user) {
+                          navigate('/iniciar-sesion', { state: { from: window.location.pathname } });
+                          return;
+                        }
+                        setShowVisitModal(true);
+                      }}
                       className="btn-primary w-full !rounded-2xl !py-4"
                     >
                       <Calendar size={18} />
@@ -884,21 +910,23 @@ function PropertyDetailContent({ property }) {
                       </div>
                     </div>
 
-                    {/* Legal & Financial tools for this property */}
+                    {/* Legal & Financial tools for this property — Contrato sólo accesible tras cerrar trato / visita confirmada */}
                     <div className="pt-3 border-t border-border-light/80 space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowContractModal(true)}
-                        className="w-full flex items-center justify-between gap-2 p-3 rounded-2xl border border-forest/20 bg-forest/5 text-forest hover:bg-forest/10 transition-colors text-xs font-bold"
-                      >
-                        <span className="flex items-center gap-2">
-                          <FileText size={16} />
-                          Borrador de Contrato (PDF)
-                        </span>
-                        <span className="text-[10px] bg-white border border-forest/20 px-2 py-0.5 rounded-full">
-                          Leyes GT
-                        </span>
-                      </button>
+                      {canAccessContract && (
+                        <button
+                          type="button"
+                          onClick={() => setShowContractModal(true)}
+                          className="w-full flex items-center justify-between gap-2 p-3 rounded-2xl border border-forest/20 bg-forest/5 text-forest hover:bg-forest/10 transition-colors text-xs font-bold"
+                        >
+                          <span className="flex items-center gap-2">
+                            <FileText size={16} />
+                            Borrador de Contrato (PDF)
+                          </span>
+                          <span className="text-[10px] bg-white border border-forest/20 px-2 py-0.5 rounded-full">
+                            Leyes GT
+                          </span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -1095,7 +1123,7 @@ export default function PropertyDetailPage() {
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   useEffect(()=>subscribeToProperties(items=>{setProperties(items);setLoading(false);},()=>{setError('No se pudo cargar la vivienda.');setLoading(false);}),[]);
-  const property=properties.find(p=>p.id===id);
+  const property = properties.find(p => p.id === id) || demoProperties.find(p => p.id === id);
   if(loading) return <div className="p-12 text-center">Cargando vivienda...</div>;
   if(!property) return <div className="p-12 text-center">{error || 'Esta vivienda no existe o fue eliminada.'}</div>;
   return <PropertyDetailContent property={property} />;

@@ -15,7 +15,17 @@ async function authorizedRequest(url,options,expectedUid){
     response=await fetch(url,{...options,headers:{...options.headers,Authorization:'Bearer '+token},signal:AbortSignal.timeout(60000)});
     if(response.status!==401)break;
   }
-  requireSession(uid);const result=await response.json();if(!response.ok||result.error)throw new Error(result.error?.message||'No se pudo completar la operación.');return result.data;
+  requireSession(uid);
+  let result = null;
+  try {
+    result = await response.json();
+  } catch {
+    result = null;
+  }
+  if (!response.ok || result?.error) {
+    throw new Error(result?.error?.message || `Error del servidor (${response.status || '503'}).`);
+  }
+  return result.data;
 }
 export async function callBackend(action,data={}, {expectedUid=null,requestId=crypto.randomUUID()}={}){
   if(legacyEmulators)return(await httpsCallable(functions,action)(data)).data;

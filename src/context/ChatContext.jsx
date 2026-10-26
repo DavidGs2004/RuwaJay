@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { subscribeToMessages, subscribeToConversation, subscribeToConversations, sendMessageToFirestore,
   getOrCreateConversation, markConversationRead, editMessageInFirestore, deleteMessageFromFirestore, toggleReactionInFirestore, clearChatInFirestore } from '../lib/chatService';
 import { fetchPropertyById } from '../lib/propertyService';
 import { unreadConversation, timestampMillis } from '../lib/contracts';
-import { firebaseAuth } from '../lib/firebase';
+import { firebaseAuth, firestore } from '../lib/firebase';
 const ChatContext = createContext(null);
 
 function otherParticipantId(item, currentUid) {
@@ -21,6 +22,7 @@ export function ChatProvider({ children }) {
   const [messages, setMessages] = useState([]);
   const [activeToast, setActiveToast] = useState(null);
   const [chatError, setChatError] = useState('');
+  const [userProfiles, setUserProfiles] = useState({});
   const sessionStartTime = useRef(Date.now());
   const previous = useRef(null);
   const itemsRef = useRef([]);
@@ -28,6 +30,57 @@ export function ChatProvider({ children }) {
   const activeConversationIdRef = useRef(activeConversationId);
   useEffect(() => { activeConversationIdRef.current = activeConversationId; }, [activeConversationId]);
   useEffect(() => { itemsRef.current = items; }, [items]);
+
+  // Dynamically subscribe to participant profiles in Firestore to guarantee
+  // that avatars and names are always up-to-date and never blank or broken.
+  useEffect(() => {
+    if (!firestore || items.length === 0) return;
+    const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
+    const participantIds = new Set();
+    for (const item of items) {
+      const pid = otherParticipantId(item, currentUid);
+      if (pid && pid !== currentUid) participantIds.add(pid);
+      if (item.seekerId && item.seekerId !== currentUid) participantIds.add(item.seekerId);
+      if (item.ownerId && item.ownerId !== currentUid) participantIds.add(item.ownerId);
+      if (Array.isArray(item.participants)) {
+        for (const p of item.participants) {
+          if (p && p !== currentUid) participantIds.add(p);
+        }
+      }
+    }
+
+    const unsubs = [];
+    for (const uid of participantIds) {
+      if (!uid) continue;
+      try {
+        const unsub = onSnapshot(doc(firestore, 'users', uid), snap => {
+          if (snap.exists()) {
+            const data = snap.data();
+            const avatar = data.avatarImage || data.avatar || data.photoURL || null;
+            const name = data.name || data.displayName || '';
+            setUserProfiles(prev => {
+              if (prev[uid]?.avatar === avatar && prev[uid]?.name === name) return prev;
+              return {
+                ...prev,
+                [uid]: {
+                  name,
+                  avatar,
+                  phone: data.phone || '',
+                  email: data.email || ''
+                }
+              };
+            });
+          }
+        }, err => console.warn('No se pudo cargar perfil de usuario:', uid, err));
+        unsubs.push(unsub);
+      } catch (e) {
+        console.warn('Error suscribiendo a usuario:', uid, e);
+      }
+    }
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
+  }, [items, user?.id]);
 
   const markAsRead = useCallback(async room => {
     const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
@@ -86,6 +139,8 @@ export function ChatProvider({ children }) {
     const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
     const isOwner = item.ownerId === currentUid;
     let participantId = otherParticipantId(item, currentUid);
+    const cachedProfile = userProfiles[participantId] || userProfiles[isOwner ? item.seekerId : item.ownerId];
+
     let participantName = item.participantName;
     if (!participantName || participantName === 'Usuario') {
       participantName = isOwner ? item.seekerName : item.ownerName;
@@ -93,11 +148,25 @@ export function ChatProvider({ children }) {
     if (!participantName && item.otherUserName) {
       participantName = item.otherUserName;
     }
+    if ((!participantName || participantName === 'Usuario') && cachedProfile?.name) {
+      participantName = cachedProfile.name;
+    }
     if (!participantName) {
       participantName = 'Usuario';
     }
-    const participantPhone = (isOwner ? item.seekerPhone : item.ownerPhone) || item.participantPhone || '';
-    const participantAvatar = (isOwner ? item.seekerPhoto : item.ownerPhoto) || item.participantAvatar || item.otherUserPhoto || null;
+    const participantPhone = (isOwner ? item.seekerPhone : item.ownerPhone) || item.participantPhone || cachedProfile?.phone || '';
+
+    // Prioritize active profile avatar from Firestore, fallback to conversation doc
+    const rawAvatar = cachedProfile?.avatar
+      || (isOwner ? item.seekerPhoto : item.ownerPhoto)
+      || item.participantAvatar
+      || item.otherUserPhoto
+      || null;
+
+    const participantAvatar = (typeof rawAvatar === 'string' && rawAvatar.trim() && rawAvatar.trim() !== 'null' && rawAvatar.trim() !== 'undefined')
+      ? rawAvatar.trim()
+      : null;
+
     const isActiveRoom = item.id === activeConversationIdRef.current;
 
     const storedCount = typeof item.unreadCount === 'object' && item.unreadCount !== null
@@ -127,7 +196,7 @@ export function ChatProvider({ children }) {
       participantOnline: false,
       unreadCount: calculatedUnread
     };
-  }, [user?.id]);
+  }, [user?.id, userProfiles]);
   useEffect(() => {
     setItems([]); setMessages([]); setDirect(null); setActiveConversationId(null); setActiveToast(null); previous.current = null;
     sessionStartTime.current = Date.now();

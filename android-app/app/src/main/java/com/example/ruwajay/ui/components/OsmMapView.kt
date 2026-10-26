@@ -292,13 +292,23 @@ fun OsmMapView(
 
     val mapView = remember {
         MapView(context).apply {
+            val initialCenter = if (isInsideGuatemala(center)) center else GUATEMALA_CENTER
             setTileSource(OsmStreetTileSource)
             setMultiTouchControls(true)
             controller.setZoom(zoom)
-            controller.setCenter(center)
+            controller.setCenter(initialCenter)
             zoomController.setVisibility(
                 org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER
             )
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                mapView.onPause()
+                mapView.onDetach()
+            } catch (_: Exception) {}
         }
     }
 
@@ -313,7 +323,8 @@ fun OsmMapView(
     }
 
     LaunchedEffect(center, zoom) {
-        mapView.controller.animateTo(center)
+        val safeCenter = if (isInsideGuatemala(center)) center else GUATEMALA_CENTER
+        mapView.controller.animateTo(safeCenter)
         mapView.controller.setZoom(zoom)
     }
 
@@ -349,8 +360,8 @@ fun OsmMapView(
             mapView.overlays.add(circle)
         }
 
-        // User (origin) beacon
-        if (enableUserLocation && userPosition != null) {
+        // User (origin) beacon — only displayed if within valid Guatemala bounds
+        if (enableUserLocation && userPosition != null && isInsideGuatemala(userPosition)) {
             mapView.overlays.add(Marker(mapView).apply {
                 position = userPosition
                 title = "Tu Ubicación Actual"
@@ -487,9 +498,12 @@ fun OsmMapView(
                         modifier = Modifier.padding(vertical = 2.dp)
                     ) {
                         MapControlBtn(icon = Icons.Default.MyLocation, desc = "Mi ubicación", tint = Color(0xFF0B5D3B)) {
-                            userPosition?.let {
-                                mapView.controller.animateTo(it)
-                                mapView.controller.setZoom(15.0)
+                            if (userPosition != null && isInsideGuatemala(userPosition)) {
+                                mapView.controller.animateTo(userPosition)
+                                mapView.controller.setZoom(16.0)
+                            } else {
+                                mapView.controller.animateTo(GUATEMALA_CENTER)
+                                mapView.controller.setZoom(14.0)
                             }
                         }
                         HorizontalDivider(
@@ -497,22 +511,25 @@ fun OsmMapView(
                             modifier = Modifier.width(24.dp)
                         )
                         MapControlBtn(icon = Icons.Default.LocationOn, desc = "Ver destino", tint = Color(0xFFD84420)) {
-                            mapView.controller.animateTo(center)
+                            val safeCenter = if (isInsideGuatemala(center)) center else GUATEMALA_CENTER
+                            mapView.controller.animateTo(safeCenter)
                             mapView.controller.setZoom(zoom)
                         }
                         HorizontalDivider(
                             color = Color.Black.copy(alpha = 0.08f),
                             modifier = Modifier.width(24.dp)
                         )
-                        MapControlBtn(icon = Icons.Default.Explore, desc = "Ver ruta", tint = Color(0xFF3B2118)) {
-                            if (userPosition != null) {
-                                val midLat = (userPosition.latitude + center.latitude) / 2
-                                val midLng = (userPosition.longitude + center.longitude) / 2
+                        MapControlBtn(icon = Icons.Default.Explore, desc = "Ver todas las viviendas", tint = Color(0xFF3B2118)) {
+                            if (markers.isNotEmpty()) {
+                                val lats = markers.map { it.position.latitude }
+                                val lngs = markers.map { it.position.longitude }
+                                val midLat = (lats.minOrNull()!! + lats.maxOrNull()!!) / 2.0
+                                val midLng = (lngs.minOrNull()!! + lngs.maxOrNull()!!) / 2.0
                                 mapView.controller.animateTo(GeoPoint(midLat, midLng))
-                                mapView.controller.setZoom(12.0)
+                                mapView.controller.setZoom(12.5)
                             } else {
-                                mapView.controller.animateTo(center)
-                                mapView.controller.setZoom(zoom)
+                                mapView.controller.animateTo(GUATEMALA_CENTER)
+                                mapView.controller.setZoom(13.0)
                             }
                         }
                     }

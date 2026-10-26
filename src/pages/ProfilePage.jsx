@@ -1,6 +1,6 @@
 import PrivateMedia from '../components/chat/PrivateMedia';
 import { subscribeSavedSearches, deleteSavedSearch } from '../lib/savedSearchService';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   User, Heart, Clock, Building2, LogOut, ShieldCheck, MapPin, Settings,
@@ -8,9 +8,11 @@ import {
   Home, PlusCircle, ToggleLeft, ToggleRight, TrendingUp, Users, Calendar,
   FileText, AlertTriangle, Sparkles, ChevronDown, ChevronUp,
   Upload, Trash2, Shield, CheckCircle2, FileCheck, Bookmark, Calculator,
-  RotateCcw, ArrowRight, AlertCircle, Clock3, MessageCircle, Megaphone, Radio, Bell, Send, Navigation
+  RotateCcw, ArrowRight, AlertCircle, Clock3, MessageCircle, Megaphone, Radio, Bell, Send, Navigation,
+  Search, ExternalLink, ChevronLeft, ChevronRight, Filter
 } from 'lucide-react';
-import { useAuth, isUserAdminEmail } from '../context/AuthContext';
+import RuwaPagination from '../components/ui/RuwaPagination';
+import { useAuth, resolveUserStatus } from '../context/AuthContext';
 import { AVATAR_OPTIONS } from '../data/avatars';
 import { useFavorites } from '../context/FavoritesContext';
 import { demoProperties } from '../data/properties';
@@ -19,8 +21,7 @@ import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
 import EditPropertyModal from '../components/property/EditPropertyModal';
 import { sanitizeText, validateImageFile, maskSensitive } from '../utils/security';
-import { firebaseAuth, firestore } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 'firebase/firestore';
+import { firebaseAuth } from '../lib/firebase';
 import { deleteOwnedProperty, subscribeToProperties, updatePropertyStatus } from '../lib/propertyService';
 import { changeVisitStatus, deleteVisit, setVisitConversationId, subscribeToUserVisits } from '../lib/visitService';
 import { getOrCreateConversation } from '../lib/chatService';
@@ -28,20 +29,13 @@ import {
   subscribeToUsers,
   updateUserRole,
   updateUserStatus,
-  deleteUser,
-  createUserByAdmin,
   subscribeToSystemUpdates,
   createSystemUpdate,
   updateSystemUpdate,
   deleteSystemUpdate,
-  deleteProperty,
-  subscribeToVerificationRequests,
+  subscribeVerificationRequests,
   approveVerificationRequest,
   rejectVerificationRequest,
-  getLocalApprovedVerifications,
-  getLocalRejectedVerifications,
-  saveLocalApprovedVerification,
-  saveLocalRejectedVerification,
 } from '../lib/adminService';
 
 /* ── Guatemalan Departments list ── */
@@ -66,11 +60,6 @@ function maskDpiCui(cuiStr) {
   const clean = cuiStr.replace(/\D/g, '');
   if (clean.length < 13) return clean;
   return `•••• ••••• ${clean.slice(-4)}`;
-}
-
-export function getCleanBio(bio) {
-  if (!bio) return '';
-  return bio.replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
 }
 
 /* ── Password Strength helpers ── */
@@ -190,7 +179,6 @@ export default function ProfilePage() {
   const [unmaskCui, setUnmaskCui] = useState(false);
   const [blurDpiPhoto, setBlurDpiPhoto] = useState(true);
   const [dpiPurgedNotice, setDpiPurgedNotice] = useState(false);
-  const dpiFormRef = useRef(null);
   const [dpiForm, setDpiForm] = useState({
     cui: '',
     department: 'Guatemala',
@@ -211,203 +199,145 @@ export default function ProfilePage() {
   const [allUsers, setAllUsers] = useState([]);
   const [allProperties, setAllProperties] = useState([]);
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
-  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState('all');
+  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState('todos'); // 'todos' | 'seeker' | 'owner' | 'admin'
+  const [adminUserStatusFilter, setAdminUserStatusFilter] = useState('todos'); // 'todos' | 'active' | 'suspended'
   const [adminUserPage, setAdminUserPage] = useState(1);
-  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
-  const [newUserData, setNewUserData] = useState({ name: '', email: '', phone: '', role: 'seeker' });
-  const [createUserLoading, setCreateUserLoading] = useState(false);
 
-  // Property Moderation Admin filters & pagination & editing
-  const [adminPropDepartmentFilter, setAdminPropDepartmentFilter] = useState('todas');
-  const [adminPropStatusFilter, setAdminPropStatusFilter] = useState('todas');
-  const [adminPropSearch, setAdminPropSearch] = useState('');
-  const [adminPropPage, setAdminPropPage] = useState(1);
-  const [adminEditingProperty, setAdminEditingProperty] = useState(null);
+  const [adminPropertySearch, setAdminPropertySearch] = useState('');
+  const [adminPropertyStatusFilter, setAdminPropertyStatusFilter] = useState('todas'); // 'todas' | 'disponible' | 'alquilada' | 'pausada'
+  const [adminPropertyPage, setAdminPropertyPage] = useState(1);
 
-  // System updates
   const [systemUpdates, setSystemUpdates] = useState([]);
   const [newUpdateTitle, setNewUpdateTitle] = useState('');
   const [newUpdateContent, setNewUpdateContent] = useState('');
   const [newUpdateCategory, setNewUpdateCategory] = useState('novedad');
   const [newUpdatePriority, setNewUpdatePriority] = useState('normal');
   const [isPostingUpdate, setIsPostingUpdate] = useState(false);
-  const [editingUpdate, setEditingUpdate] = useState(null);
   const [adminNotice, setAdminNotice] = useState('');
+
+  /* ── Admin Verification Requests State ── */
   const [verificationRequests, setVerificationRequests] = useState([]);
-  const [verificationFilter, setVerificationFilter] = useState('pendiente');
+  const [verificationFilter, setVerificationFilter] = useState('pendientes'); // 'pendientes' | 'aprobadas' | 'rechazadas' | 'todas'
   const [verificationSearch, setVerificationSearch] = useState('');
-  const [rejectReasonModal, setRejectReasonModal] = useState({ open: false, userId: '', userName: '' });
-  const [rejectReasonText, setRejectReasonText] = useState('');
-  const [previewDocPhoto, setPreviewDocPhoto] = useState(null);
-  const [myVerificationRequest, setMyVerificationRequest] = useState(null);
-  const [localApprovedIds, setLocalApprovedIds] = useState(() => getLocalApprovedVerifications());
-  const [localRejectedIds, setLocalRejectedIds] = useState(() => getLocalRejectedVerifications());
+  const [verificationPage, setVerificationPage] = useState(1);
+  const [approvingRequest, setApprovingRequest] = useState(null);
+  const [rejectingRequest, setRejectingRequest] = useState(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+  const [viewingDpiPhoto, setViewingDpiPhoto] = useState(null);
+  const [isProcessingVerifAction, setIsProcessingVerifAction] = useState(false);
 
-  // Real-time listener for current user's verification request status
+  const handleOpenDpiModal = () => {
+    setDpiError('');
+    if (user?.verificationStatus === 'rechazada' || !user?.dpiData) {
+      setDpiForm({
+        cui: '',
+        department: 'Guatemala',
+        municipality: 'Guatemala',
+        birthDate: '',
+        expirationDate: '',
+        legalAddress: '',
+        emergencyName: '',
+        emergencyPhone: '',
+        emergencyRelation: 'Familiar',
+        documentPhoto: null,
+        swornDeclaration: false,
+      });
+    }
+    setShowDpiModal(true);
+  };
+
+  // Auto-open DPI modal if coming with ?openDpi=true
   useEffect(() => {
-    const uid = currentUserId || user?.id;
-    if (!uid) return;
-    const unsub = onSnapshot(doc(firestore, 'verification_requests', uid), (snap) => {
-      if (snap.exists()) {
-        const data = { id: snap.id, ...snap.data() };
-        setMyVerificationRequest(data);
+    if (searchParams.get('openDpi') === 'true') {
+      handleOpenDpiModal();
+    }
+  }, [searchParams]);
 
-        const isLocallyApproved = (() => {
-          try {
-            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-            return list.includes(uid);
-          } catch {
-            return false;
-          }
-        })();
+  const handleOpenApproveModal = (req) => {
+    setApprovingRequest(req);
+  };
 
-        // Si ya está aprobado (en Firestore o localmente), limpiar bio y marcar verificado
-        if (data.status === 'aprobado' || isLocallyApproved || user?.verified) {
-          const cleanBio = (user?.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
-          setDoc(doc(firestore, 'users', uid), {
-            verified: true,
-            bio: cleanBio,
-            dpiData: {
-              cui: data.cui || '',
-              department: data.department || '',
-              municipality: data.municipality || '',
-              birthDate: data.birthDate || '',
-              expirationDate: data.expirationDate || '',
-              legalAddress: data.legalAddress || '',
-              emergencyName: data.emergencyName || '',
-              emergencyPhone: data.emergencyPhone || '',
-              emergencyRelation: data.emergencyRelation || '',
-              documentPhoto: data.documentPhoto || null,
-              status: 'aprobado',
-            },
-          }, { merge: true }).catch(() => {});
-        } else if (data.status === 'pendiente' && !user?.verified) {
-          // Auto-sync into user's profile document so admin's allUsers query receives it
-          const dpiMeta = {
-            cui: data.cui || '',
-            department: data.department || '',
-            municipality: data.municipality || '',
-            birthDate: data.birthDate || '',
-            expirationDate: data.expirationDate || '',
-            legalAddress: data.legalAddress || '',
-            emergencyName: data.emergencyName || '',
-            emergencyPhone: data.emergencyPhone || '',
-            emergencyRelation: data.emergencyRelation || '',
-            documentPhoto: (data.documentPhoto && typeof data.documentPhoto === 'string' && data.documentPhoto.startsWith('http')) ? data.documentPhoto : null,
-            status: 'pendiente',
-            submittedAt: data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString(),
-          };
-          const bioTag = '__DPI__' + JSON.stringify(dpiMeta) + '__ENDDPI__';
-          const cleanPrev = (user?.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
-          const combined = (cleanPrev ? cleanPrev + '\n' : '') + bioTag;
+  const handleConfirmApprove = async () => {
+    if (!approvingRequest) return;
+    const req = approvingRequest;
+    const targetUser = allUsers.find(
+      (u) => (u.id && (u.id === req.userId || u.id === req.id)) ||
+             (u.email && req.userEmail && u.email.toLowerCase() === req.userEmail.toLowerCase())
+    );
+    const targetName = targetUser?.name || req.userName || targetUser?.email || req.userEmail || 'este usuario';
+    setIsProcessingVerifAction(true);
+    try {
+      await approveVerificationRequest(req, user);
+      setAdminNotice(`¡Solicitud de ${targetName} aprobada con éxito! Se le otorgó rol de casero y se le notificó en tiempo real.`);
+      setApprovingRequest(null);
+    } catch (err) {
+      window.alert(err.message || 'Error al aprobar la solicitud.');
+    } finally {
+      setIsProcessingVerifAction(false);
+    }
+  };
 
-          setDoc(doc(firestore, 'users', uid), {
-            bio: combined.slice(0, 1990),
-          }, { merge: true }).catch(() => {});
-        }
-      } else {
-        setMyVerificationRequest(null);
-      }
-    }, () => {});
+  const handleOpenRejectModal = (req) => {
+    setRejectingRequest(req);
+    setRejectionReasonInput('');
+  };
 
-    // Escuchar señal de aprobación o rechazo en active_calls para reflejo inmediato en el usuario
-    const unsubSignal = onSnapshot(doc(firestore, 'active_calls', `verified_${uid}`), (snap) => {
-      if (snap.exists()) {
-        const sig = snap.data();
-        if (sig.status === 'aprobado' || sig.verified === true) {
-          const cleanBio = (user?.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim();
-          setDoc(doc(firestore, 'users', uid), {
-            verified: true,
-            bio: cleanBio,
-          }, { merge: true }).catch(() => {});
-          setMyVerificationRequest((prev) => ({ ...(prev || {}), status: 'aprobado' }));
-          setLocalApprovedIds((prev) => Array.from(new Set([...prev, uid])));
-          setLocalRejectedIds((prev) => prev.filter((id) => id !== uid));
-          try {
-            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-            if (!list.includes(uid)) {
-              list.push(uid);
-              localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list));
-            }
-            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-            localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList.filter((id) => id !== uid)));
-          } catch {}
-        } else if (sig.status === 'rechazado' || sig.verified === false) {
-          setMyVerificationRequest((prev) => ({
-            ...(prev || {}),
-            status: 'rechazado',
-            rejectionReason: sig.rejectionReason || 'Documento no válido o vencido',
-          }));
-          setLocalApprovedIds((prev) => prev.filter((id) => id !== uid));
-          setLocalRejectedIds((prev) => Array.from(new Set([...prev, uid])));
-          try {
-            const list = JSON.parse(localStorage.getItem('ruwajay_approved_verifications') || '[]');
-            localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(list.filter((id) => id !== uid)));
-            const rejList = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-            if (!rejList.includes(uid)) {
-              rejList.push(uid);
-              localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(rejList));
-            }
-          } catch {}
-        }
-      }
-    }, () => {});
-
-    return () => {
-      unsub();
-      unsubSignal();
-    };
-  }, [currentUserId, user?.id, user?.verified]);
+  const handleConfirmReject = async () => {
+    if (!rejectingRequest) return;
+    if (!rejectionReasonInput.trim()) {
+      window.alert('Por favor especifica o selecciona el motivo del rechazo para orientar al usuario.');
+      return;
+    }
+    setIsProcessingVerifAction(true);
+    try {
+      const targetUser = allUsers.find(
+        (u) => (u.id && (u.id === rejectingRequest.userId || u.id === rejectingRequest.id)) ||
+               (u.email && rejectingRequest.userEmail && u.email.toLowerCase() === rejectingRequest.userEmail.toLowerCase())
+      );
+      const targetName = targetUser?.name || rejectingRequest.userName || targetUser?.email || rejectingRequest.userEmail || 'el usuario';
+      await rejectVerificationRequest(rejectingRequest, rejectionReasonInput.trim(), user);
+      setAdminNotice(`Solicitud de ${targetName} rechazada exitosamente. Se movió al apartado de rechazadas y se le notificó al usuario.`);
+      setRejectingRequest(null);
+      setRejectionReasonInput('');
+    } catch (err) {
+      window.alert(err.message || 'Error al rechazar la solicitud.');
+    } finally {
+      setIsProcessingVerifAction(false);
+    }
+  };
 
   // Load edit form with current user data
   useEffect(() => {
     if (user) {
       setEditName(user.name || '');
       setEditPhone(user.phone || '');
-      setEditBio((user.bio || '').replace(/__DPI__.*?__ENDDPI__/gs, '').trim());
+      setEditBio(user.bio || '');
       setEditAvatarId(user.avatarId || 'forest-initial');
       setEditAvatarImage(user?.avatarImage || user?.avatar || user?.photoURL || null);
-
-      let currentDpi = user.dpiData;
-      if (!currentDpi && user.bio && user.bio.includes('__DPI__')) {
-        try {
-          const m = user.bio.match(/__DPI__(.*?)__ENDDPI__/s);
-          if (m && m[1]) currentDpi = JSON.parse(m[1]);
-        } catch {}
-      }
-
-      const uid = user.id || currentUserId;
-      let cachedPhoto = (typeof window !== 'undefined' ? (window.__RUWAJAY_DPI_CACHE?.[uid] || window.__RUWAJAY_MY_DPI_PHOTO) : null);
-      if (!cachedPhoto) {
-        try {
-          cachedPhoto = sessionStorage.getItem(`ruwajay_dpi_photo_${uid}`) || sessionStorage.getItem('ruwajay_my_dpi_photo');
-        } catch {}
-      }
-      if (!cachedPhoto) {
-        try {
-          cachedPhoto = localStorage.getItem(`ruwajay_dpi_photo_${uid}`) || localStorage.getItem('ruwajay_my_dpi_photo');
-        } catch {}
-      }
-
-      const effectivePhoto = cachedPhoto || myVerificationRequest?.documentPhoto || currentDpi?.documentPhoto || null;
-
-      if (currentDpi || myVerificationRequest || effectivePhoto) {
-        setDpiForm((prev) => {
-          const finalPhoto = effectivePhoto || prev.documentPhoto || null;
-          const { documentPhoto: _discardDpi, ...cleanDpi } = currentDpi || {};
-          const { documentPhoto: _discardReq, ...cleanReq } = myVerificationRequest || {};
-          return {
-            ...prev,
-            ...cleanReq,
-            ...cleanDpi,
-            documentPhoto: finalPhoto,
-            cui: formatDpiCui(cleanDpi.cui || cleanReq.cui || prev.cui || ''),
-            swornDeclaration: true,
-          };
+      if (user.verificationStatus === 'rechazada') {
+        setDpiForm({
+          cui: '',
+          department: 'Guatemala',
+          municipality: 'Guatemala',
+          birthDate: '',
+          expirationDate: '',
+          legalAddress: '',
+          emergencyName: '',
+          emergencyPhone: '',
+          emergencyRelation: 'Familiar',
+          documentPhoto: null,
+          swornDeclaration: false,
         });
+      } else if (user.dpiData) {
+        setDpiForm((prev) => ({
+          ...prev,
+          ...user.dpiData,
+          cui: formatDpiCui(user.dpiData.cui || ''),
+          swornDeclaration: true,
+        }));
       }
     }
-  }, [user, myVerificationRequest, editingProfile, showDpiModal]);
+  }, [user, editingProfile]);
 
   // Keep owner properties backed by the shared Firestore collection & local storage.
   useEffect(() => {
@@ -571,252 +501,78 @@ export default function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
-    try { 
-      let fullBio = sanitizeText(editBio.trim());
-      if (user?.bio && user.bio.includes('__DPI__')) {
-        const match = user.bio.match(/__DPI__.*?__ENDDPI__/s);
-        if (match) {
-          fullBio = (fullBio ? fullBio + '\n' : '') + match[0];
-        }
-      }
-      await updateProfile({
-        name: sanitizeText(editName.trim() || user.name),
-        phone: sanitizeText(editPhone.trim()),
-        bio: fullBio.slice(0, 1990),
-        avatarId: editAvatarId,
-        avatarImage: editAvatarImage,
-      });
+    try { await updateProfile({
+      name: sanitizeText(editName.trim() || user.name),
+      phone: sanitizeText(editPhone.trim()),
+      bio: sanitizeText(editBio.trim()),
+      avatarId: editAvatarId,
+      avatarImage: editAvatarImage,
+    });
     } catch (error) { window.alert(error.message || 'No se pudo guardar el perfil.'); return; }
     setEditingProfile(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 3000);
   };
 
-  const compressImageFile = (file, maxDimension = 800, quality = 0.6) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          let { width, height } = img;
-          if (width > maxDimension || height > maxDimension) {
-            if (width > height) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          if (dataUrl.length > 250000) {
-            dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-          }
-          resolve(dataUrl);
-        };
-        img.onerror = () => reject(new Error('Error al decodificar la imagen.'));
-        img.src = event.target.result;
-      };
-      reader.onerror = () => reject(new Error('Error al leer el archivo.'));
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handleDpiPhotoUpload = async (e) => {
+  const handleDpiPhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setDpiError('');
-
-    // Validar con límite amplio de 25MB para fotos tomadas con cámaras de smartphones modernos
-    const validation = validateImageFile(file, { maxSizeBytes: 25 * 1024 * 1024 });
-    if (!validation.valid && !file.type.startsWith('image/')) {
-      setDpiError(validation.error || 'Formato o tamaño de imagen no válido.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setDpiError(validation.error);
       return;
     }
-
-    try {
-      const compressed = await compressImageFile(file, 800, 0.6);
-      const uid = user?.id || currentUserId;
-      setDpiForm((prev) => ({ ...prev, documentPhoto: compressed }));
-
-      if (typeof window !== 'undefined') {
-        if (!window.__RUWAJAY_DPI_CACHE) window.__RUWAJAY_DPI_CACHE = {};
-        if (uid) window.__RUWAJAY_DPI_CACHE[uid] = compressed;
-        window.__RUWAJAY_MY_DPI_PHOTO = compressed;
-      }
-      try {
-        if (uid) localStorage.setItem(`ruwajay_dpi_photo_${uid}`, compressed);
-        localStorage.setItem('ruwajay_my_dpi_photo', compressed);
-      } catch {}
-      try {
-        if (uid) sessionStorage.setItem(`ruwajay_dpi_photo_${uid}`, compressed);
-        sessionStorage.setItem('ruwajay_my_dpi_photo', compressed);
-      } catch {}
-    } catch {
-      try {
-        const fallback = await compressImageFile(file, 600, 0.4);
-        const uid = user?.id || currentUserId;
-        setDpiForm((prev) => ({ ...prev, documentPhoto: fallback }));
-        if (typeof window !== 'undefined') {
-          if (!window.__RUWAJAY_DPI_CACHE) window.__RUWAJAY_DPI_CACHE = {};
-          if (uid) window.__RUWAJAY_DPI_CACHE[uid] = fallback;
-          window.__RUWAJAY_MY_DPI_PHOTO = fallback;
-        }
-        try {
-          if (uid) localStorage.setItem(`ruwajay_dpi_photo_${uid}`, fallback);
-          localStorage.setItem('ruwajay_my_dpi_photo', fallback);
-        } catch {}
-      } catch (err) {
-        setDpiError('No se pudo procesar la foto seleccionada. Intenta con otra imagen más liviana.');
-      }
-    } finally {
-      if (e.target) e.target.value = '';
-    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDpiForm((prev) => ({ ...prev, documentPhoto: reader.result }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmitDpiVerification = async (e) => {
     e.preventDefault();
     setDpiError('');
-    const cleanCui = (dpiForm.cui || '').replace(/\s/g, '');
+    const cleanCui = dpiForm.cui.replace(/\s/g, '');
     if (cleanCui.length !== 13 || !/^\d{13}$/.test(cleanCui)) {
       setDpiError('El CUI / DPI debe contener exactamente 13 dígitos numéricos.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (!dpiForm.birthDate) {
       setDpiError('Por favor ingresa tu fecha de nacimiento.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (!dpiForm.emergencyName || !dpiForm.emergencyPhone) {
       setDpiError('Ingresa un contacto de referencia o emergencia para respaldar tu verificación.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (!dpiForm.swornDeclaration) {
       setDpiError('Debes aceptar la declaración jurada de veracidad de los datos.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
-    const uid = user?.id || currentUserId;
-    let photoToSave = dpiForm.documentPhoto || null;
-    if (!photoToSave && typeof window !== 'undefined') {
-      photoToSave = (uid ? window.__RUWAJAY_DPI_CACHE?.[uid] : null) || window.__RUWAJAY_MY_DPI_PHOTO || null;
-      if (!photoToSave) {
-        try { photoToSave = localStorage.getItem(`ruwajay_dpi_photo_${uid}`) || localStorage.getItem('ruwajay_my_dpi_photo'); } catch {}
-      }
-    }
-
-    if (photoToSave && uid) {
-      if (typeof window !== 'undefined') {
-        if (!window.__RUWAJAY_DPI_CACHE) window.__RUWAJAY_DPI_CACHE = {};
-        window.__RUWAJAY_DPI_CACHE[uid] = photoToSave;
-        window.__RUWAJAY_MY_DPI_PHOTO = photoToSave;
-      }
-      try {
-        localStorage.setItem(`ruwajay_dpi_photo_${uid}`, photoToSave);
-        localStorage.setItem('ruwajay_my_dpi_photo', photoToSave);
-      } catch {}
-      try {
-        sessionStorage.setItem(`ruwajay_dpi_photo_${uid}`, photoToSave);
-        sessionStorage.setItem('ruwajay_my_dpi_photo', photoToSave);
-      } catch {}
-    }
-
-    // Al enviar una nueva solicitud, remover inmediatamente al usuario de la lista local de rechazados
-    if (uid) {
-      setLocalRejectedIds((prev) => {
-        const next = prev.filter((id) => id !== uid);
-        try { localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(next)); } catch {}
-        return next;
-      });
-    }
-
     setVerifyBusy(true);
-    const nowIso = new Date().toISOString();
-
-    const verificationPayload = {
-      id: uid,
-      userId: uid,
-      userName: user?.name || 'Usuario',
-      userEmail: user?.email || '',
-      userPhone: user?.phone || dpiForm.emergencyPhone || '',
-      cui: cleanCui,
-      department: sanitizeText(dpiForm.department || 'Guatemala'),
-      municipality: sanitizeText(dpiForm.municipality || 'Guatemala'),
-      birthDate: sanitizeText(dpiForm.birthDate || ''),
-      expirationDate: sanitizeText(dpiForm.expirationDate || ''),
-      legalAddress: sanitizeText(dpiForm.legalAddress || ''),
-      emergencyName: sanitizeText(dpiForm.emergencyName || ''),
-      emergencyPhone: sanitizeText(dpiForm.emergencyPhone || ''),
-      emergencyRelation: sanitizeText(dpiForm.emergencyRelation || 'Familiar'),
-      documentPhoto: photoToSave,
-      status: 'pendiente',
-      submittedAt: nowIso,
-      createdAt: nowIso,
-      isBroadcastPending: true,
-    };
-
     try {
-      // 1. Escritura directa garantizada en active_calls para broadcast inmediato a Administradores
-      if (uid) {
-        setDoc(doc(firestore, 'active_calls', `dpi_req_${uid}`), {
-          ...verificationPayload,
-          updatedAt: serverTimestamp(),
-        }, { merge: true }).catch((e) => console.warn('[handleSubmitDpiVerification] active_calls write warning:', e));
-        setDoc(doc(firestore, 'active_calls', `verified_${uid}`), {
-          userId: uid,
-          verified: false,
-          status: 'pendiente',
-          updatedAt: serverTimestamp(),
-        }, { merge: true }).catch(() => {});
-      }
-
-      // 2. Persistencia en AuthContext (verification_requests y users)
-      const savePromise = requestVerification({
+      await requestVerification({
         cui: cleanCui,
-        department: sanitizeText(dpiForm.department || 'Guatemala'),
-        municipality: sanitizeText(dpiForm.municipality || 'Guatemala'),
-        birthDate: sanitizeText(dpiForm.birthDate || ''),
-        expirationDate: sanitizeText(dpiForm.expirationDate || ''),
-        legalAddress: sanitizeText(dpiForm.legalAddress || ''),
-        emergencyName: sanitizeText(dpiForm.emergencyName || ''),
-        emergencyPhone: sanitizeText(dpiForm.emergencyPhone || ''),
-        emergencyRelation: sanitizeText(dpiForm.emergencyRelation || 'Familiar'),
-        documentPhoto: photoToSave,
+        department: sanitizeText(dpiForm.department),
+        municipality: sanitizeText(dpiForm.municipality),
+        birthDate: sanitizeText(dpiForm.birthDate),
+        expirationDate: sanitizeText(dpiForm.expirationDate),
+        legalAddress: sanitizeText(dpiForm.legalAddress),
+        emergencyName: sanitizeText(dpiForm.emergencyName),
+        emergencyPhone: sanitizeText(dpiForm.emergencyPhone),
+        emergencyRelation: sanitizeText(dpiForm.emergencyRelation),
+        documentPhoto: dpiForm.documentPhoto,
       });
-
-      // Límite de 4.5 segundos para no trabar la interfaz bajo ninguna circunstancia
-      const maxWait = new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 4500));
-      await Promise.race([savePromise, maxWait]);
-
-      // 3. Reflejar inmediatamente en el estado local de la sesión
-      setMyVerificationRequest(verificationPayload);
-
-      setVerificationRequests((prev) => {
-        const updated = prev.filter((r) => r.id !== uid && r.userId !== uid);
-        return [verificationPayload, ...updated];
-      });
-
       setVerifyBusy(false);
       setVerifyDone(true);
+      window.alert('¡Solicitud de verificación enviada! Tu solicitud para ser casero está siendo revisada por el equipo administrador. Recibirás una notificación en tiempo real en cuanto sea procesada.');
       setShowDpiModal(false);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3500);
-    } catch (err) {
-      console.error('[handleSubmitDpiVerification] Error en verificación:', err);
+    } catch {
       setVerifyBusy(false);
-      setDpiError(err?.message || 'Hubo un problema al procesar la verificación. Intenta nuevamente.');
-      dpiFormRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      setVerifyBusy(false);
+      setDpiError('Hubo un problema al procesar la verificación. Intenta nuevamente.');
     }
   };
 
@@ -851,19 +607,7 @@ export default function ProfilePage() {
     catch(error) { window.alert(error.message || 'No se pudo actualizar la vivienda.'); }
   };
 
-  const isProfileApproved = Boolean(
-    localApprovedIds.includes(user?.id) ||
-    myVerificationRequest?.status === 'aprobado'
-  );
-  const isProfileRejected = !isProfileApproved && Boolean(
-    localRejectedIds.includes(user?.id) ||
-    myVerificationRequest?.status === 'rechazado' ||
-    user?.dpiData?.status === 'rechazado'
-  );
-  const isVerified = Boolean(
-    isProfileApproved ||
-    (!isProfileRejected && user?.verified)
-  );
+  const isVerified = Boolean(user?.verified);
 
   /* ── Admin: subscribe to all users, properties, system updates, and verification requests ── */
   useEffect(() => {
@@ -871,296 +615,147 @@ export default function ProfilePage() {
     const unsubUsers = subscribeToUsers(setAllUsers);
     const unsubProps = subscribeToProperties(setAllProperties);
     const unsubUpdates = subscribeToSystemUpdates(setSystemUpdates, true);
-    // Intentar leer colección completa
-    const unsubVerifications = subscribeToVerificationRequests(
-      setVerificationRequests,
-      (err) => console.warn('[Admin] verification_requests collection no accesible:', err.code)
-    );
-
-    // Escuchar broadcasts de active_calls para sincronización instantánea de aprobaciones y solicitudes
-    const unsubActiveSignals = onSnapshot(collection(firestore, 'active_calls'), (snap) => {
-      const approved = [];
-      const rejected = [];
-      const pendingReqs = [];
-      snap.forEach((d) => {
-        if (d.id.startsWith('verified_')) {
-          const uid = d.id.replace('verified_', '');
-          const data = d.data();
-          if (data.status === 'aprobado' || data.verified) {
-            approved.push(uid);
-          } else if (data.status === 'rechazado') {
-            rejected.push(uid);
-          }
-        } else if (d.id.startsWith('dpi_req_')) {
-          const uid = d.id.replace('dpi_req_', '');
-          const data = d.data();
-          if (data && (data.status === 'pendiente' || !data.status)) {
-            pendingReqs.push({ id: uid, userId: uid, ...data, isBroadcastPending: true });
-            if (data.documentPhoto) {
-              if (typeof window !== 'undefined') {
-                if (!window.__RUWAJAY_DPI_CACHE) window.__RUWAJAY_DPI_CACHE = {};
-                window.__RUWAJAY_DPI_CACHE[uid] = data.documentPhoto;
-              }
-              try { localStorage.setItem(`ruwajay_dpi_photo_${uid}`, data.documentPhoto); } catch {}
-              try { sessionStorage.setItem(`ruwajay_dpi_photo_${uid}`, data.documentPhoto); } catch {}
-            }
-          }
-        }
-      });
-
-      if (pendingReqs.length > 0) {
-        const pendingUids = pendingReqs.map((r) => r.id);
-        setLocalRejectedIds((prev) => {
-          const filtered = prev.filter((id) => !pendingUids.includes(id));
-          try { localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(filtered)); } catch {}
-          return filtered;
-        });
-
-        setVerificationRequests((prev) => {
-          let updated = [...prev];
-          pendingReqs.forEach((pr) => {
-            const idx = updated.findIndex((r) => r.id === pr.id || r.userId === pr.id);
-            if (idx >= 0) {
-              updated[idx] = { ...updated[idx], ...pr };
-            } else {
-              updated.push(pr);
-            }
-          });
-          return updated;
-        });
-      }
-
-      if (approved.length > 0) {
-        setLocalApprovedIds((prev) => {
-          const next = Array.from(new Set([...prev, ...approved]));
-          try { localStorage.setItem('ruwajay_approved_verifications', JSON.stringify(next)); } catch {}
-          return next;
-        });
-      }
-      if (rejected.length > 0) {
-        setLocalRejectedIds((prev) => {
-          const next = Array.from(new Set([...prev, ...rejected]));
-          try { localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(next)); } catch {}
-          return next;
-        });
-      }
-    }, () => {});
-
+    const unsubVerifications = subscribeVerificationRequests(setVerificationRequests, (err) => {
+      console.warn('Error al suscribir solicitudes de verificación:', err);
+    });
     return () => {
       unsubUsers();
       unsubProps();
       unsubUpdates();
-      unsubVerifications();
-      unsubActiveSignals();
+      if (unsubVerifications) unsubVerifications();
     };
   }, [isAdmin]);
 
-  // Respaldo para el Admin: escuchar individualmente el documento verification_requests de cada usuario
-  useEffect(() => {
-    if (!isAdmin || !allUsers.length) return;
-    const unsubs = [];
-    allUsers.forEach((u) => {
-      if (!u.id) return;
-      const uRef = doc(firestore, 'verification_requests', u.id);
-      const unsub = onSnapshot(uRef, (snap) => {
-        if (snap.exists()) {
-          const data = { id: snap.id, userId: snap.id, ...snap.data() };
-          setVerificationRequests((prev) => {
-            const existing = prev.find((r) => r.id === data.id);
-            // Si ya tenemos una solicitud pendiente activa más reciente, no degradarla con un documento viejo
-            if (existing && (existing.status === 'pendiente' || existing.isBroadcastPending)) {
-              const existingTime = new Date(existing.submittedAt || existing.createdAt || 0).getTime();
-              const snapTime = new Date(data.submittedAt || data.createdAt || 0).getTime();
-              if (existingTime >= snapTime && data.status !== 'pendiente') {
-                return prev;
-              }
-            }
-            if (existing) {
-              return prev.map((r) => (r.id === data.id ? { ...r, ...data } : r));
-            }
-            return [...prev, data];
-          });
-        }
-      }, () => {});
-      unsubs.push(unsub);
-    });
-    return () => unsubs.forEach((unsub) => unsub());
-  }, [isAdmin, allUsers, user?.id]);
+  const pendingRequestsCount = useMemo(() => {
+    return verificationRequests.filter((r) => r.status === 'pendiente').length;
+  }, [verificationRequests]);
 
-  // FUENTE PRINCIPAL: construir solicitudes de verificación combinando users y verification_requests
-  const allVerificationRequests = useMemo(() => {
-    // 1. Mapa de solicitudes en memoria
-    const reqsByUserId = new Map();
-    verificationRequests.forEach((req) => {
-      if (req && (req.id || req.userId)) {
-        reqsByUserId.set(req.id || req.userId, req);
+  const filteredVerificationRequests = useMemo(() => {
+    return verificationRequests.filter((req) => {
+      if (verificationFilter === 'pendientes' && req.status !== 'pendiente') return false;
+      if (verificationFilter === 'aprobadas' && req.status !== 'aprobada') return false;
+      if (verificationFilter === 'rechazadas' && req.status !== 'rechazada') return false;
+
+      if (verificationSearch.trim()) {
+        const q = verificationSearch.toLowerCase();
+        const targetUser = allUsers.find(
+          (u) => (u.id && (u.id === req.userId || u.id === req.id)) ||
+                 (u.email && req.userEmail && u.email.toLowerCase() === req.userEmail.toLowerCase())
+        );
+        const matchName = (targetUser?.name || req.userName || '').toLowerCase().includes(q);
+        const matchEmail = (targetUser?.email || req.userEmail || '').toLowerCase().includes(q);
+        const matchPhone = (targetUser?.phone || req.userPhone || req.emergencyPhone || '').toLowerCase().includes(q);
+        const matchCui = (req.cui || '').toLowerCase().includes(q);
+        const matchDept = (req.department || '').toLowerCase().includes(q);
+        const matchMuni = (req.municipality || '').toLowerCase().includes(q);
+        if (!matchName && !matchEmail && !matchPhone && !matchCui && !matchDept && !matchMuni) {
+          return false;
+        }
       }
+      return true;
     });
+  }, [verificationRequests, verificationFilter, verificationSearch, allUsers]);
 
-    // 2. Mapear desde allUsers donde exista dpiData o tag de verificación o en verificationRequests
-    const fromUsers = allUsers
-      .map((u) => {
-        let dpi = u.dpiData;
-        if (!dpi && u.bio && u.bio.includes('__DPI__')) {
-          try {
-            const m = u.bio.match(/__DPI__(.*?)__ENDDPI__/s);
-            if (m && m[1]) dpi = JSON.parse(m[1]);
-          } catch (e) {
-            console.warn('Error al extraer DPI de bio:', e);
-          }
+  /* ── Admin: Pagination resets on filter / search changes ── */
+  useEffect(() => {
+    setAdminUserPage(1);
+  }, [adminUserRoleFilter, adminUserStatusFilter, adminSearchQuery]);
+
+  useEffect(() => {
+    setAdminPropertyPage(1);
+  }, [adminPropertyStatusFilter, adminPropertySearch]);
+
+  useEffect(() => {
+    setVerificationPage(1);
+  }, [verificationFilter, verificationSearch]);
+
+  /* ── Admin: Users Filtering & Pagination ── */
+  const USERS_PER_PAGE = 6;
+  const userRoleCounts = useMemo(() => ({
+    todos: allUsers.length,
+    seeker: allUsers.filter((u) => !u.role || u.role === 'seeker').length,
+    owner: allUsers.filter((u) => u.role === 'owner').length,
+    admin: allUsers.filter((u) => u.role === 'admin').length,
+    active: allUsers.filter((u) => resolveUserStatus(u, u.email) === 'active').length,
+    inactive: allUsers.filter((u) => resolveUserStatus(u, u.email) === 'inactive').length,
+    suspended: allUsers.filter((u) => resolveUserStatus(u, u.email) === 'suspended').length,
+  }), [allUsers]);
+
+  const filteredUsers = useMemo(() => {
+    return allUsers.filter((u) => {
+      const role = u.role || 'seeker';
+      if (adminUserRoleFilter !== 'todos' && role !== adminUserRoleFilter) return false;
+
+      const st = resolveUserStatus(u, u.email);
+      if (adminUserStatusFilter !== 'todos' && st !== adminUserStatusFilter) return false;
+
+      if (adminSearchQuery.trim()) {
+        const q = adminSearchQuery.toLowerCase().trim();
+        const matchName = (u.name || '').toLowerCase().includes(q);
+        const matchEmail = (u.email || '').toLowerCase().includes(q);
+        const matchPhone = (u.phone || '').toLowerCase().includes(q);
+        if (!matchName && !matchEmail && !matchPhone) return false;
+      }
+      return true;
+    });
+  }, [allUsers, adminUserRoleFilter, adminUserStatusFilter, adminSearchQuery]);
+
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const paginatedUsers = useMemo(() => {
+    const start = (adminUserPage - 1) * USERS_PER_PAGE;
+    return filteredUsers.slice(start, start + USERS_PER_PAGE);
+  }, [filteredUsers, adminUserPage]);
+
+  /* ── Admin: Properties Filtering & Pagination ── */
+  const PROPERTIES_PER_PAGE = 5;
+  const propertyStatusCounts = useMemo(() => ({
+    todas: allProperties.length,
+    disponible: allProperties.filter((p) => (p.status || 'disponible') === 'disponible').length,
+    alquilada: allProperties.filter((p) => p.status === 'alquilada').length,
+    pausada: allProperties.filter((p) => p.status === 'pausada').length,
+  }), [allProperties]);
+
+  const filteredProperties = useMemo(() => {
+    return allProperties.filter((p) => {
+      const st = (p.status || 'disponible').toLowerCase();
+      if (adminPropertyStatusFilter !== 'todas' && st !== adminPropertyStatusFilter) return false;
+
+      if (adminPropertySearch.trim()) {
+        const q = adminPropertySearch.toLowerCase().trim();
+        const title = (p.title || '').toLowerCase();
+        const zone = (p.zone || p.address?.zone || '').toLowerCase();
+        const muni = (p.municipality || p.address?.municipality || '').toLowerCase();
+        const dept = (p.department || p.address?.department || '').toLowerCase();
+        const addr = (p.approximateAddress || p.address?.approximate || '').toLowerCase();
+        const owner = (p.ownerName || p.ownerEmail || '').toLowerCase();
+        if (
+          !title.includes(q) &&
+          !zone.includes(q) &&
+          !muni.includes(q) &&
+          !dept.includes(q) &&
+          !addr.includes(q) &&
+          !owner.includes(q)
+        ) {
+          return false;
         }
-        const reqInCol = reqsByUserId.get(u.id);
-        if (!dpi && !reqInCol) return null;
+      }
+      return true;
+    });
+  }, [allProperties, adminPropertyStatusFilter, adminPropertySearch]);
 
-        const effectiveDpi = dpi || reqInCol;
-        const cuiClean = (effectiveDpi?.cui || '').replace(/\s/g, '');
-        if (cuiClean.length < 8) return null;
+  const totalPropertyPages = Math.max(1, Math.ceil(filteredProperties.length / PROPERTIES_PER_PAGE));
+  const paginatedProperties = useMemo(() => {
+    const start = (adminPropertyPage - 1) * PROPERTIES_PER_PAGE;
+    return filteredProperties.slice(start, start + PROPERTIES_PER_PAGE);
+  }, [filteredProperties, adminPropertyPage]);
 
-        // Si hay una solicitud pendiente nueva, su estado es 'pendiente' para ser revisada
-        const isNewPending = reqInCol?.status === 'pendiente' || dpi?.status === 'pendiente' || reqInCol?.isBroadcastPending;
-
-        let resolvedStatus = 'pendiente';
-        if (localApprovedIds.includes(u.id) || u.verified) {
-          resolvedStatus = 'aprobado';
-        } else if (isNewPending) {
-          resolvedStatus = 'pendiente';
-        } else if (localRejectedIds.includes(u.id) || reqInCol?.status === 'rechazado') {
-          resolvedStatus = 'rechazado';
-        } else if (reqInCol?.status) {
-          resolvedStatus = reqInCol.status;
-        } else if (effectiveDpi?.status) {
-          resolvedStatus = effectiveDpi.status;
-        }
-
-        // Obtener la foto de mayor fidelidad disponible
-        let resolvedPhoto = reqInCol?.documentPhoto || null;
-        if (!resolvedPhoto && typeof window !== 'undefined') {
-          resolvedPhoto = window.__RUWAJAY_DPI_CACHE?.[u.id] || null;
-        }
-        if (!resolvedPhoto) {
-          try {
-            resolvedPhoto = localStorage.getItem(`ruwajay_dpi_photo_${u.id}`) || sessionStorage.getItem(`ruwajay_dpi_photo_${u.id}`) || null;
-          } catch {}
-        }
-        if (!resolvedPhoto) {
-          resolvedPhoto = effectiveDpi?.documentPhoto || dpi?.documentPhoto || null;
-        }
-
-        const effectiveCreatedAt = (isNewPending && reqInCol?.submittedAt)
-          ? reqInCol.submittedAt
-          : (reqInCol?.submittedAt || reqInCol?.createdAt || dpi?.submittedAt || u.createdAt || new Date().toISOString());
-
-        return {
-          id: u.id,
-          userId: u.id,
-          userName: u.name || reqInCol?.userName || 'Usuario',
-          userEmail: u.email || reqInCol?.userEmail || '',
-          userPhone: u.phone || effectiveDpi?.emergencyPhone || reqInCol?.emergencyPhone || '',
-          status: resolvedStatus,
-          cui: effectiveDpi?.cui || reqInCol?.cui || '',
-          department: effectiveDpi?.department || reqInCol?.department || '',
-          municipality: effectiveDpi?.municipality || reqInCol?.municipality || '',
-          birthDate: effectiveDpi?.birthDate || reqInCol?.birthDate || '',
-          expirationDate: effectiveDpi?.expirationDate || reqInCol?.expirationDate || '',
-          legalAddress: effectiveDpi?.legalAddress || reqInCol?.legalAddress || '',
-          emergencyName: effectiveDpi?.emergencyName || reqInCol?.emergencyName || '',
-          emergencyPhone: effectiveDpi?.emergencyPhone || reqInCol?.emergencyPhone || '',
-          emergencyRelation: effectiveDpi?.emergencyRelation || reqInCol?.emergencyRelation || '',
-          documentPhoto: resolvedPhoto,
-          createdAt: effectiveCreatedAt,
-          rejectionReason: reqInCol?.rejectionReason || '',
-        };
-      })
-      .filter(Boolean);
-
-    // 3. Agregar los que vengan de verification_requests y cuyo usuario no esté en allUsers
-    const seenUserIds = new Set(fromUsers.map((r) => r.id));
-    const extraFromCollection = verificationRequests
-      .filter((req) => {
-        if (!req || seenUserIds.has(req.id || req.userId)) return false;
-        const cuiClean = (req.cui || '').replace(/\s/g, '');
-        return cuiClean.length >= 8 && (req.userName || req.userEmail || req.userId);
-      })
-      .map((req) => {
-        const id = req.id || req.userId;
-        let resolvedStatus = req.status || 'pendiente';
-        if (localApprovedIds.includes(id)) resolvedStatus = 'aprobado';
-        else if (localRejectedIds.includes(id)) resolvedStatus = 'rechazado';
-
-        return {
-          ...req,
-          id,
-          userId: id,
-          status: resolvedStatus,
-        };
-      });
-
-    return [...fromUsers, ...extraFromCollection].filter(
-      (req) => req.status !== 'rechazado' && !localRejectedIds.includes(req.id || req.userId)
-    );
-  }, [verificationRequests, allUsers, localApprovedIds, localRejectedIds, user?.id]);
-
-  const pendingVerifications = allVerificationRequests.filter((v) => v.status === 'pendiente');
-
-  const handleApproveVerification = async (userId) => {
-    try {
-      // 1. Guardar de inmediato en almacenamiento local para bloqueo permanente contra regresiones
-      saveLocalApprovedVerification(userId);
-      setLocalApprovedIds((prev) => Array.from(new Set([...prev, userId])));
-      setLocalRejectedIds((prev) => prev.filter((id) => id !== userId));
-
-      // 2. Actualizar inmediatamente en memoria para feedback instantáneo en la UI
-      setVerificationRequests((prev) => {
-        const exists = prev.some((r) => r.id === userId || r.userId === userId);
-        if (exists) {
-          return prev.map((r) => (r.id === userId || r.userId === userId ? { ...r, status: 'aprobado', isBroadcastPending: false } : r));
-        }
-        return [...prev, { id: userId, userId, status: 'aprobado', isBroadcastPending: false }];
-      });
-
-      // 3. Actualizar en active_calls para que el cambio sea instantáneo en todos los clientes
-      try {
-        await setDoc(doc(firestore, 'active_calls', `dpi_req_${userId}`), {
-          status: 'aprobado',
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-        await setDoc(doc(firestore, 'active_calls', `verified_${userId}`), {
-          userId,
-          verified: true,
-          status: 'aprobado',
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-      } catch {}
-
-      // 4. Ejecutar persistencia en base de datos Firestore y broadcast WebRTC
-      await approveVerificationRequest(userId, user?.name || 'Administrador');
-      setAdminNotice('✅ Verificación aprobada. El usuario ahora puede publicar viviendas.');
-    } catch (err) {
-      setAdminNotice('❌ Error al aprobar: ' + (err.message || 'Intenta nuevamente.'));
-    }
-  };
-
-  const handleRejectVerification = async () => {
-    const targetUserId = rejectReasonModal.userId;
-    try {
-      // 1. Guardar en almacenamiento local
-      saveLocalRejectedVerification(targetUserId);
-      setLocalRejectedIds((prev) => Array.from(new Set([...prev, targetUserId])));
-      setLocalApprovedIds((prev) => prev.filter((id) => id !== targetUserId));
-
-      // 2. Eliminar completamente de la lista en memoria de solicitudes del administrador
-      setVerificationRequests((prev) => prev.filter((r) => r.id !== targetUserId && r.userId !== targetUserId));
-      setAllUsers((prev) => prev.map((u) => u.id === targetUserId ? { ...u, verified: false, dpiData: null } : u));
-
-      // 3. Ejecutar borrado permanente y broadcast
-      await rejectVerificationRequest(targetUserId, rejectReasonText, user?.name || 'Administrador');
-      setAdminNotice('❌ Solicitud rechazada y eliminada del listado de solicitudes.');
-      setRejectReasonModal({ open: false, userId: '', userName: '' });
-      setRejectReasonText('');
-    } catch (err) {
-      setAdminNotice('Error al rechazar: ' + (err.message || 'Intenta nuevamente.'));
-    }
-  };
+  /* ── Admin: Verification Requests Pagination ── */
+  const VERIFICATIONS_PER_PAGE = 3;
+  const totalVerificationPages = Math.max(1, Math.ceil(filteredVerificationRequests.length / VERIFICATIONS_PER_PAGE));
+  const paginatedVerificationRequests = useMemo(() => {
+    const start = (verificationPage - 1) * VERIFICATIONS_PER_PAGE;
+    return filteredVerificationRequests.slice(start, start + VERIFICATIONS_PER_PAGE);
+  }, [filteredVerificationRequests, verificationPage]);
 
   /* ── Tabs config ── */
   const tabs = [
@@ -1169,38 +764,13 @@ export default function ProfilePage() {
     { key: 'busquedas', label: 'Búsquedas', count: savedSearches.length > 0 ? savedSearches.length : undefined, icon: Bookmark },
     { key: 'visitas', label: 'Citas y Visitas', count: relevantVisits.length, icon: Calendar },
     ...(isOwner ? [{ key: 'propiedades', label: 'Mis Propiedades', count: myProperties.length, icon: Building2 }] : []),
-    ...(isAdmin ? [{ key: 'admin', label: 'Administración', count: pendingVerifications.length > 0 ? pendingVerifications.length : undefined, icon: Shield }] : []),
+    ...(isAdmin ? [{ key: 'admin', label: 'Administración', count: pendingRequestsCount > 0 ? pendingRequestsCount : undefined, icon: Shield }] : []),
     { key: 'configuracion', label: 'Ajustes', icon: Settings },
   ];
 
   return (
     <main className="min-h-screen bg-crema/30 pb-24 pt-4 md:pb-12 md:pt-6">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-
-        {/* Banner de alerta para Administradores con verificaciones pendientes */}
-        {isAdmin && pendingVerifications.length > 0 && activeTab !== 'admin' && (
-          <div className="mb-6 rounded-3xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 p-5 text-white shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 border border-amber-300">
-            <div className="flex items-center gap-3.5">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-white text-2xl shadow-inner">
-                🛡️
-              </span>
-              <div>
-                <p className="font-extrabold text-base">
-                  Tienes {pendingVerifications.length} solicitud{pendingVerifications.length > 1 ? 'es' : ''} de verificación pendiente{pendingVerifications.length > 1 ? 's' : ''}
-                </p>
-                <p className="text-xs text-white/90">
-                  Hay usuarios esperando tu aprobación de identidad (DPI) para poder publicar viviendas en RuwaJay.
-                </p>
-              </div>
-            </div>
-            <Link
-              to="/perfil?tab=admin"
-              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-xs font-black text-amber-900 shadow-md hover:bg-crema transition-all cursor-pointer shrink-0"
-            >
-              Revisar solicitudes ahora <ArrowRight size={15} />
-            </Link>
-          </div>
-        )}
 
         {/* ═══════ Profile Header ═══════ */}
         <div className="mb-6 rounded-3xl border border-border bg-white p-5 shadow-card sm:mb-8 sm:p-8">
@@ -1230,27 +800,62 @@ export default function ProfilePage() {
                     <BadgeCheck size={14} className="text-dorado" /> Verificado con DPI
                   </button>
                 )}
-              </div>
-              <p className="break-all text-sm text-text-secondary">{user?.email}</p>
-              {getCleanBio(user?.bio) && <p className="mt-1.5 text-xs text-text-muted italic">"{getCleanBio(user.bio)}"</p>}
-              <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
-                {!isAdmin && (
+                {!isVerified && user?.verificationStatus === 'pendiente' && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-black text-amber-700 border border-amber-300">
+                    <Clock3 size={13} className="text-amber-600 animate-pulse" /> Verificación DPI en revisión
+                  </span>
+                )}
+                {!isVerified && user?.verificationStatus === 'rechazada' && (
                   <button
                     type="button"
-                    onClick={() => (isVerified ? setShowDpiDetailsModal(true) : setShowDpiModal(true))}
-                    className="flex items-center gap-1 rounded-full bg-dorado/10 px-3 py-1 text-xs font-bold text-cafe hover:bg-dorado/20 transition-colors"
+                    onClick={() => handleOpenDpiModal()}
+                    className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-black text-red-700 border border-red-300 hover:bg-red-500/25 transition-all cursor-pointer"
+                    title="Ver motivo y corregir"
                   >
-                    {isVerified ? '✓ Identidad DPI validada' : '🛡️ Verificar identidad con DPI'}
+                    <AlertTriangle size={13} className="text-red-600" /> Solicitud DPI rechazada (Corregir)
                   </button>
                 )}
-                <span className={`rounded-full px-3 py-1 text-xs font-black ${isAdmin ? 'bg-forest text-white shadow-xs' : 'bg-crema text-cafe'}`}>
+              </div>
+              <p className="break-all text-sm text-text-secondary">{user?.email}</p>
+              {user?.bio && <p className="mt-1.5 text-xs text-text-muted italic">"{user.bio}"</p>}
+              <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
+                <button
+                  type="button"
+                  onClick={() => (isVerified ? setShowDpiDetailsModal(true) : handleOpenDpiModal())}
+                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
+                    isVerified
+                      ? 'bg-dorado/10 text-cafe hover:bg-dorado/20'
+                      : user?.verificationStatus === 'pendiente'
+                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      : user?.verificationStatus === 'rechazada'
+                      ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                      : 'bg-dorado/10 text-cafe hover:bg-dorado/20'
+                  }`}
+                >
+                  {isVerified
+                    ? '✓ Identidad DPI validada'
+                    : user?.verificationStatus === 'pendiente'
+                    ? '⏳ Solicitud en revisión'
+                    : user?.verificationStatus === 'rechazada'
+                    ? '⚠️ Solicitud rechazada (Reintentar)'
+                    : '🛡️ Solicitar verificación con DPI'}
+                </button>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold transition-all ${
+                  isAdmin ? 'bg-forest text-white shadow-xs' : 'bg-crema text-cafe'
+                }`}>
                   {isAdmin ? '🛡️ Super Administrador' : user?.role === 'owner' ? 'Casero' : 'Inquilino'}
                 </span>
               </div>
               <p className="mt-3 text-center text-xs font-semibold text-text-muted sm:text-left">
                 {isAdmin
-                  ? 'Cuenta de Administrador Autorizada · Panel Maestro Activo'
-                  : `${isVerified ? 'Cuenta verificada con DPI' : 'Sin verificar todavía'} · ${user?.role === 'owner' ? 'Propietario activo' : 'Buscando vivienda'}`}
+                  ? 'Cuenta con acceso administrativo global de RuwaJay'
+                  : isVerified
+                  ? 'Cuenta verificada con DPI'
+                  : user?.verificationStatus === 'pendiente'
+                  ? 'Solicitud de casero en revisión por el administrador'
+                  : user?.verificationStatus === 'rechazada'
+                  ? 'Solicitud rechazada · Requiere corrección de datos'
+                  : 'Sin verificar todavía'} · {isAdmin ? 'Panel maestro activo' : user?.role === 'owner' ? 'Propietario activo' : 'Buscando vivienda'}
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -1516,26 +1121,16 @@ export default function ProfilePage() {
                   <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Teléfono</span>
                   <p className="text-sm font-black text-cafe">{user?.phone || 'No registrado'}</p>
                 </div>
-                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Tipo de Usuario</span>
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black ${isAdmin ? 'bg-forest text-white' : 'bg-forest/10 text-forest'}`}>
-                      {isAdmin ? '🛡️ Administrador' : user?.role === 'owner' ? '🏡 Propietario' : '👤 Inquilino'}
-                    </span>
-                  </div>
-                  {isAdmin && (
-                    <Link
-                      to="/perfil?tab=admin"
-                      className="mt-2 text-[11px] font-bold text-forest hover:underline flex items-center gap-1"
-                    >
-                      Ir al Panel de Administración ➜
-                    </Link>
-                  )}
+                <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Tipo de Usuario</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-forest/10 px-2.5 py-1 text-xs font-black text-forest">
+                    {user?.role === 'admin' ? '🛡️ Administrador' : user?.role === 'owner' ? '🏡 Propietario' : '👤 Inquilino'}
+                  </span>
                 </div>
                 <div className="rounded-2xl border border-border/80 bg-[#FAF8F5] p-4 sm:col-span-2">
                   <span className="text-[11px] font-black uppercase tracking-wider text-text-muted block mb-1">Biografía / Presentación</span>
                   <p className="text-xs font-semibold text-cafe italic">
-                    {getCleanBio(user?.bio) ? `"${getCleanBio(user.bio)}"` : 'Sin biografía añadida. Añade una descripción para mayor confianza.'}
+                    {user?.bio ? `"${user.bio}"` : 'Sin biografía añadida. Añade una descripción para mayor confianza.'}
                   </p>
                 </div>
               </div>
@@ -1622,7 +1217,7 @@ export default function ProfilePage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-black text-cafe">Tu cuenta cuenta con insignia de DPI Validado</p>
                     <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                      Tu documento oficial de identificación de Guatemala ha sido registrado y aprobado por el administrador correctamente. Puedes publicar propiedades sin restricciones.
+                      Tu documento oficial de identificación de Guatemala ha sido registrado correctamente para garantizar la máxima seguridad en transacciones.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
@@ -1642,56 +1237,6 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </div>
-              ) : myVerificationRequest?.status === 'pendiente' ? (
-                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100/40 p-4 sm:p-5">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600">
-                    <Clock size={28} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-black text-cafe">Solicitud enviada — En revisión por el Administrador</p>
-                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-800 uppercase">
-                        Pendiente
-                      </span>
-                    </div>
-                    <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                      Tus datos y fotografía de DPI fueron recibidos y están siendo revisados por un Administrador. Tan pronto como sean aprobados, se habilitará la publicación de viviendas en tu cuenta.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowDpiModal(true)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors cursor-pointer"
-                      >
-                        <Edit3 size={13} /> Corregir o actualizar datos
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : myVerificationRequest?.status === 'rechazado' ? (
-                <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-red-300 bg-red-50/60 p-4 sm:p-5">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600">
-                    <AlertTriangle size={28} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-black text-red-700">Solicitud rechazada por el Administrador</p>
-                      <span className="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-black text-red-800 uppercase">
-                        Rechazada
-                      </span>
-                    </div>
-                    <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                      <strong>Motivo:</strong> {myVerificationRequest.rejectionReason || 'Documento no válido o datos inconsistentes'}. Por favor actualiza tu información y envía una fotografía clara del documento.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setShowDpiModal(true)}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-black text-white hover:bg-red-700 transition-colors cursor-pointer shadow-xs"
-                    >
-                      <RotateCcw size={14} /> Volver a enviar verificación con DPI
-                    </button>
-                  </div>
-                </div>
               ) : (
                 <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-[#E8D9C8]/80 bg-[#FDFBF7] p-4 sm:p-5">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/10 text-dorado">
@@ -1700,7 +1245,7 @@ export default function ProfilePage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-black text-cafe">Aumenta tu confianza validando tu DPI</p>
                     <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                      Registra tu CUI de 13 dígitos y datos oficiales para que un Administrador apruebe tu cuenta y puedas publicar propiedades.
+                      Registra tu CUI de 13 dígitos y datos oficiales para obtener la insignia dorada de verificación.
                     </p>
                     <button
                       type="button"
@@ -2456,9 +2001,9 @@ export default function ProfilePage() {
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {[
                   { label: 'Usuarios Registrados', value: allUsers.length, icon: Users, color: 'text-forest bg-forest/10' },
-                  { label: 'Verificaciones Pendientes', value: pendingVerifications.length, icon: ShieldCheck, color: pendingVerifications.length > 0 ? 'text-amber-700 bg-amber-100 ring-2 ring-amber-400' : 'text-forest bg-forest/10' },
+                  { label: 'Solicitudes DPI', value: pendingRequestsCount, icon: ShieldCheck, color: 'text-amber-600 bg-amber-500/10' },
                   { label: 'Propiedades Totales', value: allProperties.length, icon: Building2, color: 'text-terracota bg-terracota/10' },
-                  { label: 'Propietarios Activos', value: allUsers.filter((u) => u.role === 'owner' && !isUserAdminEmail(u.email)).length, icon: Home, color: 'text-dorado bg-dorado/10' },
+                  { label: 'Propietarios Activos', value: allUsers.filter((u) => u.role === 'owner').length, icon: Home, color: 'text-dorado bg-dorado/10' },
                   { label: 'Comunicados Activos', value: systemUpdates.filter((u) => u.active !== false).length, icon: Megaphone, color: 'text-jade bg-jade/10' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-2xl border border-border bg-white p-4 text-center">
@@ -2472,241 +2017,342 @@ export default function ProfilePage() {
               </div>
             </SectionCard>
 
-            {/* ── SECCIÓN: Solicitudes de Verificación de Identidad con DPI ── */}
+            {/* ── SECCIÓN: Solicitudes de Verificación de Caseros (DPI) ── */}
             <SectionCard>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-dorado/15 text-dorado">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-dorado/15 text-dorado shadow-xs">
                     <ShieldCheck size={22} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-extrabold text-cafe">Solicitudes de Verificación de Identidad (DPI)</h3>
-                      {pendingVerifications.length > 0 && (
-                        <span className="rounded-full bg-amber-500 text-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse">
-                          {pendingVerifications.length} Pendiente{pendingVerifications.length > 1 ? 's' : ''}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-extrabold text-cafe">
+                        Solicitudes de Verificación de Caseros (DPI)
+                      </h3>
+                      {pendingRequestsCount > 0 && (
+                        <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black text-white animate-pulse">
+                          {pendingRequestsCount} {pendingRequestsCount === 1 ? 'pendiente' : 'pendientes'}
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-text-muted">
-                      Valida el documento de los usuarios para otorgarles la insignia oficial y habilitar la publicación de viviendas.
+                      Revisa en tiempo real las solicitudes de usuarios que desean ser propietarios para anunciar viviendas
                     </p>
                   </div>
                 </div>
 
-                {/* Filtros de estado */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                {/* Filter buttons */}
+                <div className="flex items-center gap-1 overflow-x-auto rounded-2xl bg-crema/60 p-1 border border-border">
                   {[
-                    { key: 'pendiente', label: `Pendientes (${pendingVerifications.length})` },
-                    { key: 'aprobado', label: `Aprobadas (${allVerificationRequests.filter((r) => r.status === 'aprobado').length})` },
-                    { key: 'todas', label: `Todas (${allVerificationRequests.length})` },
-                  ].map((filter) => (
+                    { id: 'pendientes', label: 'Pendientes', count: pendingRequestsCount },
+                    { id: 'aprobadas', label: 'Aprobadas', count: verificationRequests.filter((r) => r.status === 'aprobada').length },
+                    { id: 'rechazadas', label: 'Rechazadas', count: verificationRequests.filter((r) => r.status === 'rechazada').length },
+                    { id: 'todas', label: 'Todas', count: verificationRequests.length },
+                  ].map((tab) => (
                     <button
-                      key={filter.key}
-                      onClick={() => setVerificationFilter(filter.key)}
-                      className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-black transition-all cursor-pointer ${
-                        verificationFilter === filter.key
-                          ? 'bg-forest text-white shadow-xs'
-                          : 'bg-crema/60 text-cafe hover:bg-crema'
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setVerificationFilter(tab.id)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-all ${
+                        verificationFilter === tab.id
+                          ? 'bg-white text-forest shadow-xs font-extrabold'
+                          : 'text-text-muted hover:text-cafe'
                       }`}
                     >
-                      {filter.label}
+                      {tab.label} ({tab.count})
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Buscador de solicitudes */}
-              <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5 focus-within:border-forest">
-                <Mail size={16} className="text-text-muted shrink-0" />
+              {/* Search input */}
+              <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5">
+                <Search size={16} className="text-text-muted shrink-0" />
                 <input
                   type="text"
-                  placeholder="Buscar solicitud por CUI, nombre o correo del solicitante..."
+                  placeholder="Buscar solicitud por nombre, correo, teléfono o CUI..."
                   value={verificationSearch}
                   onChange={(e) => setVerificationSearch(e.target.value)}
-                  className="min-w-0 flex-1 bg-transparent text-xs sm:text-sm text-cafe outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-cafe outline-none"
                 />
                 {verificationSearch && (
-                  <button onClick={() => setVerificationSearch('')} className="text-text-muted hover:text-cafe cursor-pointer">
+                  <button onClick={() => setVerificationSearch('')} className="text-text-muted hover:text-cafe">
                     <X size={14} />
                   </button>
                 )}
               </div>
 
-              {/* Lista de solicitudes */}
-              {(() => {
-                const filtered = allVerificationRequests
-                  .filter((req) => {
-                    if (verificationFilter !== 'todas' && req.status !== verificationFilter) return false;
-                    if (!verificationSearch.trim()) return true;
-                    const q = verificationSearch.toLowerCase();
-                    const userName = (req.userName || '').toLowerCase();
-                    const userEmail = (req.userEmail || '').toLowerCase();
-                    const cui = (req.cui || '').toLowerCase();
-                    const dept = (req.department || '').toLowerCase();
-                    return userName.includes(q) || userEmail.includes(q) || cui.includes(q) || dept.includes(q);
-                  });
+              {/* Solicitudes List */}
+              {filteredVerificationRequests.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-[#FDFBF7] py-10 text-center">
+                  <ShieldCheck size={40} className="mx-auto mb-2 text-text-muted/40" />
+                  <p className="text-sm font-bold text-cafe">No hay solicitudes en esta sección</p>
+                  <p className="text-xs text-text-muted mt-1">
+                    {verificationFilter === 'pendientes'
+                      ? 'No hay solicitudes de verificación pendientes por revisar.'
+                      : 'No se encontraron solicitudes con los filtros aplicados.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {paginatedVerificationRequests.map((req) => {
+                    const targetUser = allUsers.find(
+                      (u) => (u.id && (u.id === req.userId || u.id === req.id)) ||
+                             (u.email && req.userEmail && u.email.toLowerCase() === req.userEmail.toLowerCase())
+                    );
+                    const effectiveName =
+                      targetUser?.name ||
+                      targetUser?.displayName ||
+                      req.userName ||
+                      req.fullName ||
+                      targetUser?.dpiData?.fullName ||
+                      (targetUser?.email ? targetUser.email.split('@')[0] : (req.userEmail ? req.userEmail.split('@')[0] : 'Usuario'));
 
-                if (filtered.length === 0) {
-                  return (
-                    <div className="rounded-2xl border border-dashed border-border p-8 text-center bg-crema/20">
-                      <ShieldCheck size={36} className="mx-auto mb-2 text-text-muted/40" />
-                      <p className="text-sm font-bold text-cafe">No hay solicitudes en esta sección</p>
-                      <p className="text-xs text-text-muted mt-1">
-                        {verificationFilter === 'pendiente'
-                          ? '¡Excelente! No hay solicitudes de verificación pendientes por revisar.'
-                          : 'No se encontraron solicitudes con el filtro actual.'}
-                      </p>
-                    </div>
-                  );
-                }
+                    const effectiveAvatar =
+                      targetUser?.avatarImage ||
+                      targetUser?.avatar ||
+                      targetUser?.photoURL ||
+                      req.userAvatar ||
+                      null;
 
-                return (
-                  <div className="space-y-3">
-                    {filtered.map((req) => {
-                      const userObj = allUsers.find((u) => u.id === req.id);
-                      const displayName = req.userName || userObj?.name || 'Usuario RuwaJay';
-                      const displayEmail = req.userEmail || userObj?.email || req.id;
-                      const formattedCui = req.cui ? formatDpiCui(req.cui) : 'No especificado';
+                    const effectiveEmail = targetUser?.email || req.userEmail || '';
+                    const effectivePhone = targetUser?.phone || req.userPhone || req.emergencyPhone || '';
 
-                      return (
-                        <div
-                          key={req.id}
-                          className="rounded-2xl border border-border bg-[#FAF8F5] p-4 sm:p-5 hover:border-forest/30 transition-all shadow-2xs"
-                        >
-                          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                            {/* User & Request info */}
-                            <div className="min-w-0 flex-1 space-y-3">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="text-base font-black text-cafe">{displayName}</h4>
-                                <span className="text-xs font-medium text-text-muted">({displayEmail})</span>
-                                <span
-                                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                                    req.status === 'aprobado'
-                                      ? 'bg-jade/15 text-jade'
-                                      : req.status === 'rechazado'
-                                      ? 'bg-red-100 text-red-600'
-                                      : 'bg-amber-100 text-amber-800'
-                                  }`}
-                                >
-                                  {req.status === 'aprobado'
-                                    ? '✓ Aprobado'
-                                    : req.status === 'rechazado'
-                                    ? '✕ Rechazado'
-                                    : '⏳ Pendiente'}
-                                </span>
-                              </div>
+                    const displayUser = {
+                      ...targetUser,
+                      name: effectiveName,
+                      avatarImage: effectiveAvatar,
+                      avatarId: targetUser?.avatarId || req.avatarId,
+                    };
 
-                              {/* Details Grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                                <div className="rounded-xl bg-white border border-border/70 p-2.5">
-                                  <span className="text-[10px] font-bold uppercase text-text-muted block">CUI (DPI)</span>
-                                  <span className="font-mono font-bold text-cafe">{formattedCui}</span>
-                                </div>
-                                <div className="rounded-xl bg-white border border-border/70 p-2.5">
-                                  <span className="text-[10px] font-bold uppercase text-text-muted block">Departamento / Muni</span>
-                                  <span className="font-semibold text-cafe truncate block">
-                                    {req.department || 'N/A'} {req.municipality ? `• ${req.municipality}` : ''}
+                    return (
+                      <div
+                        key={req.id || req.userId}
+                        className="rounded-3xl border border-border bg-[#FDFBF7] p-4 sm:p-5 shadow-xs transition-all hover:border-dorado/40"
+                      >
+                        {/* Solicitud Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar user={displayUser} size={46} className="shrink-0" />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm font-black text-cafe truncate">
+                                  {effectiveName}
+                                </h4>
+                                {req.status === 'pendiente' && (
+                                  <span className="rounded-full bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 text-[10px] font-black">
+                                    ● Pendiente
                                   </span>
-                                </div>
-                                <div className="rounded-xl bg-white border border-border/70 p-2.5">
-                                  <span className="text-[10px] font-bold uppercase text-text-muted block">Vigencia / Nacimiento</span>
-                                  <span className="font-semibold text-cafe block">
-                                    Vence: {req.expirationDate || 'N/A'} {req.birthDate ? `(Nac: ${req.birthDate})` : ''}
-                                  </span>
-                                </div>
-                                {req.legalAddress && (
-                                  <div className="rounded-xl bg-white border border-border/70 p-2.5 sm:col-span-2">
-                                    <span className="text-[10px] font-bold uppercase text-text-muted block">Dirección Legal</span>
-                                    <span className="font-semibold text-cafe truncate block">{req.legalAddress}</span>
-                                  </div>
                                 )}
-                                {(req.emergencyName || req.emergencyPhone) && (
-                                  <div className="rounded-xl bg-white border border-border/70 p-2.5">
-                                    <span className="text-[10px] font-bold uppercase text-text-muted block">Contacto Emergencia</span>
-                                    <span className="font-semibold text-cafe truncate block">
-                                      {req.emergencyName} ({req.emergencyPhone}) {req.emergencyRelation ? `- ${req.emergencyRelation}` : ''}
-                                    </span>
-                                  </div>
+                                {req.status === 'aprobada' && (
+                                  <span className="rounded-full bg-green-100 text-green-800 border border-green-300 px-2.5 py-0.5 text-[10px] font-black">
+                                    ✓ Aprobada / Casero
+                                  </span>
+                                )}
+                                {req.status === 'rechazada' && (
+                                  <span className="rounded-full bg-red-100 text-red-800 border border-red-300 px-2.5 py-0.5 text-[10px] font-black">
+                                    ✗ Rechazada
+                                  </span>
+                                )}
+                                {resolveUserStatus(targetUser, targetUser?.email) === 'suspended' && (
+                                  <span className="rounded-full bg-red-100 text-red-700 border border-red-300 px-2.5 py-0.5 text-[10px] font-black">
+                                    🔴 Cuenta Suspendida
+                                  </span>
+                                )}
+                                {resolveUserStatus(targetUser, targetUser?.email) === 'inactive' && (
+                                  <span className="rounded-full bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 text-[10px] font-black">
+                                    🟡 Cuenta Inactiva
+                                  </span>
                                 )}
                               </div>
-
-                              {/* Rejection notice if exists */}
-                              {req.status === 'rechazado' && req.rejectionReason && (
-                                <div className="rounded-xl bg-red-50 border border-red-200 p-2.5 text-xs text-red-700">
-                                  <strong>Motivo de rechazo:</strong> {req.rejectionReason}
-                                </div>
-                              )}
-
-                              {/* Review timestamp */}
-                              <div className="flex items-center gap-3 text-[11px] text-text-muted">
-                                <span>Enviado: {req.createdAt ? new Date(req.createdAt).toLocaleDateString('es-GT', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Reciente'}</span>
-                                {req.reviewedBy && (
-                                  <span>• Revisado por: <strong>{req.reviewedBy}</strong></span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Document Photo & Actions */}
-                            <div className="flex flex-col sm:flex-row lg:flex-col items-center lg:items-end gap-3 shrink-0">
-                              {/* Photo thumbnail */}
-                              {req.documentPhoto ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewDocPhoto(req.documentPhoto)}
-                                  className="group relative h-20 w-32 overflow-hidden rounded-xl border-2 border-border hover:border-forest transition-all shadow-xs cursor-pointer"
-                                  title="Ver documento en tamaño completo"
-                                >
-                                  <img
-                                    src={req.documentPhoto}
-                                    alt="Foto DPI"
-                                    className="h-full w-full object-cover group-hover:scale-105 transition-transform"
-                                  />
-                                  <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-[10px] font-black opacity-0 group-hover:opacity-100 transition-opacity">
-                                    🔍 Ver DPI
-                                  </span>
-                                </button>
-                              ) : (
-                                <div className="flex h-20 w-32 items-center justify-center rounded-xl border border-dashed border-border bg-white text-center p-2">
-                                  <span className="text-[10px] font-medium text-text-muted">Sin foto adjunta</span>
-                                </div>
-                              )}
-
-                              {/* Action buttons */}
-                              <div className="flex items-center gap-2 w-full sm:w-auto">
-                                {req.status !== 'aprobado' ? (
-                                  <button
-                                    onClick={() => handleApproveVerification(req.id)}
-                                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl bg-forest px-3.5 py-2 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs cursor-pointer"
-                                  >
-                                    <CheckCircle2 size={14} /> Aprobar
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-xs font-extrabold text-jade">
-                                    <BadgeCheck size={16} /> Aprobado
-                                  </span>
-                                )}
-
-                                {req.status !== 'rechazado' && (
-                                  <button
-                                    onClick={() => {
-                                      setRejectReasonModal({ open: true, userId: req.id, userName: displayName });
-                                      setRejectReasonText('');
-                                    }}
-                                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-600 hover:bg-red-100 transition-all cursor-pointer"
-                                  >
-                                    <X size={14} /> Rechazar...
-                                  </button>
+                              <div className="flex items-center gap-2 text-xs text-text-muted flex-wrap">
+                                {effectiveEmail && <span>{effectiveEmail}</span>}
+                                {effectivePhone && (
+                                  <>
+                                    <span>•</span>
+                                    <a href={`tel:${effectivePhone}`} className="font-bold text-cafe hover:text-forest">
+                                      Tel: {effectivePhone}
+                                    </a>
+                                  </>
                                 )}
                               </div>
                             </div>
                           </div>
+
+                        <div className="text-right text-[11px] text-text-muted shrink-0">
+                          <span className="block font-semibold">
+                            {req.createdAt
+                              ? new Date(req.createdAt).toLocaleDateString('es-GT', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Reciente'}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+                      </div>
+
+                      {/* Solicitud Data Grid */}
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        {/* CUI */}
+                        <div className="rounded-2xl bg-white p-3 border border-[#E8D9C8]">
+                          <span className="block text-[10px] font-extrabold uppercase text-text-muted">CUI / DPI Declarado</span>
+                          <span className="font-mono text-sm font-black text-cafe tracking-wider">
+                            {formatDpiCui(req.cui)}
+                          </span>
+                        </div>
+
+                        {/* Lugar emisión */}
+                        <div className="rounded-2xl bg-white p-3 border border-[#E8D9C8]">
+                          <span className="block text-[10px] font-extrabold uppercase text-text-muted">Lugar de Emisión</span>
+                          <span className="font-bold text-cafe truncate block">
+                            {req.municipality || 'N/A'}, {req.department || 'Guatemala'}
+                          </span>
+                        </div>
+
+                        {/* Nacimiento y vencimiento */}
+                        <div className="rounded-2xl bg-white p-3 border border-[#E8D9C8]">
+                          <span className="block text-[10px] font-extrabold uppercase text-text-muted">Fechas DPI</span>
+                          <span className="font-semibold text-cafe block text-[11px]">
+                            Nacimiento: <strong>{req.birthDate || 'No indicada'}</strong>
+                          </span>
+                          <span className="font-semibold text-cafe block text-[11px]">
+                            Vencimiento: <strong>{req.expirationDate || 'No indicada'}</strong>
+                          </span>
+                        </div>
+
+                        {/* Dirección */}
+                        <div className="rounded-2xl bg-white p-3 border border-[#E8D9C8] sm:col-span-2 md:col-span-1">
+                          <span className="block text-[10px] font-extrabold uppercase text-text-muted">Dirección Residencial</span>
+                          <span className="font-semibold text-cafe block truncate" title={req.legalAddress}>
+                            {req.legalAddress || 'No especificada'}
+                          </span>
+                        </div>
+
+                        {/* Contacto de respaldo */}
+                        <div className="rounded-2xl bg-white p-3 border border-[#E8D9C8] sm:col-span-2">
+                          <span className="block text-[10px] font-extrabold uppercase text-text-muted">Contacto de Respaldo / Referencia</span>
+                          <span className="font-bold text-cafe">
+                            {req.emergencyName || 'No indicado'}
+                            {req.emergencyRelation ? ` (${req.emergencyRelation})` : ''}
+                            {req.emergencyPhone ? ` · Tel: ${req.emergencyPhone}` : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Foto del DPI adjunta */}
+                      {req.documentPhoto && (
+                        <div className="mt-3 flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-300/40 p-3">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={req.documentPhoto}
+                              alt="Miniatura DPI"
+                              className="h-12 w-18 object-cover rounded-xl border border-amber-300 shadow-xs"
+                            />
+                            <div>
+                              <p className="text-xs font-black text-amber-950">Foto de Documento Adjunta</p>
+                              <p className="text-[11px] text-amber-800">El usuario adjuntó imagen frontal de su DPI.</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setViewingDpiPhoto(req.documentPhoto)}
+                            className="flex items-center gap-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-300 px-3 py-1.5 text-xs font-bold text-amber-950 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Eye size={14} /> Ver en grande
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Rejection reason box if rejected */}
+                      {req.status === 'rechazada' && req.rejectionReason && (
+                        <div className="mt-3 rounded-2xl bg-red-50 p-3 border border-red-200 text-xs">
+                          <span className="font-bold text-red-900 block">Motivo del rechazo notificado:</span>
+                          <p className="text-red-800 font-medium mt-0.5">{req.rejectionReason}</p>
+                          {req.reviewedBy && (
+                            <span className="block text-[10px] text-red-600 mt-1">
+                              Revisado por: {req.reviewedBy} {req.reviewedAt ? `el ${new Date(req.reviewedAt).toLocaleDateString('es-GT')}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Approval details if approved */}
+                      {req.status === 'aprobada' && (
+                        <div className="mt-3 rounded-2xl bg-green-50 p-3 border border-green-200 text-xs flex items-center justify-between">
+                          <span className="font-bold text-green-900">
+                            ✓ Solicitud aprobada y permisos de casero activados.
+                          </span>
+                          {req.reviewedBy && (
+                            <span className="text-[11px] text-green-800">
+                              Por: {req.reviewedBy}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="mt-4 flex items-center justify-end gap-2.5 pt-3 border-t border-border/50 flex-wrap">
+                        {req.status === 'pendiente' && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isProcessingVerifAction}
+                              onClick={() => handleOpenRejectModal(req)}
+                              className="flex items-center gap-1.5 rounded-xl border border-red-300 bg-white hover:bg-red-50 px-4 py-2 text-xs font-black text-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              <X size={15} /> Rechazar solicitud...
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isProcessingVerifAction}
+                              onClick={() => handleOpenApproveModal(req)}
+                              className="flex items-center gap-1.5 rounded-xl bg-forest hover:bg-forest-dark px-5 py-2 text-xs font-black text-white shadow-md transition-all hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
+                            >
+                              <Check size={16} /> Aprobar y habilitar como casero
+                            </button>
+                          </>
+                        )}
+
+                        {req.status === 'rechazada' && (
+                          <button
+                            type="button"
+                            disabled={isProcessingVerifAction}
+                            onClick={() => handleOpenApproveModal(req)}
+                            className="flex items-center gap-1.5 rounded-xl bg-forest/10 hover:bg-forest/20 px-3 py-1.5 text-xs font-bold text-forest transition-colors cursor-pointer"
+                          >
+                            <Check size={14} /> Reconsiderar y aprobar
+                          </button>
+                        )}
+
+                        {req.status === 'aprobada' && (
+                          <button
+                            type="button"
+                            disabled={isProcessingVerifAction}
+                            onClick={() => handleOpenRejectModal(req)}
+                            className="flex items-center gap-1.5 rounded-xl bg-red-50 hover:bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 transition-colors cursor-pointer"
+                          >
+                            <X size={14} /> Revocar aprobación...
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                </div>
+              )}
+
+              {/* Paginación de solicitudes */}
+              <RuwaPagination
+                currentPage={verificationPage}
+                totalPages={totalVerificationPages}
+                totalItems={filteredVerificationRequests.length}
+                itemsPerPage={VERIFICATIONS_PER_PAGE}
+                onPageChange={setVerificationPage}
+                label="solicitudes"
+              />
             </SectionCard>
 
             {/* ── SECCIÓN: Publicar y Gestionar Actualizaciones del Sistema ── */}
@@ -2867,13 +2513,6 @@ export default function ProfilePage() {
 
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setEditingUpdate({ ...item })}
-                              className="rounded-lg bg-forest/10 p-1.5 text-forest hover:bg-forest/20 transition-colors cursor-pointer"
-                              title="Editar comunicado"
-                            >
-                              <Edit3 size={14} />
-                            </button>
-                            <button
                               onClick={async () => {
                                 const nextState = item.active === false;
                                 try {
@@ -2883,7 +2522,7 @@ export default function ProfilePage() {
                                   setAdminNotice(err.message);
                                 }
                               }}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors ${
                                 item.active !== false
                                   ? 'bg-jade/10 text-jade hover:bg-jade/20'
                                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -2902,7 +2541,7 @@ export default function ProfilePage() {
                                   }
                                 }
                               }}
-                              className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors cursor-pointer"
+                              className="rounded-lg bg-red-50 p-1.5 text-red-500 hover:bg-red-100 transition-colors"
                               title="Eliminar comunicado"
                             >
                               <Trash2 size={14} />
@@ -2923,488 +2562,404 @@ export default function ProfilePage() {
               </div>
             </SectionCard>
 
-            {/* Gestión de Usuarios con CRUD completo, Paginación y Filtro por Roles */}
-            {(() => {
-              const filteredUsers = allUsers.filter((u) => {
-                const isAdminAccount = isUserAdminEmail(u.email) || u.role === 'admin';
-                const resolvedRole = isAdminAccount ? 'admin' : (u.role || 'seeker');
-                if (adminUserRoleFilter !== 'all' && resolvedRole !== adminUserRoleFilter) {
-                  return false;
-                }
-                if (!adminSearchQuery.trim()) return true;
-                const q = adminSearchQuery.toLowerCase();
-                return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.phone || '').includes(q);
-              });
-
-              const userItemsPerPage = 8;
-              const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / userItemsPerPage));
-              const currentUserPage = Math.min(adminUserPage, totalUserPages);
-              const startIdx = (currentUserPage - 1) * userItemsPerPage;
-              const paginatedUsers = filteredUsers.slice(startIdx, startIdx + userItemsPerPage);
-
-              const countSeekers = allUsers.filter((u) => (u.role || 'seeker') === 'seeker' && !isUserAdminEmail(u.email) && u.role !== 'admin').length;
-              const countOwners = allUsers.filter((u) => u.role === 'owner' && !isUserAdminEmail(u.email)).length;
-              const countAdmins = allUsers.filter((u) => isUserAdminEmail(u.email) || u.role === 'admin').length;
-
-              return (
-                <SectionCard>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest/10 text-forest">
-                        <Users size={18} />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-extrabold text-cafe">Gestión de Usuarios</h3>
-                        <p className="text-xs text-text-muted">Administra roles, suspende cuentas o da de baja usuarios</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-text-muted hidden sm:inline">{filteredUsers.length} de {allUsers.length}</span>
-                      <button
-                        type="button"
-                        onClick={() => setShowCreateUserModal(true)}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-forest px-3.5 py-2 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs cursor-pointer"
-                      >
-                        <PlusCircle size={14} /> Nuevo Usuario
-                      </button>
-                    </div>
+            {/* Gestión de Usuarios */}
+            <SectionCard>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest/10 text-forest">
+                    <Users size={18} />
                   </div>
-
-                  {/* Filtro por Roles */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3 no-scrollbar">
-                    {[
-                      { key: 'all', label: `Todos (${allUsers.length})` },
-                      { key: 'seeker', label: `Inquilinos (${countSeekers})` },
-                      { key: 'owner', label: `Propietarios (${countOwners})` },
-                      { key: 'admin', label: `Administradores (${countAdmins})` },
-                    ].map((rf) => (
-                      <button
-                        key={rf.key}
-                        type="button"
-                        onClick={() => {
-                          setAdminUserRoleFilter(rf.key);
-                          setAdminUserPage(1);
-                        }}
-                        className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-black transition-all cursor-pointer ${
-                          adminUserRoleFilter === rf.key
-                            ? 'bg-forest text-white shadow-xs'
-                            : 'bg-crema/60 text-cafe hover:bg-crema'
-                        }`}
-                      >
-                        {rf.label}
-                      </button>
-                    ))}
+                  <div>
+                    <h3 className="text-base font-extrabold text-cafe">Gestión de Usuarios</h3>
+                    <p className="text-xs text-text-muted">Asigna roles de Administrador, Propietario o Inquilino y modera accesos</p>
                   </div>
+                </div>
+                <span className="rounded-full bg-forest/10 px-3 py-1 text-xs font-black text-forest self-start sm:self-auto">
+                  {allUsers.length} registrados
+                </span>
+              </div>
 
-                  {/* Buscador de usuarios */}
-                  <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5 focus-within:border-forest">
-                    <Mail size={16} className="text-text-muted shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Buscar usuario por nombre, correo o teléfono..."
-                      value={adminSearchQuery}
-                      onChange={(e) => {
-                        setAdminSearchQuery(e.target.value);
-                        setAdminUserPage(1);
+              {/* Filtros por Rol y Estado */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                {/* Tabs de roles */}
+                <div className="flex items-center gap-1 overflow-x-auto rounded-2xl bg-crema/60 p-1 border border-border">
+                  {[
+                    { id: 'todos', label: 'Todos', count: userRoleCounts.todos },
+                    { id: 'seeker', label: 'Inquilinos', count: userRoleCounts.seeker },
+                    { id: 'owner', label: 'Propietarios', count: userRoleCounts.owner },
+                    { id: 'admin', label: 'Admins', count: userRoleCounts.admin },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setAdminUserRoleFilter(tab.id)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        adminUserRoleFilter === tab.id
+                          ? 'bg-white text-forest shadow-xs font-extrabold'
+                          : 'text-text-muted hover:text-cafe'
+                      }`}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
+
+                {/* Filtro de estado */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-text-muted hidden md:inline">Estado:</span>
+                  <select
+                    value={adminUserStatusFilter}
+                    onChange={(e) => setAdminUserStatusFilter(e.target.value)}
+                    className="rounded-xl border border-border bg-[#FDFBF7] px-3 py-1.5 text-xs font-bold text-cafe outline-none cursor-pointer"
+                  >
+                    <option value="todos">Todos los estados</option>
+                    <option value="active">🟢 Solo Activos ({userRoleCounts.active})</option>
+                    <option value="inactive">🟡 Solo Inactivos ({userRoleCounts.inactive})</option>
+                    <option value="suspended">🔴 Solo Suspendidos ({userRoleCounts.suspended})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Buscador de usuarios */}
+              <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5">
+                <Search size={16} className="text-text-muted shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Buscar usuario por nombre, correo o teléfono..."
+                  value={adminSearchQuery}
+                  onChange={(e) => setAdminSearchQuery(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm text-cafe outline-none"
+                />
+                {adminSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminSearchQuery('')}
+                    className="text-text-muted hover:text-cafe p-1"
+                    title="Limpiar búsqueda"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Lista de usuarios con paginación */}
+              {filteredUsers.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-[#FDFBF7] py-10 text-center">
+                  <Users size={36} className="mx-auto mb-2 text-text-muted/40" />
+                  <p className="text-sm font-bold text-cafe">No se encontraron usuarios</p>
+                  <p className="text-xs text-text-muted mt-1">
+                    No hay resultados para los filtros o término de búsqueda ingresado.
+                  </p>
+                  {(adminSearchQuery || adminUserRoleFilter !== 'todos' || adminUserStatusFilter !== 'todos') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdminSearchQuery('');
+                        setAdminUserRoleFilter('todos');
+                        setAdminUserStatusFilter('todos');
                       }}
-                      className="min-w-0 flex-1 bg-transparent text-sm text-cafe outline-none"
-                    />
-                    {adminSearchQuery && (
-                      <button onClick={() => setAdminSearchQuery('')} className="text-text-muted hover:text-cafe cursor-pointer">
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Lista paginada de usuarios */}
-                  <div className="space-y-2.5">
-                    {paginatedUsers.length === 0 ? (
-                      <div className="p-8 text-center rounded-2xl border border-dashed border-border bg-crema/20">
-                        <p className="text-sm font-bold text-cafe">No se encontraron usuarios con los criterios actuales</p>
-                      </div>
-                    ) : (
-                      paginatedUsers.map((u) => {
-                        const isAdminAccount = isUserAdminEmail(u.email) || u.role === 'admin';
-                        const isSelf = u.id === (currentUserId || user?.id) || u.email === user?.email;
-                        return (
-                          <div
-                            key={u.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border bg-[#FDFBF7] p-3.5 hover:border-forest/30 transition-all shadow-2xs"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-bold text-cafe truncate">{u.name || 'Usuario RuwaJay'}</p>
-                                {isAdminAccount && (
-                                  <span className="rounded-md bg-forest text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider">
-                                    🛡️ Admin
-                                  </span>
-                                )}
-                                {u.verified && (
-                                  <span className="rounded-md bg-dorado/15 text-dorado px-2 py-0.5 text-[10px] font-black">
-                                    ✓ DPI Validado
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-text-muted truncate mt-0.5">
-                                {u.email} {u.phone ? `• Tel: ${u.phone}` : ''}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* Rol Selector */}
-                              <select
-                                value={isAdminAccount ? 'admin' : (u.role || 'seeker')}
-                                disabled={isUserAdminEmail(u.email)}
-                                onChange={async (e) => {
-                                  try {
-                                    await updateUserRole(u.id, e.target.value);
-                                    setAdminNotice(`Rol de ${u.email} actualizado a ${e.target.value}.`);
-                                  } catch (err) {
-                                    alert(err.message);
-                                  }
-                                }}
-                                className="rounded-xl border border-border bg-white px-2.5 py-1.5 text-xs font-bold text-cafe outline-none cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed"
-                                title="Cambiar rol de usuario"
-                              >
-                                <option value="seeker">👤 Inquilino</option>
-                                <option value="owner">🏡 Propietario</option>
-                                <option value="admin">🛡️ Administrador</option>
-                              </select>
-
-                              {/* Toggle Activo / Suspendido */}
-                              <button
-                                onClick={async () => {
-                                  const currentSt = u.accountStatus || (u.suspended ? 'suspended' : 'active');
-                                  const newStatus = currentSt === 'active' ? 'suspended' : 'active';
-                                  try {
-                                    await updateUserStatus(u.id, newStatus);
-                                    setAdminNotice(`Estado de cuenta de ${u.name || u.email} actualizado a ${newStatus}.`);
-                                  } catch (err) {
-                                    alert(err.message);
-                                  }
-                                }}
-                                className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition-colors cursor-pointer ${
-                                  (u.accountStatus || 'active') === 'active' && !u.suspended
-                                    ? 'bg-jade/10 text-jade hover:bg-jade/20'
-                                    : 'bg-red-50 text-red-600 hover:bg-red-100'
-                                }`}
-                                title="Cambiar estado de suspensión"
-                              >
-                                {(u.accountStatus || 'active') === 'active' && !u.suspended ? '● Activo' : '● Suspendido'}
-                              </button>
-
-                              {/* Botón Eliminar Usuario */}
-                              <button
-                                onClick={async () => {
-                                  if (isUserAdminEmail(u.email) || isSelf) {
-                                    alert('Por seguridad no puedes eliminar tu propia cuenta o la cuenta administradora principal.');
-                                    return;
-                                  }
-                                  if (window.confirm(`¿Estás seguro de eliminar permanentemente a "${u.name || u.email}"? Esta acción borrará al usuario de RuwaJay.`)) {
-                                    try {
-                                      await deleteUser(u.id);
-                                      setAllUsers((prev) => prev.filter((item) => item.id !== u.id));
-                                      setAdminNotice('✅ Usuario eliminado correctamente.');
-                                    } catch (err) {
-                                      setAdminNotice('Error al eliminar: ' + err.message);
-                                    }
-                                  }
-                                }}
-                                disabled={isUserAdminEmail(u.email) || isSelf}
-                                className="rounded-xl border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                title={isSelf ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario permanentemente'}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* Paginación de usuarios */}
-                  {totalUserPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
-                      <span className="font-medium text-text-muted">
-                        Página <strong>{currentUserPage}</strong> de <strong>{totalUserPages}</strong> ({filteredUsers.length} usuarios)
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setAdminUserPage((p) => Math.max(1, p - 1))}
-                          disabled={currentUserPage === 1}
-                          className="rounded-xl border border-border px-3 py-1 font-bold text-cafe hover:bg-crema disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          Anterior
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminUserPage((p) => Math.min(totalUserPages, p + 1))}
-                          disabled={currentUserPage === totalUserPages}
-                          className="rounded-xl border border-border px-3 py-1 font-bold text-cafe hover:bg-crema disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          Siguiente
-                        </button>
-                      </div>
-                    </div>
+                      className="mt-3 text-xs font-extrabold text-forest hover:underline cursor-pointer"
+                    >
+                      Restablecer filtros
+                    </button>
                   )}
-                </SectionCard>
-              );
-            })()}
-
-            {/* Moderación de Propiedades con CRUD completo, Filtro por Ubicación y Paginación */}
-            {(() => {
-              const filteredProperties = allProperties.filter((prop) => {
-                // Filtro por Estado
-                if (adminPropStatusFilter !== 'todas' && (prop.status || 'disponible') !== adminPropStatusFilter) {
-                  return false;
-                }
-                // Filtro por Departamento
-                if (adminPropDepartmentFilter !== 'todas') {
-                  const propDept = (prop.address?.department || prop.department || '').toLowerCase();
-                  const propAddr = (prop.address?.full || prop.address?.approximate || '').toLowerCase();
-                  const filterDept = adminPropDepartmentFilter.toLowerCase();
-                  if (!propDept.includes(filterDept) && !propAddr.includes(filterDept)) {
-                    return false;
-                  }
-                }
-                // Filtro por Búsqueda (zona, municipio, título)
-                if (adminPropSearch.trim()) {
-                  const q = adminPropSearch.toLowerCase();
-                  const title = (prop.title || '').toLowerCase();
-                  const zone = (prop.address?.zone || '').toLowerCase();
-                  const muni = (prop.address?.municipality || '').toLowerCase();
-                  const dept = (prop.address?.department || '').toLowerCase();
-                  const approx = (prop.address?.approximate || '').toLowerCase();
-                  return title.includes(q) || zone.includes(q) || muni.includes(q) || dept.includes(q) || approx.includes(q);
-                }
-                return true;
-              });
-
-              const propItemsPerPage = 8;
-              const totalPropPages = Math.max(1, Math.ceil(filteredProperties.length / propItemsPerPage));
-              const currentPropPage = Math.min(adminPropPage, totalPropPages);
-              const startIdx = (currentPropPage - 1) * propItemsPerPage;
-              const paginatedProperties = filteredProperties.slice(startIdx, startIdx + propItemsPerPage);
-
-              return (
-                <SectionCard>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-terracota/10 text-terracota">
-                        <Building2 size={18} />
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {paginatedUsers.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border bg-crema/30 p-3 sm:p-3.5 transition-all hover:bg-white hover:border-[#E8D9C8]"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <UserAvatar user={u} size={42} className="shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-cafe truncate">{u.name || 'Sin nombre'}</p>
+                            {u.role === 'admin' && (
+                              <span className="rounded-md bg-forest text-white px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">
+                                Admin
+                              </span>
+                            )}
+                            {u.role === 'owner' && (
+                              <span className="rounded-md bg-dorado/20 text-dorado border border-dorado/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider">
+                                Casero
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-text-muted truncate">
+                            <span className="truncate">{u.email}</span>
+                            {u.phone && (
+                              <>
+                                <span>•</span>
+                                <span className="font-medium text-cafe">{u.phone}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-base font-extrabold text-cafe">Moderación de Propiedades</h3>
-                        <p className="text-xs text-text-muted">Supervisa, edita o elimina inmuebles con filtros por ubicación</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-text-muted">
-                      {filteredProperties.length} de {allProperties.length} inmuebles
-                    </span>
-                  </div>
 
-                  {/* Filtros: Departamento, Estado y Búsqueda */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
-                    {/* Filtro por Departamento / Ubicación */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-text-muted mb-1 flex items-center gap-1">
-                        <MapPin size={12} className="text-forest" /> Ubicación (Departamento)
-                      </label>
-                      <select
-                        value={adminPropDepartmentFilter}
-                        onChange={(e) => {
-                          setAdminPropDepartmentFilter(e.target.value);
-                          setAdminPropPage(1);
-                        }}
-                        className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3 py-2 text-xs font-bold text-cafe outline-none"
-                      >
-                        <option value="todas">📍 Toda Guatemala (Todos)</option>
-                        {GT_DEPARTMENTS.map((dept) => (
-                          <option key={dept} value={dept}>
-                            {dept}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Filtro por Estado */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-text-muted mb-1">Estado de Inmueble</label>
-                      <select
-                        value={adminPropStatusFilter}
-                        onChange={(e) => {
-                          setAdminPropStatusFilter(e.target.value);
-                          setAdminPropPage(1);
-                        }}
-                        className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3 py-2 text-xs font-bold text-cafe outline-none"
-                      >
-                        <option value="todas">Todos los estados</option>
-                        <option value="disponible">🟢 Disponible</option>
-                        <option value="alquilada">🔵 Alquilada</option>
-                        <option value="pausada">🟡 Pausada</option>
-                      </select>
-                    </div>
-
-                    {/* Buscador de Propiedades */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-text-muted mb-1">Zona, Municipio o Título</label>
-                      <div className="flex items-center gap-1.5 rounded-xl border border-border bg-[#FDFBF7] px-3 py-2">
-                        <input
-                          type="text"
-                          placeholder="Ej. Zona 10, Antigua..."
-                          value={adminPropSearch}
-                          onChange={(e) => {
-                            setAdminPropSearch(e.target.value);
-                            setAdminPropPage(1);
+                      <div className="flex items-center gap-2 flex-wrap self-end sm:self-center">
+                        <select
+                          value={u.role || 'seeker'}
+                          onChange={async (e) => {
+                            try {
+                              await updateUserRole(u.id, e.target.value);
+                              setAdminNotice(`Rol de ${u.email} actualizado a ${e.target.value}.`);
+                            } catch (err) {
+                              window.alert(err.message);
+                            }
                           }}
-                          className="min-w-0 flex-1 bg-transparent text-xs text-cafe outline-none"
-                        />
-                        {adminPropSearch && (
-                          <button onClick={() => setAdminPropSearch('')} className="text-text-muted hover:text-cafe cursor-pointer">
-                            <X size={12} />
-                          </button>
-                        )}
+                          className="rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-bold text-cafe outline-none cursor-pointer hover:border-forest"
+                        >
+                          <option value="seeker">👤 Inquilino</option>
+                          <option value="owner">🏡 Propietario</option>
+                          <option value="admin">🛡️ Administrador</option>
+                        </select>
+                        {(() => {
+                          const currentStatus = resolveUserStatus(u, u.email);
+                          return (
+                            <select
+                              value={currentStatus}
+                              onChange={async (e) => {
+                                const newStatus = e.target.value;
+                                if (newStatus === currentStatus) return;
+                                if (newStatus === 'suspended') {
+                                  const confirmSuspend = window.confirm(
+                                    `¿Confirmas suspender la cuenta de "${u.name || u.email}"? El usuario será desconectado inmediatamente del sistema y no podrá volver a iniciar sesión hasta que sea reactivado.`
+                                  );
+                                  if (!confirmSuspend) return;
+                                } else if (newStatus === 'active' && currentStatus !== 'active') {
+                                  const confirmActivate = window.confirm(
+                                    `¿Confirmas reactivar la cuenta de "${u.name || u.email}"? Se levantarán todas las restricciones y el usuario podrá iniciar sesión y entrar a la plataforma normalmente.`
+                                  );
+                                  if (!confirmActivate) return;
+                                }
+                                try {
+                                  await updateUserStatus(u.id, newStatus);
+                                  const statusLabels = {
+                                    active: 'Activo (Acceso totalmente habilitado)',
+                                    inactive: 'Inactivo',
+                                    suspended: 'Suspendido (Acceso bloqueado)',
+                                  };
+                                  setAdminNotice(`Estado de cuenta de ${u.email} cambiado a ${statusLabels[newStatus] || newStatus}.`);
+                                } catch (err) {
+                                  window.alert(err.message || 'Error al actualizar estado.');
+                                }
+                              }}
+                              className={`rounded-xl px-2.5 py-1.5 text-xs font-bold transition-all cursor-pointer border outline-none ${
+                                currentStatus === 'active'
+                                  ? 'bg-jade/10 text-jade border-jade/30 hover:bg-jade/20'
+                                  : currentStatus === 'inactive'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                                  : 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100'
+                              }`}
+                            >
+                              <option value="active">🟢 Activo</option>
+                              <option value="inactive">🟡 Inactivo</option>
+                              <option value="suspended">🔴 Suspendido</option>
+                            </select>
+                          );
+                        })()}
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Componente de Paginación */}
+              <RuwaPagination
+                currentPage={adminUserPage}
+                totalPages={totalUserPages}
+                totalItems={filteredUsers.length}
+                itemsPerPage={USERS_PER_PAGE}
+                onPageChange={setAdminUserPage}
+                label="usuarios"
+              />
+            </SectionCard>
+
+            {/* Moderación de Propiedades */}
+            <SectionCard>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-terracota/10 text-terracota">
+                    <Building2 size={18} />
                   </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-cafe">Moderación de Propiedades</h3>
+                    <p className="text-xs text-text-muted">Supervisa y actualiza el estado de los inmuebles publicados en toda Guatemala</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-terracota/10 px-3 py-1 text-xs font-black text-terracota self-start sm:self-auto">
+                  {allProperties.length} registradas
+                </span>
+              </div>
 
-                  {/* Lista paginada de propiedades */}
-                  <div className="space-y-2.5">
-                    {paginatedProperties.length === 0 ? (
-                      <div className="p-8 text-center rounded-2xl border border-dashed border-border bg-crema/20">
-                        <Building2 size={32} className="mx-auto mb-2 text-text-muted/40" />
-                        <p className="text-sm font-bold text-cafe">No se encontraron propiedades con los filtros seleccionados</p>
-                      </div>
-                    ) : (
-                      paginatedProperties.map((prop) => {
-                        const thumb = prop.images?.[0] || prop.image || null;
-                        return (
-                          <div
-                            key={prop.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-2xl border border-border bg-[#FDFBF7] p-3.5 hover:border-forest/30 transition-all shadow-2xs"
-                          >
-                            {/* Thumbnail and Info */}
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              {thumb ? (
-                                <img
-                                  src={thumb}
-                                  alt={prop.title || 'Inmueble'}
-                                  className="h-14 w-14 shrink-0 rounded-xl object-cover border border-border"
-                                />
-                              ) : (
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-crema border border-border text-text-muted">
-                                  <Home size={20} />
-                                </div>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-sm font-bold text-cafe truncate">{prop.title || 'Propiedad sin título'}</h4>
-                                <p className="text-xs text-text-muted truncate mt-0.5">
-                                  📍 {prop.address?.approximate || prop.address?.zone || prop.address?.department || 'Guatemala'} •{' '}
-                                  <span className="font-extrabold text-forest">Q {Number(prop.price || 0).toLocaleString()}</span>
-                                  {prop.pricing?.period ? `/${prop.pricing.period}` : '/mes'}
-                                </p>
-                              </div>
+              {/* Filtros por Estado */}
+              <div className="flex items-center gap-1 overflow-x-auto rounded-2xl bg-crema/60 p-1 border border-border mb-4">
+                {[
+                  { id: 'todas', label: 'Todas', count: propertyStatusCounts.todas },
+                  { id: 'disponible', label: 'Disponibles', count: propertyStatusCounts.disponible },
+                  { id: 'alquilada', label: 'Alquiladas', count: propertyStatusCounts.alquilada },
+                  { id: 'pausada', label: 'Pausadas', count: propertyStatusCounts.pausada },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setAdminPropertyStatusFilter(tab.id)}
+                    className={`rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      adminPropertyStatusFilter === tab.id
+                        ? 'bg-white text-forest shadow-xs font-extrabold'
+                        : 'text-text-muted hover:text-cafe'
+                    }`}
+                  >
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
+              </div>
+
+              {/* Buscador de Propiedades */}
+              <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E8D9C8] bg-[#FDFBF7] px-4 py-2.5">
+                <Search size={16} className="text-text-muted shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Buscar vivienda por título, zona, municipio o propietario..."
+                  value={adminPropertySearch}
+                  onChange={(e) => setAdminPropertySearch(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm text-cafe outline-none"
+                />
+                {adminPropertySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminPropertySearch('')}
+                    className="text-text-muted hover:text-cafe p-1"
+                    title="Limpiar búsqueda"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Lista de propiedades con paginación */}
+              {allProperties.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-[#FDFBF7] py-10 text-center">
+                  <Building2 size={36} className="mx-auto mb-2 text-text-muted/40" />
+                  <p className="text-sm font-bold text-cafe">No hay propiedades publicadas aún</p>
+                  <p className="text-xs text-text-muted mt-1">Los caseros publicarán viviendas que aparecerán aquí para moderación.</p>
+                </div>
+              ) : filteredProperties.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-[#FDFBF7] py-10 text-center">
+                  <Search size={36} className="mx-auto mb-2 text-text-muted/40" />
+                  <p className="text-sm font-bold text-cafe">No se encontraron propiedades</p>
+                  <p className="text-xs text-text-muted mt-1">Ningún inmueble coincide con el estado o búsqueda seleccionada.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdminPropertySearch('');
+                      setAdminPropertyStatusFilter('todas');
+                    }}
+                    className="mt-3 text-xs font-extrabold text-forest hover:underline cursor-pointer"
+                  >
+                    Restablecer búsqueda
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {paginatedProperties.map((prop) => {
+                    const thumb = prop.thumbnail || prop.images?.[0] || '';
+                    const propStatus = (prop.status || 'disponible').toLowerCase();
+                    return (
+                      <div
+                        key={prop.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border bg-crema/30 p-3 sm:p-3.5 transition-all hover:bg-white hover:border-[#E8D9C8]"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={prop.title || 'Propiedad'}
+                              className="h-12 w-16 object-cover rounded-xl border border-border-light shadow-xs shrink-0"
+                            />
+                          ) : (
+                            <div className="h-12 w-16 rounded-xl bg-forest/10 border border-border-light flex items-center justify-center text-forest shrink-0">
+                              <Home size={20} />
                             </div>
+                          )}
 
-                            {/* CRUD Controls: Ver, Editar, Cambiar Estado, Eliminar */}
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              {/* Ver Inmueble */}
-                              <Link
-                                to={`/propiedad/${prop.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-xl border border-border bg-white px-2.5 py-1.5 text-xs font-bold text-cafe hover:bg-crema transition-colors cursor-pointer"
-                                title="Ver anuncio en nueva pestaña"
-                              >
-                                <Eye size={13} /> Ver
-                              </Link>
-
-                              {/* Editar Inmueble */}
-                              <button
-                                type="button"
-                                onClick={() => setAdminEditingProperty(prop)}
-                                className="inline-flex items-center gap-1 rounded-xl bg-forest/10 px-2.5 py-1.5 text-xs font-bold text-forest hover:bg-forest/20 transition-colors cursor-pointer"
-                                title="Editar publicación"
-                              >
-                                <Edit3 size={13} /> Editar
-                              </button>
-
-                              {/* Selector de Estado */}
-                              <select
-                                value={prop.status || 'disponible'}
-                                onChange={async (e) => {
-                                  try {
-                                    await updatePropertyStatus(prop.id, e.target.value);
-                                    setAdminNotice(`Estado del inmueble cambiado a ${e.target.value}.`);
-                                  } catch (err) {
-                                    alert(err.message);
-                                  }
-                                }}
-                                className="rounded-xl border border-border bg-white px-2.5 py-1.5 text-xs font-bold text-cafe outline-none cursor-pointer"
-                                title="Cambiar estado del inmueble"
-                              >
-                                <option value="disponible">🟢 Disponible</option>
-                                <option value="alquilada">🔵 Alquilada</option>
-                                <option value="pausada">🟡 Pausada</option>
-                              </select>
-
-                              {/* Eliminar Inmueble */}
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (window.confirm(`¿Estás seguro de eliminar permanentemente la propiedad "${prop.title || 'Propiedad'}"? Esta acción no se puede deshacer.`)) {
-                                    try {
-                                      await deleteProperty(prop.id);
-                                      setAllProperties((prev) => prev.filter((p) => p.id !== prop.id));
-                                      setAdminNotice('✅ Propiedad eliminada correctamente.');
-                                    } catch (err) {
-                                      setAdminNotice('Error al eliminar propiedad: ' + err.message);
-                                    }
-                                  }
-                                }}
-                                className="rounded-xl border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 transition-colors cursor-pointer"
-                                title="Eliminar propiedad permanentemente"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              <p className="text-sm font-bold text-cafe truncate">{prop.title || 'Propiedad sin título'}</p>
+                              {propStatus === 'disponible' && (
+                                <span className="rounded-full bg-jade/10 text-jade border border-jade/20 px-2 py-0.2 text-[9px] font-black uppercase">
+                                  Disponible
+                                </span>
+                              )}
+                              {propStatus === 'alquilada' && (
+                                <span className="rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.2 text-[9px] font-black uppercase">
+                                  Alquilada
+                                </span>
+                              )}
+                              {propStatus === 'pausada' && (
+                                <span className="rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.2 text-[9px] font-black uppercase">
+                                  Pausada
+                                </span>
+                              )}
                             </div>
+                            <p className="text-xs text-text-muted truncate mt-0.5">
+                              {prop.address?.approximate || prop.address?.zone || prop.zone || 'Ubicación no indicada'} •{' '}
+                              <strong className="text-cafe font-extrabold">Q {Number(prop.price || 0).toLocaleString()}</strong>/mes
+                            </p>
+                            {(prop.ownerName || prop.ownerEmail) && (
+                              <p className="text-[11px] text-text-muted truncate mt-0.5">
+                                Propietario: {prop.ownerName || prop.ownerEmail}
+                              </p>
+                            )}
                           </div>
-                        );
-                      })
-                    )}
-                  </div>
+                        </div>
 
-                  {/* Paginación de propiedades */}
-                  {totalPropPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
-                      <span className="font-medium text-text-muted">
-                        Página <strong>{currentPropPage}</strong> de <strong>{totalPropPages}</strong> ({filteredProperties.length} inmuebles)
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setAdminPropPage((p) => Math.max(1, p - 1))}
-                          disabled={currentPropPage === 1}
-                          className="rounded-xl border border-border px-3 py-1 font-bold text-cafe hover:bg-crema disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          Anterior
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminPropPage((p) => Math.min(totalPropPages, p + 1))}
-                          disabled={currentPropPage === totalPropPages}
-                          className="rounded-xl border border-border px-3 py-1 font-bold text-cafe hover:bg-crema disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          Siguiente
-                        </button>
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <select
+                            value={propStatus}
+                            onChange={async (e) => {
+                              try {
+                                await updatePropertyStatus(prop.id, e.target.value);
+                                setAdminNotice(`Estado del inmueble cambiado a ${e.target.value}.`);
+                              } catch (err) {
+                                window.alert(err.message);
+                              }
+                            }}
+                            className="rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-bold text-cafe outline-none cursor-pointer hover:border-forest"
+                          >
+                            <option value="disponible">🟢 Disponible</option>
+                            <option value="alquilada">🔵 Alquilada</option>
+                            <option value="pausada">⏸️ Pausada</option>
+                          </select>
+                          <Link
+                            to={`/propiedad/${prop.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center h-8 w-8 rounded-xl bg-forest/10 hover:bg-forest/20 text-forest transition-colors cursor-pointer"
+                            title="Ver publicación"
+                          >
+                            <ExternalLink size={14} />
+                          </Link>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </SectionCard>
-              );
-            })()}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Componente de Paginación */}
+              <RuwaPagination
+                currentPage={adminPropertyPage}
+                totalPages={totalPropertyPages}
+                totalItems={filteredProperties.length}
+                itemsPerPage={PROPERTIES_PER_PAGE}
+                onPageChange={setAdminPropertyPage}
+                label="viviendas"
+              />
+            </SectionCard>
           </div>
         )}
 
@@ -3431,7 +2986,7 @@ export default function ProfilePage() {
                   { icon: Mail, label: 'Correo electrónico', value: user?.email || 'Sin correo', iconBg: 'bg-forest/10' },
                   { icon: Phone, label: 'Teléfono', value: user?.phone || 'No registrado', iconBg: 'bg-forest/10' },
                   { icon: ShieldCheck, label: 'Tipo de cuenta', value: user?.role === 'owner' ? 'Propietario / Casero' : 'Inquilino / Buscador', iconBg: 'bg-dorado/10', iconColor: 'text-dorado' },
-                  { icon: FileText, label: 'Biografía', value: getCleanBio(user?.bio) || 'Sin biografía — edita tu perfil para agregar una', iconBg: 'bg-forest/10' },
+                  { icon: FileText, label: 'Biografía', value: user?.bio || 'Sin biografía — edita tu perfil para agregar una', iconBg: 'bg-forest/10' },
                 ].map(({ icon: Icon, label, value, iconBg, iconColor }) => (
                   <div key={label} className="flex items-center gap-4 rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-4">
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconBg}`}>
@@ -3562,197 +3117,216 @@ export default function ProfilePage() {
               </div>
             </SectionCard>
 
-            {/* Identity Verification - Omitir para administradores */}
-            {!isAdmin && (
-              <SectionCard>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe">
-                    <BadgeCheck size={20} className="text-dorado" /> Verificación oficial de identidad
-                  </h3>
-                  {isVerified && (
-                    <button
-                      type="button"
-                      onClick={() => setShowDpiModal(true)}
-                      className="text-xs font-bold text-forest hover:underline"
-                    >
-                      Actualizar datos
-                    </button>
-                  )}
-                </div>
+            {/* Identity Verification */}
+            <SectionCard>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="flex items-center gap-2 text-base font-extrabold text-cafe">
+                  <BadgeCheck size={20} className="text-dorado" /> Verificación oficial de identidad
+                </h3>
+                {isVerified && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDpiModal(true)}
+                    className="text-xs font-bold text-forest hover:underline"
+                  >
+                    Actualizar datos
+                  </button>
+                )}
+              </div>
 
-                {isVerified ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-dorado/30 bg-gradient-to-br from-dorado/10 via-[#FAF5EE] to-dorado/5 p-5 shadow-xs">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-dorado/20 text-dorado shadow-xs">
-                        <BadgeCheck size={32} />
+              {isVerified ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-dorado/30 bg-gradient-to-br from-dorado/10 via-[#FAF5EE] to-dorado/5 p-5 shadow-xs">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-dorado/20 text-dorado shadow-xs">
+                      <BadgeCheck size={32} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-black text-cafe">¡Identidad validada con DPI de Guatemala!</p>
+                        <span className="rounded-full bg-dorado/20 px-2.5 py-0.5 text-[10px] font-black text-dorado">
+                          Certificado Activo
+                        </span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-black text-cafe">¡Identidad validada con DPI de Guatemala!</p>
-                          <span className="rounded-full bg-dorado/20 px-2.5 py-0.5 text-[10px] font-black text-dorado">
-                            Certificado Activo
-                          </span>
-                        </div>
-                        <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                          Tus datos oficiales y contacto de referencia han sido registrados para generar la máxima confianza con inquilinos y propietarios.
-                        </p>
+                      <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                        Tus datos oficiales y contacto de referencia han sido registrados para generar la máxima confianza con inquilinos y propietarios.
+                      </p>
 
-                        {/* Details summary */}
-                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                          <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20 flex items-center justify-between">
-                            <div>
-                              <span className="text-[10px] font-extrabold uppercase text-text-muted block">CUI / DPI Registrado</span>
-                              <span className="font-extrabold text-cafe tracking-wider font-mono">
-                                {unmaskCui ? formatDpiCui(user?.dpiData?.cui) : maskDpiCui(user?.dpiData?.cui || '2450123450101')}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setUnmaskCui(!unmaskCui)}
-                              className="p-1 text-text-muted hover:text-cafe transition-colors"
-                              title={unmaskCui ? 'Ocultar CUI' : 'Mostrar CUI completo'}
-                            >
-                              {unmaskCui ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                          </div>
-                          <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20">
-                            <span className="text-[10px] font-extrabold uppercase text-text-muted block">Lugar de Emisión</span>
-                            <span className="font-extrabold text-cafe truncate block">
-                              {user?.dpiData?.municipality || 'Ubicación no indicada'}, {user?.dpiData?.department || 'Ubicación no indicada'}
+                      {/* Details summary */}
+                      <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                        <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-extrabold uppercase text-text-muted block">CUI / DPI Registrado</span>
+                            <span className="font-extrabold text-cafe tracking-wider font-mono">
+                              {unmaskCui ? formatDpiCui(user?.dpiData?.cui) : maskDpiCui(user?.dpiData?.cui || '2450123450101')}
                             </span>
                           </div>
-                          {user?.dpiData?.emergencyName && (
-                            <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20 sm:col-span-2">
-                              <span className="text-[10px] font-extrabold uppercase text-text-muted block">Contacto de Respaldo Validado</span>
-                              <span className="font-bold text-cafe">
-                                {user.dpiData.emergencyName} ({user.dpiData.emergencyRelation || 'Referencia'}) · Tel: {user.dpiData.emergencyPhone}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-4 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => setShowDpiDetailsModal(true)}
-                            className="flex items-center gap-1.5 rounded-xl bg-forest px-4 py-2 text-xs font-black text-white hover:bg-forest-dark transition-colors shadow-xs"
+                            onClick={() => setUnmaskCui(!unmaskCui)}
+                            className="p-1 text-text-muted hover:text-cafe transition-colors"
+                            title={unmaskCui ? 'Ocultar CUI' : 'Mostrar CUI completo'}
                           >
-                            <FileCheck size={14} /> Ver credencial oficial de identidad
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowDpiModal(true)}
-                            className="flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors"
-                          >
-                            <Edit3 size={13} /> Modificar datos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (window.confirm('¿Estás seguro de purgar y eliminar tus datos de verificación de DPI de este dispositivo?')) {
-                                purgeDpiData();
-                                setDpiPurgedNotice(true);
-                                setTimeout(() => setDpiPurgedNotice(false), 4000);
-                              }
-                            }}
-                            className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
-                            title="Eliminar datos de DPI del dispositivo"
-                          >
-                            <Trash2 size={13} /> Purgar datos de DPI
+                            {unmaskCui ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {verifyDone && (
-                      <div className="flex items-start gap-3 rounded-2xl bg-jade/10 border border-jade/30 p-4 text-jade text-xs leading-relaxed font-bold animate-[fade-in_0.2s_ease-out]">
-                        <CheckCircle2 size={18} className="shrink-0 text-jade mt-0.5" />
-                        <div>
-                          <strong className="block text-sm">¡Datos de DPI guardados y solicitud enviada!</strong>
-                          <span className="font-medium text-jade/90">Tu documentación está esperando la validación por un Administrador. En cuanto sea aprobada se habilitará la publicación de viviendas y tu insignia.</span>
+                        <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20">
+                          <span className="text-[10px] font-extrabold uppercase text-text-muted block">Lugar de Emisión</span>
+                          <span className="font-extrabold text-cafe truncate block">
+                            {user?.dpiData?.municipality || 'Ubicación no indicada'}, {user?.dpiData?.department || 'Ubicación no indicada'}
+                          </span>
                         </div>
-                      </div>
-                    )}
-
-                    {isProfileRejected && !verifyDone && (
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl bg-red-50 border border-red-200 p-4 text-red-700 text-xs leading-relaxed animate-[fade-in_0.2s_ease-out]">
-                        <div className="flex items-start gap-3">
-                          <AlertCircle size={20} className="shrink-0 text-red-600 mt-0.5" />
-                          <div>
-                            <strong className="font-extrabold text-sm block text-red-800">Solicitud de verificación rechazada</strong>
-                            <span>Motivo: <em>"{myVerificationRequest?.rejectionReason || 'Documento no válido o datos inconsistentes'}"</em>. Debes reiniciar el procedimiento de verificación de tu DPI ingresando datos y fotos reales, y esperar la revisión del Administrador.</span>
+                        {user?.dpiData?.emergencyName && (
+                          <div className="rounded-xl bg-white/80 p-2.5 border border-dorado/20 sm:col-span-2">
+                            <span className="text-[10px] font-extrabold uppercase text-text-muted block">Contacto de Respaldo Validado</span>
+                            <span className="font-bold text-cafe">
+                              {user.dpiData.emergencyName} ({user.dpiData.emergencyRelation || 'Referencia'}) · Tel: {user.dpiData.emergencyPhone}
+                            </span>
                           </div>
-                        </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowDpiDetailsModal(true)}
+                          className="flex items-center gap-1.5 rounded-xl bg-forest px-4 py-2 text-xs font-black text-white hover:bg-forest-dark transition-colors shadow-xs"
+                        >
+                          <FileCheck size={14} /> Ver credencial oficial de identidad
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDpiModal(true)}
+                          className="flex items-center gap-1.5 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-cafe hover:bg-crema transition-colors"
+                        >
+                          <Edit3 size={13} /> Modificar datos
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
-                            purgeDpiData();
-                            setLocalRejectedIds((prev) => prev.filter((id) => id !== (currentUserId || user?.id)));
-                            try {
-                              const list = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-                              localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(list.filter((id) => id !== (currentUserId || user?.id))));
-                            } catch {}
-                            setDpiError('');
-                            setShowDpiModal(true);
+                            if (window.confirm('¿Estás seguro de purgar y eliminar tus datos de verificación de DPI de este dispositivo?')) {
+                              purgeDpiData();
+                              setDpiPurgedNotice(true);
+                              setTimeout(() => setDpiPurgedNotice(false), 4000);
+                            }
                           }}
-                          className="shrink-0 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 text-xs transition-colors cursor-pointer shadow-xs"
+                          className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors"
+                          title="Eliminar datos de DPI del dispositivo"
                         >
-                          Reiniciar verificación
+                          <Trash2 size={13} /> Purgar datos de DPI
                         </button>
                       </div>
-                    )}
+                    </div>
+                  </div>
+                </div>
+              ) : user?.verificationStatus === 'pendiente' ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-amber-300 bg-amber-50/70 p-5 shadow-xs">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-700 shadow-xs">
+                      <Clock3 size={26} className="animate-pulse" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-black text-amber-950">Solicitud de verificación en revisión</p>
+                        <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-[10px] font-black text-amber-900">
+                          Revisión por Admin
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-900/90 mt-1.5 leading-relaxed">
+                        Tus datos oficiales y fotografía de DPI fueron recibidos y están siendo revisados por el equipo de administración.
+                        En cuanto sea aprobada, <strong>se te habilitará el permiso de subir inmuebles</strong> y recibirás una notificación en tiempo real.
+                      </p>
 
-                    {!isProfileRejected && !verifyDone && (myVerificationRequest?.status === 'pendiente' || Boolean(user?.dpiData?.cui || myVerificationRequest?.cui)) && (
-                      <div className="flex items-start gap-3 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-amber-900 text-xs leading-relaxed animate-[fade-in_0.2s_ease-out]">
-                        <Clock3 size={18} className="shrink-0 text-amber-600 mt-0.5" />
-                        <div>
-                          <strong className="font-extrabold text-sm block">Solicitud en revisión por el Administrador</strong>
-                          <span>Ya cargaste tus datos de DPI. En cuanto el Administrador valide y apruebe tu identidad, se te otorgará la insignia oficial y podrás publicar viviendas.</span>
+                      <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                        <div className="rounded-xl bg-white/90 p-2.5 border border-amber-200">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-800/80 block">CUI Registrado</span>
+                          <span className="font-mono font-bold text-cafe">{formatDpiCui(user?.dpiData?.cui)}</span>
+                        </div>
+                        <div className="rounded-xl bg-white/90 p-2.5 border border-amber-200">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-800/80 block">Municipio / Departamento</span>
+                          <span className="font-bold text-cafe truncate block">
+                            {user?.dpiData?.municipality || 'N/A'}, {user?.dpiData?.department || 'Guatemala'}
+                          </span>
                         </div>
                       </div>
-                    )}
 
-                    <div className="flex items-start gap-4 rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/10">
-                        <ShieldCheck size={26} className="text-dorado" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-extrabold text-cafe">Valida tu identidad con DPI oficial</p>
-                        <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                          Ingresa tus datos personales oficiales de DPI para obtener la insignia dorada de <strong>"Verificado con DPI"</strong>.
-                          Los perfiles verificados reciben hasta <strong>3x más solicitudes y confianza</strong> en RuwaJay.
-                        </p>
-                        <ul className="mt-3 space-y-1.5 text-[11px] font-semibold text-text-muted">
-                          <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Registro de CUI oficial de 13 dígitos y lugar de emisión</li>
-                          <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Contacto de referencia familiar o laboral para respaldo</li>
-                          <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Subida opcional de fotografía del documento</li>
-                        </ul>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowDpiModal(true)}
+                          className="flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3.5 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors shadow-xs"
+                        >
+                          <Edit3 size={13} /> Modificar o actualizar solicitud
+                        </button>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isProfileRejected) {
-                          purgeDpiData();
-                          setLocalRejectedIds((prev) => prev.filter((id) => id !== (currentUserId || user?.id)));
-                          try {
-                            const list = JSON.parse(localStorage.getItem('ruwajay_rejected_verifications') || '[]');
-                            localStorage.setItem('ruwajay_rejected_verifications', JSON.stringify(list.filter((id) => id !== (currentUserId || user?.id))));
-                          } catch {}
-                        }
-                        setDpiError('');
-                        setShowDpiModal(true);
-                      }}
-                      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-dorado to-[#C5850F] px-4 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5 active:scale-98 cursor-pointer"
-                    >
-                      <Sparkles size={18} /> {isProfileRejected ? 'Reiniciar verificación de DPI' : (myVerificationRequest?.status === 'pendiente' || verifyDone || Boolean(user?.dpiData?.cui || myVerificationRequest?.cui)) ? 'Modificar datos de DPI enviados' : 'Iniciar verificación oficial con DPI'}
-                    </button>
                   </div>
-                )}
-              </SectionCard>
-            )}
+                </div>
+              ) : user?.verificationStatus === 'rechazada' ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-red-300 bg-red-50/70 p-5 shadow-xs">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-500/20 text-red-700 shadow-xs">
+                      <AlertTriangle size={26} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-black text-red-950">Solicitud de verificación rechazada</p>
+                        <span className="rounded-full bg-red-200 px-2.5 py-0.5 text-[10px] font-black text-red-900">
+                          Requiere corrección
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-900/90 mt-1 leading-relaxed">
+                        El administrador revisó tu formulario y no pudo aprobar tu acreditación con los datos presentados.
+                      </p>
+
+                      <div className="mt-3 rounded-xl bg-white p-3.5 border border-red-200">
+                        <span className="text-[11px] font-extrabold uppercase text-red-700 block mb-1">
+                          Motivo especificado por el administrador:
+                        </span>
+                        <p className="text-xs font-bold text-cafe">
+                          "{user?.verificationRejectionReason || 'Problema con la legibilidad del documento o los datos ingresados.'}"
+                        </p>
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDpiModal()}
+                          className="flex items-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2.5 text-xs font-black text-white shadow-md transition-all cursor-pointer"
+                        >
+                          <Sparkles size={14} /> Corregir datos y volver a solicitar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4 rounded-2xl border border-[#E8D9C8]/60 bg-[#FDFBF7] p-5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-dorado/10">
+                      <ShieldCheck size={26} className="text-dorado" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-extrabold text-cafe">Valida tu identidad con DPI oficial</p>
+                      <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                        Ingresa tus datos personales oficiales de DPI para obtener la insignia dorada de <strong>"Verificado con DPI"</strong> y habilitar la publicación de propiedades.
+                      </p>
+                      <ul className="mt-3 space-y-1.5 text-[11px] font-semibold text-text-muted">
+                        <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Registro de CUI oficial de 13 dígitos y lugar de emisión</li>
+                        <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Contacto de referencia familiar o laboral para respaldo</li>
+                        <li className="flex items-center gap-1.5"><Check size={13} className="text-forest" /> Subida de fotografía frontal del documento</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDpiModal(true)}
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-dorado to-[#C5850F] px-4 py-3 text-sm font-black text-white shadow-lg transition-transform hover:-translate-y-0.5 active:scale-98 cursor-pointer"
+                  >
+                    <Sparkles size={18} /> Iniciar verificación oficial con DPI
+                  </button>
+                </div>
+              )}
+            </SectionCard>
 
             {/* Security Shield & Active Protections Card */}
             <SectionCard>
@@ -3863,11 +3437,28 @@ export default function ProfilePage() {
             </div>
 
             {/* Form Content */}
-            <form ref={dpiFormRef} onSubmit={handleSubmitDpiVerification} className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-5">
+            <form onSubmit={handleSubmitDpiVerification} className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-5">
               {dpiError && (
                 <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700 border border-red-200">
                   <AlertTriangle size={15} />
                   <span>{dpiError}</span>
+                </div>
+              )}
+
+              {user?.verificationStatus === 'rechazada' && (
+                <div className="rounded-2xl bg-red-50 p-4 border border-red-200 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase text-red-800 tracking-wider">
+                    <AlertTriangle size={16} className="text-red-600 shrink-0" />
+                    <span>Tu solicitud anterior fue rechazada</span>
+                  </div>
+                  {user.verificationRejectionReason && (
+                    <p className="text-xs font-bold text-red-700 bg-white/90 p-2.5 rounded-xl border border-red-200/80 leading-relaxed">
+                      Motivo: "{user.verificationRejectionReason}"
+                    </p>
+                  )}
+                  <p className="text-[11px] text-red-700 leading-normal">
+                    El registro anterior ha sido limpiado por completo. Por favor completa este formulario nuevamente desde cero para que el administrador pueda revisarlo y habilitarte como casero.
+                  </p>
                 </div>
               )}
 
@@ -4018,32 +3609,19 @@ export default function ProfilePage() {
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border border-dashed border-[#D4962A]/50 bg-[#FAF5EE]/40 p-4">
                   {dpiForm.documentPhoto ? (
-                    <div className="relative w-36 h-24 rounded-2xl overflow-hidden border-2 border-dorado shadow-md bg-black shrink-0">
+                    <div className="relative w-36 h-24 rounded-xl overflow-hidden border border-dorado shadow-xs bg-black">
                       <img src={dpiForm.documentPhoto} alt="DPI" className="w-full h-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => {
-                          const uid = user?.id || currentUserId;
-                          setDpiForm((prev) => ({ ...prev, documentPhoto: null }));
-                          if (typeof window !== 'undefined') {
-                            if (uid) delete window.__RUWAJAY_DPI_CACHE?.[uid];
-                            window.__RUWAJAY_MY_DPI_PHOTO = null;
-                          }
-                          try {
-                            if (uid) localStorage.removeItem(`ruwajay_dpi_photo_${uid}`);
-                            localStorage.removeItem('ruwajay_my_dpi_photo');
-                            if (uid) sessionStorage.removeItem(`ruwajay_dpi_photo_${uid}`);
-                            sessionStorage.removeItem('ruwajay_my_dpi_photo');
-                          } catch {}
-                        }}
-                        className="absolute top-1.5 right-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 shadow-md transition-colors cursor-pointer"
-                        title="Eliminar fotografía"
+                        onClick={() => setDpiForm({ ...dpiForm, documentPhoto: null })}
+                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 shadow-sm"
+                        title="Quitar imagen"
                       >
-                        <X size={13} />
+                        <X size={12} />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex h-20 w-28 items-center justify-center rounded-2xl bg-white border border-[#E8D9C8] text-dorado shadow-xs shrink-0">
+                    <div className="flex h-20 w-28 items-center justify-center rounded-xl bg-white border border-border text-dorado">
                       <FileCheck size={32} />
                     </div>
                   )}
@@ -4059,12 +3637,10 @@ export default function ProfilePage() {
                       htmlFor="dpi-photo-upload"
                       className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-dorado hover:bg-[#C5850F] px-4 py-2 text-xs font-black text-white shadow-xs transition-colors"
                     >
-                      <Upload size={14} /> {dpiForm.documentPhoto ? 'Cambiar foto del documento' : 'Subir foto del documento'}
+                      <Upload size={14} /> Subir foto del documento
                     </label>
                     <p className="text-[11px] text-text-muted mt-1.5">
-                      {dpiForm.documentPhoto 
-                        ? '✅ Fotografía frontal adjuntada correctamente y guardada.' 
-                        : 'Fotografía nítida del frente de tu DPI para certificar tu documento.'}
+                      Fotografía nítida del frente de tu DPI para certificar tu documento.
                     </p>
                   </div>
                 </div>
@@ -4084,14 +3660,6 @@ export default function ProfilePage() {
                   Declaro bajo juramento que los datos proporcionados corresponden fielmente a mi Documento Personal de Identificación (DPI) y autorizo a RuwaJay a validar la autenticidad con fines de seguridad de la comunidad.
                 </label>
               </div>
-
-              {/* Error banner at bottom in case user scrolled down */}
-              {dpiError && (
-                <div className="flex items-center gap-2 rounded-xl bg-red-50 p-3 text-xs font-bold text-red-700 border border-red-200">
-                  <AlertTriangle size={15} />
-                  <span>{dpiError}</span>
-                </div>
-              )}
 
               {/* Action buttons */}
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -4216,6 +3784,274 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ── Modal de Rechazo de Verificación (Admin) ── */}
+      {rejectingRequest && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-[fade-in_0.2s_ease-out]">
+          <div
+            className="relative flex flex-col w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden border border-red-200 animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            {(() => {
+              const targetUser = allUsers.find(
+                (u) => (u.id && (u.id === rejectingRequest.userId || u.id === rejectingRequest.id)) ||
+                       (u.email && rejectingRequest.userEmail && u.email.toLowerCase() === rejectingRequest.userEmail.toLowerCase())
+              );
+              const targetName = targetUser?.name || targetUser?.displayName || rejectingRequest.userName || (targetUser?.email ? targetUser.email.split('@')[0] : (rejectingRequest.userEmail ? rejectingRequest.userEmail.split('@')[0] : 'Usuario'));
+              const targetAvatar = targetUser?.avatarImage || targetUser?.avatar || targetUser?.photoURL || rejectingRequest.userAvatar || null;
+              const displayTargetUser = {
+                ...targetUser,
+                name: targetName,
+                avatarImage: targetAvatar,
+                avatarId: targetUser?.avatarId || rejectingRequest.avatarId,
+              };
+
+              return (
+                <div className="flex items-center justify-between border-b border-border-light bg-red-50/80 px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <UserAvatar user={displayTargetUser} size={42} className="shrink-0" />
+                    <div>
+                      <h3 className="text-base font-extrabold text-cafe">Rechazar Solicitud de Casero</h3>
+                      <p className="text-xs text-text-muted">
+                        <strong className="text-cafe">{targetName}</strong> {targetUser?.email || rejectingRequest.userEmail ? `· ${targetUser?.email || rejectingRequest.userEmail}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRejectingRequest(null)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-text-muted hover:text-cafe border border-border-light transition-colors cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-text-secondary leading-relaxed">
+                Indica el motivo del rechazo. Este mensaje le llegará al usuario como <strong>notificación en tiempo real</strong> para que pueda corregir sus datos y volver a postularse.
+              </p>
+
+              {/* Motivos rápidos */}
+              <div>
+                <label className="block text-[11px] font-extrabold uppercase text-text-muted mb-2">
+                  Motivos frecuentes (haz clic para autocompletar):
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'La fotografía del DPI está borrosa o ilegible',
+                    'El número de CUI no coincide con los datos del RENAP',
+                    'Documento de identificación vencido',
+                    'El contacto de respaldo o teléfono no es válido',
+                    'Los nombres o apellidos no coinciden con el documento presentado',
+                  ].map((reason) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => setRejectionReasonInput(reason)}
+                      className={`rounded-xl border px-2.5 py-1 text-xs text-left transition-all cursor-pointer ${
+                        rejectionReasonInput === reason
+                          ? 'border-red-500 bg-red-50 text-red-700 font-bold'
+                          : 'border-border bg-white text-text-secondary hover:border-red-300'
+                      }`}
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Textarea */}
+              <div>
+                <label className="block text-xs font-bold text-cafe mb-1.5">
+                  Descripción detallada del motivo *
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectionReasonInput}
+                  onChange={(e) => setRejectionReasonInput(e.target.value)}
+                  placeholder="Escribe claramente qué dato debe corregir el usuario..."
+                  className="w-full rounded-2xl border border-border bg-[#FDFBF7] p-3 text-xs font-medium text-cafe outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectingRequest(null)}
+                  className="rounded-xl px-4 py-2.5 text-xs font-bold text-text-muted hover:text-cafe transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isProcessingVerifAction || !rejectionReasonInput.trim()}
+                  onClick={handleConfirmReject}
+                  className="flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 px-5 py-2.5 text-xs font-black text-white shadow-md disabled:opacity-50 transition-all cursor-pointer"
+                >
+                  {isProcessingVerifAction ? 'Procesando...' : 'Confirmar Rechazo y Notificar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de Confirmación de Aprobación de Casero (Admin) ── */}
+      {approvingRequest && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-[fade-in_0.2s_ease-out]">
+          <div
+            className="relative flex flex-col w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden border border-forest/30 animate-[scale-up_0.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top green accent line */}
+            <div className="h-2 bg-gradient-to-r from-forest via-emerald-500 to-forest-dark" />
+
+            {/* Header */}
+            {(() => {
+              const targetUser = allUsers.find(
+                (u) => (u.id && (u.id === approvingRequest.userId || u.id === approvingRequest.id)) ||
+                       (u.email && approvingRequest.userEmail && u.email.toLowerCase() === approvingRequest.userEmail.toLowerCase())
+              );
+              const targetName = targetUser?.name || targetUser?.displayName || approvingRequest.userName || (targetUser?.email ? targetUser.email.split('@')[0] : (approvingRequest.userEmail ? approvingRequest.userEmail.split('@')[0] : 'Usuario'));
+              const targetAvatar = targetUser?.avatarImage || targetUser?.avatar || targetUser?.photoURL || approvingRequest.userAvatar || null;
+              const displayTargetUser = {
+                ...targetUser,
+                name: targetName,
+                avatarImage: targetAvatar,
+                avatarId: targetUser?.avatarId || approvingRequest.avatarId,
+              };
+
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-border-light bg-[#F4F9F5] px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest/15 text-forest shadow-xs">
+                        <ShieldCheck size={24} />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-cafe">Aprobar Solicitud de Casero</h3>
+                        <p className="text-xs text-text-muted">
+                          Habilitación de rol y permisos oficiales de propietario
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setApprovingRequest(null)}
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-white text-text-muted hover:text-cafe border border-border-light transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="p-6 space-y-4">
+                    {/* User Info Card */}
+                    <div className="flex items-center gap-3.5 rounded-2xl bg-[#FDFBF7] p-3.5 border border-[#E8D9C8]">
+                      <UserAvatar user={displayTargetUser} size={48} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-black text-cafe truncate">{targetName}</h4>
+                        <p className="text-xs text-text-muted truncate">{targetUser?.email || approvingRequest.userEmail}</p>
+                        {(targetUser?.phone || approvingRequest.userPhone) && (
+                          <p className="text-xs font-semibold text-forest mt-0.5">
+                            Tel: {targetUser?.phone || approvingRequest.userPhone}
+                          </p>
+                        )}
+                      </div>
+                      <span className="rounded-full bg-forest/15 text-forest px-2.5 py-1 text-[10px] font-black uppercase">
+                        Solicitante
+                      </span>
+                    </div>
+
+                    {/* Explanation Box */}
+                    <div className="rounded-2xl bg-forest/10 border border-forest/20 p-4 space-y-2 text-xs">
+                      <p className="font-extrabold text-forest-dark flex items-center gap-1.5">
+                        <CheckCircle2 size={16} className="text-forest shrink-0" />
+                        ¿Confirmas autorizar a este usuario como casero?
+                      </p>
+                      <ul className="text-text-secondary space-y-1 pl-5 list-disc text-[11px] leading-relaxed">
+                        <li>Se le otorgará automáticamente el rol de <strong>Propietario / Casero</strong>.</li>
+                        <li>Podrá <strong>anunciar, publicar y administrar viviendas</strong> en RuwaJay.</li>
+                        <li>Recibirá una <strong>notificación en tiempo real</strong> en su cuenta.</li>
+                      </ul>
+                    </div>
+
+                    {/* CUI Preview */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl bg-[#FAF5EE] p-2.5 border border-border-light">
+                        <span className="text-[10px] font-extrabold uppercase text-text-muted block">CUI Declarado</span>
+                        <span className="font-mono font-bold text-cafe">{formatDpiCui(approvingRequest.cui)}</span>
+                      </div>
+                      <div className="rounded-xl bg-[#FAF5EE] p-2.5 border border-border-light">
+                        <span className="text-[10px] font-extrabold uppercase text-text-muted block">Lugar Emisión</span>
+                        <span className="font-bold text-cafe truncate block">
+                          {approvingRequest.municipality || 'N/A'}, {approvingRequest.department || 'Guatemala'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-border-light">
+                      <button
+                        type="button"
+                        disabled={isProcessingVerifAction}
+                        onClick={() => setApprovingRequest(null)}
+                        className="rounded-xl px-4 py-2.5 text-xs font-bold text-text-muted hover:text-cafe transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isProcessingVerifAction}
+                        onClick={handleConfirmApprove}
+                        className="flex items-center gap-2 rounded-xl bg-forest hover:bg-forest-dark px-5 py-2.5 text-xs font-black text-white shadow-md transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Check size={16} />
+                        {isProcessingVerifAction ? 'Aprobando...' : 'Aceptar y Habilitar como Casero'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal para Ver Foto del DPI en Grande (Admin) ── */}
+      {viewingDpiPhoto && (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-[fade-in_0.2s_ease-out]"
+          onClick={() => setViewingDpiPhoto(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh] bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setViewingDpiPhoto(null)}
+              className="absolute top-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/90 transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+            <img
+              src={viewingDpiPhoto}
+              alt="Foto del DPI"
+              className="max-h-[82vh] w-auto max-w-full object-contain mx-auto"
+            />
+            <div className="bg-black/90 p-3 text-center text-xs text-white/80 font-bold">
+              Documento de Identificación (DPI) presentado para verificación
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Rent Affordability Calculator Modal */}
       <RentAffordabilityModal
         isOpen={showAffordabilityModal}
@@ -4240,357 +4076,6 @@ export default function ProfilePage() {
           );
         }}
       />
-      {/* Modal para ingresar motivo de rechazo de verificación */}
-      {rejectReasonModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-3xl border border-border bg-white p-6 shadow-2xl animate-scale-in">
-            <div className="flex items-center justify-between pb-3 border-b border-border">
-              <h3 className="text-base font-black text-cafe flex items-center gap-2">
-                <AlertCircle size={18} className="text-red-500" /> Rechazar Verificación de DPI
-              </h3>
-              <button
-                onClick={() => setRejectReasonModal({ open: false, userId: '', userName: '' })}
-                className="text-text-muted hover:text-cafe"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="mt-3 text-xs text-text-muted">
-              Indica al usuario <strong className="text-cafe">{rejectReasonModal.userName}</strong> el motivo por el cual no se puede validar su solicitud.
-            </p>
-
-            {/* Quick chips */}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {[
-                'Foto del DPI borrosa o ilegible',
-                'El CUI no coincide con la foto',
-                'Documento vencido',
-                'Faltan datos de contacto de emergencia',
-              ].map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => setRejectReasonText(chip)}
-                  className="rounded-lg bg-crema px-2.5 py-1 text-[11px] font-bold text-cafe hover:bg-forest/10 hover:text-forest transition-colors cursor-pointer"
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-3">
-              <label className="text-[11px] font-bold text-cafe uppercase tracking-wider block mb-1">
-                Motivo / Explicación
-              </label>
-              <textarea
-                rows={3}
-                value={rejectReasonText}
-                onChange={(e) => setRejectReasonText(e.target.value)}
-                placeholder="Escribe la razón detallada para el usuario..."
-                className="w-full rounded-xl border border-border bg-[#FDFBF7] p-3 text-xs text-cafe outline-none focus:border-forest"
-              />
-            </div>
-
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setRejectReasonModal({ open: false, userId: '', userName: '' })}
-                className="rounded-xl border border-border px-4 py-2 text-xs font-bold text-cafe hover:bg-crema cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleRejectVerification}
-                disabled={!rejectReasonText.trim()}
-                className="rounded-xl bg-red-600 px-5 py-2 text-xs font-black text-white hover:bg-red-700 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
-              >
-                Confirmar Rechazo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal para previsualizar foto de documento en grande */}
-      {previewDocPhoto && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm cursor-pointer"
-          onClick={() => setPreviewDocPhoto(null)}
-        >
-          <div
-            className="relative max-w-3xl w-full max-h-[90vh] rounded-3xl overflow-hidden bg-white p-3 shadow-2xl cursor-default animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-border">
-              <span className="text-xs font-black text-cafe flex items-center gap-1.5">
-                <FileCheck size={16} className="text-dorado" /> Fotografía de Documento de Identificación (DPI)
-              </span>
-              <button
-                onClick={() => setPreviewDocPhoto(null)}
-                className="rounded-full bg-crema p-1 text-text-muted hover:text-cafe cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="overflow-auto max-h-[75vh] flex items-center justify-center bg-slate-950 rounded-2xl p-2">
-              <img
-                src={previewDocPhoto}
-                alt="Documento DPI Completo"
-                className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Crear Usuario por Administrador */}
-      {showCreateUserModal && (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in"
-          onClick={() => setShowCreateUserModal(false)}
-        >
-          <div
-            className="relative w-full max-w-md rounded-3xl border border-[#E8D9C8] bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-forest/10 text-forest">
-                  <User size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-cafe">Crear Nuevo Usuario</h3>
-                  <p className="text-xs text-text-muted">Registra una cuenta directamente en el sistema</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCreateUserModal(false)}
-                className="rounded-full p-1.5 text-text-muted hover:bg-crema hover:text-cafe cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!newUserData.name.trim() || !newUserData.email.trim()) return;
-                setCreateUserLoading(true);
-                try {
-                  const created = await createUserByAdmin(newUserData);
-                  setAllUsers((prev) => [created, ...prev]);
-                  setAdminNotice(`✅ Usuario ${newUserData.email} creado con éxito.`);
-                  setShowCreateUserModal(false);
-                  setNewUserData({ name: '', email: '', phone: '', role: 'seeker' });
-                } catch (err) {
-                  setAdminNotice('Error al crear usuario: ' + err.message);
-                } finally {
-                  setCreateUserLoading(false);
-                }
-              }}
-              className="space-y-3.5"
-            >
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Nombre Completo *</label>
-                <input
-                  type="text"
-                  value={newUserData.name}
-                  onChange={(e) => setNewUserData({ ...newUserData, name: e.target.value })}
-                  placeholder="Ej. Alexander de León"
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3.5 py-2 text-sm text-cafe outline-none focus:border-forest"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Correo Electrónico *</label>
-                <input
-                  type="email"
-                  value={newUserData.email}
-                  onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
-                  placeholder="usuario@ejemplo.com"
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3.5 py-2 text-sm text-cafe outline-none focus:border-forest"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Teléfono (WhatsApp)</label>
-                <input
-                  type="tel"
-                  value={newUserData.phone}
-                  onChange={(e) => setNewUserData({ ...newUserData, phone: e.target.value })}
-                  placeholder="Ej. +502 5555-5555"
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3.5 py-2 text-sm text-cafe outline-none focus:border-forest"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Rol Asignado</label>
-                <select
-                  value={newUserData.role}
-                  onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value })}
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3.5 py-2 text-xs font-bold text-cafe outline-none cursor-pointer"
-                >
-                  <option value="seeker">👤 Inquilino (Buscador de vivienda)</option>
-                  <option value="owner">🏡 Propietario (Casero)</option>
-                  <option value="admin">🛡️ Administrador</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-border mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateUserModal(false)}
-                  className="rounded-xl border border-border px-4 py-2 text-xs font-bold text-cafe hover:bg-crema cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={createUserLoading}
-                  className="rounded-xl bg-forest px-5 py-2 text-xs font-black text-white hover:bg-forest/90 shadow-sm disabled:opacity-50 cursor-pointer"
-                >
-                  {createUserLoading ? 'Creando...' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Editar Comunicado del Sistema */}
-      {editingUpdate && (
-        <div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in"
-          onClick={() => setEditingUpdate(null)}
-        >
-          <div
-            className="relative w-full max-w-lg rounded-3xl border border-[#E8D9C8] bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-forest/10 text-forest">
-                  <Edit3 size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-cafe">Editar Comunicado</h3>
-                  <p className="text-xs text-text-muted">Modifica los detalles del aviso del sistema</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setEditingUpdate(null)}
-                className="rounded-full p-1.5 text-text-muted hover:bg-crema hover:text-cafe cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!editingUpdate.title?.trim() || !editingUpdate.content?.trim()) return;
-                try {
-                  await updateSystemUpdate(editingUpdate.id, {
-                    title: editingUpdate.title.trim(),
-                    content: editingUpdate.content.trim(),
-                    category: editingUpdate.category,
-                    priority: editingUpdate.priority,
-                  });
-                  setAdminNotice('✅ Comunicado actualizado con éxito.');
-                  setEditingUpdate(null);
-                } catch (err) {
-                  setAdminNotice('Error al actualizar comunicado: ' + err.message);
-                }
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Título del comunicado *</label>
-                <input
-                  type="text"
-                  value={editingUpdate.title || ''}
-                  onChange={(e) => setEditingUpdate({ ...editingUpdate, title: e.target.value })}
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3.5 py-2 text-sm text-cafe outline-none focus:border-forest"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-cafe mb-1">Categoría</label>
-                  <select
-                    value={editingUpdate.category || 'novedad'}
-                    onChange={(e) => setEditingUpdate({ ...editingUpdate, category: e.target.value })}
-                    className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3 py-2 text-xs font-bold text-cafe outline-none cursor-pointer"
-                  >
-                    <option value="novedad">📢 Novedad</option>
-                    <option value="mejora">✨ Mejora</option>
-                    <option value="mantenimiento">🔧 Mantenimiento</option>
-                    <option value="alerta">⚠️ Alerta</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-cafe mb-1">Prioridad</label>
-                  <select
-                    value={editingUpdate.priority || 'normal'}
-                    onChange={(e) => setEditingUpdate({ ...editingUpdate, priority: e.target.value })}
-                    className="w-full rounded-xl border border-border bg-[#FDFBF7] px-3 py-2 text-xs font-bold text-cafe outline-none cursor-pointer"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="urgente">🚨 Urgente</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-cafe mb-1">Contenido *</label>
-                <textarea
-                  rows={4}
-                  value={editingUpdate.content || ''}
-                  onChange={(e) => setEditingUpdate({ ...editingUpdate, content: e.target.value })}
-                  className="w-full rounded-xl border border-border bg-[#FDFBF7] p-3 text-sm text-cafe outline-none focus:border-forest"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setEditingUpdate(null)}
-                  className="rounded-xl border border-border px-4 py-2 text-xs font-bold text-cafe hover:bg-crema cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-forest px-5 py-2 text-xs font-black text-white hover:bg-forest/90 shadow-sm cursor-pointer"
-                >
-                  Guardar Cambios
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Editar Propiedad por Administrador */}
-      {adminEditingProperty && (
-        <EditPropertyModal
-          property={adminEditingProperty}
-          isOpen={Boolean(adminEditingProperty)}
-          onClose={() => setAdminEditingProperty(null)}
-          onSaved={(updated) => {
-            setAllProperties((prev) =>
-              prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
-            );
-            setAdminNotice('✅ Propiedad actualizada con éxito.');
-          }}
-        />
-      )}
     </main>
   );
 }

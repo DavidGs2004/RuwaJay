@@ -859,6 +859,32 @@ html.dark body {
 }
 
 /* Surfaces and Cards */
+html.dark .card-premium {
+  background-color: #131D2D !important;
+  border-color: #1A2639 !important;
+}
+
+html.dark .card-premium .bg-white\/95,
+html.dark .card-premium .bg-white\/90,
+html.dark .card-premium .bg-white\/85,
+html.dark .card-premium .bg-white\/80 {
+  background-color: rgba(19, 29, 45, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html.dark .card-premium .text-cafe {
+  color: #F1F5F9 !important;
+}
+
+html.dark .card-premium .bg-crema-warm {
+  background-color: #182232 !important;
+  border-color: #23334D !important;
+}
+
+html.dark .card-premium .text-text-secondary {
+  color: #94A3B8 !important;
+}
+
 html.dark .bg-white {
   background-color: #131D2D !important;
 }

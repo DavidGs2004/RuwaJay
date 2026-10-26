@@ -10,6 +10,8 @@ import {
 import {
   getCoordinatesForDepartment,
   getCoordinatesForLocation,
+  findNearestGuatemalaLocation,
+  GUATEMALA_DEPARTMENTS_ONLY,
   ZONE_COORDINATES
 } from '../../data/guatemalaLocations';
 
@@ -137,9 +139,10 @@ export default function PropertyLocationPickerMap({
     }
   }, [department, zone]);
 
-  // Reverse geocoding helper (OpenStreetMap Nominatim)
+  // Reverse geocoding helper (OpenStreetMap Nominatim + Guatemala Geocoding)
   const performReverseGeocode = useCallback(async (lat, lng) => {
     setIsReverseGeocoding(true);
+    const nearest = findNearestGuatemalaLocation(lat, lng);
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
       const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
@@ -153,21 +156,54 @@ export default function PropertyLocationPickerMap({
 
           setDetectedAddress(cleanRef || data.display_name);
 
+          // Department matching
+          const stateRaw = String(data.address?.state || '');
+          let matchedDept = nearest.department;
+          for (const dept of GUATEMALA_DEPARTMENTS_ONLY) {
+            if (stateRaw.toLowerCase().includes(dept.toLowerCase()) || dept.toLowerCase().includes(stateRaw.toLowerCase())) {
+              matchedDept = dept;
+              break;
+            }
+          }
+
+          // Municipality matching
+          const muniRaw = data.address?.city || data.address?.town || data.address?.municipality || data.address?.village || nearest.municipality;
+
+          // Zone candidate
+          const zoneCandidate = data.address?.city_district || data.address?.suburb || data.address?.neighbourhood || nearest.zone;
+
           if (onAddressResolved) {
             onAddressResolved({
               fullAddress: data.display_name,
               reference: cleanRef || data.display_name,
               road: data.address?.road || '',
-              municipality: data.address?.city || data.address?.town || data.address?.municipality || '',
-              department: data.address?.state || '',
+              municipality: muniRaw || nearest.municipality,
+              department: matchedDept || nearest.department,
+              zone: zoneCandidate || nearest.zone,
+              coordinates: { lat: Number(lat), lng: Number(lng) },
             });
           }
+          return;
         }
       }
     } catch (err) {
       console.warn('Reverse geocode unavailable, using coordinate pin:', err);
     } finally {
       setIsReverseGeocoding(false);
+    }
+
+    // Fallback if reverse geocode service is offline
+    setDetectedAddress(`${nearest.zone}, ${nearest.municipality}`);
+    if (onAddressResolved) {
+      onAddressResolved({
+        fullAddress: `${nearest.zone}, ${nearest.municipality}, ${nearest.department}`,
+        reference: `${nearest.zone}, ${nearest.municipality}`,
+        road: '',
+        municipality: nearest.municipality,
+        department: nearest.department,
+        zone: nearest.zone,
+        coordinates: { lat: Number(lat), lng: Number(lng) },
+      });
     }
   }, [onAddressResolved]);
 

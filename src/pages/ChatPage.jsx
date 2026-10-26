@@ -62,6 +62,46 @@ function formatChatDateHeader(messages) {
   return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
 
+function ChatAvatar({ src, name, size = 'md', fallbackBg = 'light', className = '' }) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  const isValidSrc = typeof src === 'string' && src.trim().length > 0 && !hasError;
+  const initial = (name && typeof name === 'string' && name.trim()) ? name.trim().charAt(0).toUpperCase() : 'U';
+
+  const sizeClasses = {
+    sm: 'h-8 w-8 text-xs rounded-xl',
+    md: 'h-11 w-11 text-sm rounded-2xl',
+    lg: 'h-10 w-10 text-sm rounded-2xl',
+  }[size] || 'h-11 w-11 text-sm rounded-2xl';
+
+  const fallbackClasses = fallbackBg === 'solid'
+    ? 'bg-forest text-white'
+    : 'bg-forest/10 text-forest';
+
+  return (
+    <div className={`relative shrink-0 ${sizeClasses} overflow-hidden border border-border shadow-2xs bg-[#FAF5EE] ${className}`}>
+      {isValidSrc ? (
+        <img
+          src={src.trim()}
+          alt={name || ''}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          className="h-full w-full object-cover"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <div className={`flex h-full w-full items-center justify-center font-black ${fallbackClasses}`}>
+          {initial}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -621,17 +661,12 @@ export default function ChatPage() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 text-xs font-bold text-cafe bg-[#FAF8F5] p-1 pr-3 rounded-2xl border border-border shadow-2xs">
-            {user?.avatarImage || user?.photoURL || user?.avatar ? (
-              <img
-                src={user.avatarImage || user.photoURL || user.avatar}
-                alt=""
-                className="h-7 w-7 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-forest text-white font-black text-xs">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
-            )}
+            <ChatAvatar
+              src={currentUserPhoto}
+              name={user?.name || 'Mi Perfil'}
+              size="sm"
+              fallbackBg="solid"
+            />
             <span className="hidden sm:inline font-black truncate max-w-[120px]">{user?.name || 'Mi Perfil'}</span>
           </div>
         </div>
@@ -718,19 +753,12 @@ export default function ChatPage() {
                     }`}
                   >
                     {/* User Avatar */}
-                    <div className="relative shrink-0">
-                      {conv.participantAvatar ? (
-                        <img
-                          src={conv.participantAvatar}
-                          alt=""
-                          className="h-11 w-11 rounded-2xl object-cover border border-border shadow-2xs"
-                        />
-                      ) : (
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-forest/10 text-forest font-black text-sm border border-border shadow-2xs">
-                          {conv.participantName?.charAt(0) || 'U'}
-                        </div>
-                      )}
-                    </div>
+                    <ChatAvatar
+                      src={conv.participantAvatar}
+                      name={conv.participantName}
+                      size="md"
+                      fallbackBg="light"
+                    />
 
                     {/* Middle Info */}
                     <div className="min-w-0 flex-1">
@@ -789,19 +817,12 @@ export default function ChatPage() {
                   </button>
 
                   {/* Contact Avatar */}
-                  <div className="relative shrink-0">
-                    {activeConversation.participantAvatar ? (
-                      <img
-                        src={activeConversation.participantAvatar}
-                        alt=""
-                        className="h-10 w-10 rounded-2xl object-cover border border-border shadow-2xs"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-forest text-white font-black text-sm">
-                        {activeConversation.participantName?.charAt(0) || 'U'}
-                      </div>
-                    )}
-                  </div>
+                  <ChatAvatar
+                    src={activeConversation.participantAvatar || activeOwner?.photo}
+                    name={activeConversation.participantName}
+                    size="lg"
+                    fallbackBg="solid"
+                  />
 
                   {/* Contact Details */}
                   <div className="min-w-0 text-left">

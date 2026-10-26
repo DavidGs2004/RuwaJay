@@ -25,12 +25,12 @@ export function subscribeToConversation(roomId, userId, onUpdate, onError = cons
   if (!roomId || !userId) return () => {};
   return onSnapshot(doc(firestore,'conversations',roomId), snap => onUpdate(snap.exists()?{...snap.data({ serverTimestamps: 'estimate' }),id:snap.id}:null), onError);
 }
-export async function getOrCreateConversation(seekerId, ownerId, propertyId, propertyTitle = '') {
+export async function getOrCreateConversation(seekerId, ownerId, propertyId, propertyTitle = '', extras = {}) {
   if (!firebaseAuth?.currentUser) throw new Error('Debes iniciar sesión.');
   const roomId = [seekerId, ownerId, propertyId].filter(Boolean).sort().join('_').replace(/[^a-zA-Z0-9_]/g, '');
   try {
     const roomRef = doc(firestore, 'conversations', roomId);
-    await setDoc(roomRef, {
+    const updates = {
       participants: [seekerId, ownerId].filter(Boolean),
       propertyId: propertyId || '',
       propertyTitle: propertyTitle || 'Propiedad RuwaJay',
@@ -38,7 +38,17 @@ export async function getOrCreateConversation(seekerId, ownerId, propertyId, pro
       seekerId: seekerId || '',
       ownerId: ownerId || '',
       updatedAt: serverTimestamp(),
-    }, { merge: true });
+    };
+    const sPhoto = extras.tenantPhoto || extras.seekerPhoto || '';
+    const oPhoto = extras.ownerPhoto || '';
+    const sName = extras.tenantName || extras.seekerName || '';
+    const oName = extras.ownerName || '';
+    if (sPhoto) updates.seekerPhoto = sPhoto;
+    if (oPhoto) updates.ownerPhoto = oPhoto;
+    if (sName) updates.seekerName = sName;
+    if (oName) updates.ownerName = oName;
+
+    await setDoc(roomRef, updates, { merge: true });
     return roomId;
   } catch (err) {
     console.warn('Firestore directo falló al abrir conversación, intentando backend:', err);

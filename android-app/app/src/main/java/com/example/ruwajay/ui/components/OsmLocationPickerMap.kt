@@ -124,6 +124,15 @@ fun OsmLocationPickerMap(
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                mapView.onPause()
+                mapView.onDetach()
+            } catch (_: Exception) {}
+        }
+    }
+
     LaunchedEffect(mapView, initialPoint) {
         initialPoint?.let { mapView.controller.setCenter(it) }
     }
@@ -435,20 +444,48 @@ fun OsmLocationPickerMap(
             }
         }
 
-        // ── MAPA INTERACTIVO BOX ──
+        // ── MAPA INTERACTIVO BOX (Amplio, nítido y fácil de explorar) ──
         Surface(
             shape = RoundedCornerShape(20.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorderLight),
-            shadowElevation = 4.dp,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, BrandBorder),
+            shadowElevation = 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(360.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AndroidView(
                     factory = { mapView },
                     modifier = Modifier.fillMaxSize()
                 )
+
+                // Botones flotantes de Zoom (+ / -)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = { mapView.controller.zoomIn() },
+                        modifier = Modifier.size(38.dp),
+                        containerColor = Color.White.copy(alpha = 0.95f),
+                        contentColor = BrandForest,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Acercar", modifier = Modifier.size(20.dp))
+                    }
+
+                    FloatingActionButton(
+                        onClick = { mapView.controller.zoomOut() },
+                        modifier = Modifier.size(38.dp),
+                        containerColor = Color.White.copy(alpha = 0.95f),
+                        contentColor = BrandForest,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Alejar", modifier = Modifier.size(20.dp))
+                    }
+                }
 
                 // Indicador flotante superior
                 Surface(

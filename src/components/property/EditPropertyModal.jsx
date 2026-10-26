@@ -298,6 +298,12 @@ export default function EditPropertyModal({ property, isOpen, onClose, onSaved }
                   coordinates: coords,
                 }));
               }}
+              onAddressResolved={(addrInfo) => {
+                setFormData((prev) => ({
+                  ...prev,
+                  approximateAddress: addrInfo.reference || prev.approximateAddress || '',
+                }));
+              }}
             />
           </div>
 

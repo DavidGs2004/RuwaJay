@@ -101,6 +101,17 @@ export default function ExplorePage() {
     }
   }, [searchParams]);
 
+  // Sincronizar búsqueda y filtros cuando cambia la URL desde el footer o enlaces externos
+  useEffect(() => {
+    setSearchQuery(urlQuery);
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (urlType) setFilters((prev) => ({ ...prev, type: urlType }));
+    if (urlDept) setFilters((prev) => ({ ...prev, department: urlDept }));
+    if (urlZone) setFilters((prev) => ({ ...prev, zone: urlZone }));
+  }, [urlType, urlDept, urlZone]);
+
   useEffect(()=>subscribeSavedSearches(user?.id,setSavedSearches),[user?.id]);
   const refreshSavedSearches = () => {};
 
@@ -279,10 +290,12 @@ export default function ExplorePage() {
     }
   }, [position]);
 
-  // Firestore is the shared source; demo records remain only as a fallback for an empty database.
+  // Merge demo properties with firebase properties so the page stays well-populated
   const allProperties = useMemo(() => {
-    const merged = firebaseProperties;
-    return Array.from(new Map(merged.map((property) => [property.id, property])).values());
+    const map = new Map();
+    demoProperties.forEach((property) => map.set(property.id, property));
+    firebaseProperties.forEach((property) => map.set(property.id, property));
+    return Array.from(map.values());
   }, [firebaseProperties]);
 
   // Filter and sort properties
@@ -291,15 +304,12 @@ export default function ExplorePage() {
 
     // Text search
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      props = props.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.address.approximate.toLowerCase().includes(q) ||
-          p.address.municipality.toLowerCase().includes(q) ||
-          p.address.department.toLowerCase().includes(q) ||
-          (p.address.zone && p.address.zone.toLowerCase().includes(q))
-      );
+      const q = searchQuery.toLowerCase().trim();
+      const terms = q.split(/[\s,]+/).filter(Boolean);
+      props = props.filter((p) => {
+        const fullSearchable = `${p.title || ''} ${p.address?.approximate || ''} ${p.address?.exact || ''} ${p.address?.municipality || ''} ${p.address?.department || ''} ${p.address?.zone || ''}`.toLowerCase();
+        return fullSearchable.includes(q) || (terms.length > 0 && terms.every((term) => fullSearchable.includes(term)));
+      });
     }
 
     // Type filter

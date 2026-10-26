@@ -39,7 +39,11 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
         ) {
             HomeScreen(
                 onPropertyClick = { id -> navController.navigate(Screen.PropertyDetail.createRoute(id)) },
-                onExploreClick = { navController.navigate(Screen.Explore.route) }
+                onExploreClick = { navController.navigate(Screen.Explore.route) },
+                onCategoryClick = { navController.navigate(Screen.Explore.route) },
+                onPublishClick = { navController.navigate(Screen.Publish.route) },
+                onMapClick = { navController.navigate(Screen.Explore.route) },
+                onZoneClick = { navController.navigate(Screen.Explore.route) }
             )
         }
         composable(
@@ -52,7 +56,8 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             )
         ) {
             ExploreScreen(
-                onPropertyClick = { id -> navController.navigate(Screen.PropertyDetail.createRoute(id)) }
+                onPropertyClick = { id -> navController.navigate(Screen.PropertyDetail.createRoute(id)) },
+                onPublishClick = { navController.navigate(Screen.Publish.route) }
             )
         }
         composable(
@@ -154,7 +159,16 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
         }
         composable(route=Screen.SavedSearch.route,arguments=listOf(navArgument("id"){type=NavType.StringType})) {entry->ExploreScreen(savedSearchId=entry.arguments?.getString("id"),onPropertyClick={id->navController.navigate(Screen.PropertyDetail.createRoute(id))})}
         composable(route=Screen.EditProperty.route,arguments=listOf(navArgument("id"){type=NavType.StringType})) { entry ->
-            PublishScreen(propertyId=entry.arguments?.getString("id"))
+            PublishScreen(
+                propertyId = entry.arguments?.getString("id"),
+                onNavigateToVerification = { navController.navigate(Screen.Profile.route) },
+                onNavigateToProfile = {
+                    navController.navigate(Screen.Profile.route) {
+                        popUpTo(Screen.Home.route) { saveState = false }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
         composable(
             route = Screen.Publish.route,
@@ -164,7 +178,15 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
                 navDeepLink { uriPattern = "https://ruwajay.com/publicar" }
             )
         ) {
-            PublishScreen()
+            PublishScreen(
+                onNavigateToVerification = { navController.navigate(Screen.Profile.route) },
+                onNavigateToProfile = {
+                    navController.navigate(Screen.Profile.route) {
+                        popUpTo(Screen.Home.route) { saveState = false }
+                        launchSingleTop = true
+                    }
+                }
+            )
         }
     }
 }

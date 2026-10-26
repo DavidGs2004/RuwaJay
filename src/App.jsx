@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { useAuth } from './context/AuthContext';
+import { AlertCircle } from 'lucide-react';
+import { AuthProvider, useAuth, resolveUserStatus } from './context/AuthContext';
 import { FavoritesProvider } from './context/FavoritesContext';
 import { CompareProvider } from './context/CompareContext';
 import { ChatProvider } from './context/ChatContext';
@@ -41,7 +41,14 @@ function ScrollToTop() {
 
 function SuspendedSignOut() {
   const { logout } = useAuth();
-  return <button onClick={logout}>Cerrar sesión</button>;
+  return (
+    <button
+      onClick={logout}
+      className="inline-flex items-center justify-center rounded-xl bg-forest hover:bg-forest-dark px-5 py-2.5 text-xs font-black text-white transition-all cursor-pointer shadow-md"
+    >
+      Cerrar sesión e ir al inicio
+    </button>
+  );
 }
 
 function RequireSession() {
@@ -66,10 +73,24 @@ function RuwaJayRoutes() {
   }
 
   if (isPostAuthLoading) return <RuwaJayLoader />;
-  if(user?.suspended || user?.status === 'suspended') return <div className="p-12 text-center">
-    <p>Tu cuenta está suspendida. Contacta al administrador.</p>
-    <SuspendedSignOut />
-  </div>;
+
+  const userStatus = user ? resolveUserStatus(user, user.email) : 'active';
+  if (user && userStatus === 'suspended') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-[#FAF5EE] text-center">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-red-200">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-600 mb-4">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-xl font-black text-cafe mb-2">Cuenta Suspendida</h2>
+          <p className="text-sm text-text-muted mb-6">
+            Tu cuenta ha sido suspendida por no cumplir las normas de la comunidad. Contacta al soporte si crees que esto es un error.
+          </p>
+          <SuspendedSignOut />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex min-h-screen w-full min-w-0 flex-col overflow-x-clip ${isChatRoute ? 'bg-[#FAF8F5]' : 'bg-crema'} font-sans text-cafe antialiased`}>

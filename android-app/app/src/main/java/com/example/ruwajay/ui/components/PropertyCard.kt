@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,19 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.ruwajay.data.model.Property
-import com.example.ruwajay.ui.theme.BrandBorder
-import com.example.ruwajay.ui.theme.BrandBorderLight
-import com.example.ruwajay.ui.theme.BrandCafe
-import com.example.ruwajay.ui.theme.BrandCrema
-import com.example.ruwajay.ui.theme.BrandCremaWarm
-import com.example.ruwajay.ui.theme.BrandForest
-import com.example.ruwajay.ui.theme.BrandGold
-import com.example.ruwajay.ui.theme.BrandGradientSunset
-import com.example.ruwajay.ui.theme.BrandJade
-import com.example.ruwajay.ui.theme.BrandTerracota
-import com.example.ruwajay.ui.theme.BrandTextMuted
-import com.example.ruwajay.ui.theme.BrandTextPrimary
-import com.example.ruwajay.ui.theme.BrandTextSecondary
+import com.example.ruwajay.ui.theme.*
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -83,7 +72,7 @@ fun PropertyCard(
         shape = RoundedCornerShape(22.dp),
         border = BorderStroke(1.dp, BrandBorderLight),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = BrandSurfaceCard)
     ) {
         Column {
             // Contenedor de Imagen con proporción y gradiente idéntico a la web
@@ -93,11 +82,22 @@ fun PropertyCard(
                     .height(210.dp)
                     .background(BrandCremaDark)
             ) {
+                val context = LocalContext.current
+                val firstImage = property.images.firstOrNull()
+                val imageModel = remember(firstImage) {
+                    if (firstImage.isNullOrBlank()) null else {
+                        ImageRequest.Builder(context)
+                            .data(firstImage)
+                            .size(720, 480)
+                            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .crossfade(false)
+                            .build()
+                    }
+                }
+
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(property.images.firstOrNull())
-                        .crossfade(true)
-                        .build(),
+                    model = imageModel,
                     contentDescription = property.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -190,27 +190,6 @@ fun PropertyCard(
                             }
                         }
                     }
-
-                    if (onFavoriteToggle != null) {
-                        Surface(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .clickable { onFavoriteToggle(!isFavorite) },
-                            color = if (isFavorite) BrandTerracota else Color.White.copy(alpha = 0.90f),
-                            shape = CircleShape,
-                            shadowElevation = 4.dp
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favorito",
-                                    tint = if (isFavorite) Color.White else BrandCafe,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
                 }
 
                 // Badge de Precio Flotante en la esquina inferior izquierda
@@ -218,10 +197,10 @@ fun PropertyCard(
                     modifier = Modifier
                         .padding(12.dp)
                         .align(Alignment.BottomStart),
-                    color = Color.White.copy(alpha = 0.95f),
+                    color = BrandSurfaceCard.copy(alpha = 0.95f),
                     shape = RoundedCornerShape(14.dp),
                     shadowElevation = 4.dp,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.8f))
+                    border = BorderStroke(1.dp, BrandBorderLight)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -251,7 +230,7 @@ fun PropertyCard(
                     text = property.title,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = BrandCafe,
+                    color = BrandTextPrimary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 21.sp
@@ -306,12 +285,12 @@ fun PropertyCard(
                     // Tag Tipo
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = BrandCremaWarm,
-                        border = BorderStroke(1.dp, BrandBorder)
+                        color = BrandSurfaceElevated,
+                        border = BorderStroke(1.dp, BrandBorderLight)
                     ) {
                         Text(
                             text = property.type.replaceFirstChar { it.uppercase() },
-                            color = BrandCafe,
+                            color = BrandTextPrimary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -363,11 +342,11 @@ fun PropertyInfoBadge(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(BrandCrema, RoundedCornerShape(8.dp))
+            .background(BrandSurfaceElevated, RoundedCornerShape(8.dp))
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
         Icon(icon, null, tint = BrandForest, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(4.dp))
-        Text(text = label, fontSize = 12.sp, color = BrandCafe, fontWeight = FontWeight.Bold)
+        Text(text = label, fontSize = 12.sp, color = BrandTextPrimary, fontWeight = FontWeight.Bold)
     }
 }

@@ -80,6 +80,7 @@ export default function Footer() {
                 <li key={path}>
                   <Link
                     to={path}
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     className="group inline-flex min-h-10 items-center gap-1.5 py-1 text-sm font-semibold text-white/50 transition-colors duration-300 hover:text-white"
                   >
                     {label}
@@ -100,6 +101,7 @@ export default function Footer() {
                 <li key={zone}>
                   <Link
                     to={`/explorar?q=${encodeURIComponent(zone)}`}
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     className="inline-flex min-h-10 items-center py-1 text-sm font-semibold text-white/50 transition-colors duration-300 hover:text-white"
                   >
                     {zone}

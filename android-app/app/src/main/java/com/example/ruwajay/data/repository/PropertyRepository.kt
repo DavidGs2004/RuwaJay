@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 fun rememberProperties(
     firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ): List<Property> {
-    var properties by remember { mutableStateOf<List<Property>>(emptyList()) }
+    var properties by remember { mutableStateOf<List<Property>>(MockDataRepository.properties) }
 
     DisposableEffect(firestore) {
         val listener = firestore.collection("properties")
@@ -37,7 +37,10 @@ fun rememberProperties(
                         .sortedByDescending { documentTimestamp(it) }
                         .mapNotNull { propertyFromDocument(it) }
                     
-                    properties = firestoreProps
+                    val map = LinkedHashMap<String, Property>()
+                    MockDataRepository.properties.forEach { map[it.id] = it }
+                    firestoreProps.forEach { map[it.id] = it }
+                    properties = map.values.toList()
                 }
             }
 

@@ -118,19 +118,23 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
     });
   }, []);
 
+  const isInsideGuatemala = (lat, lng) => lat >= 13.5 && lat <= 18.0 && lng >= -92.5 && lng <= -88.0;
+
   // Default center: Guatemala City
   const defaultCenter = useMemo(() => {
-    if (userPosition?.lat && userPosition?.lng) {
+    if (userPosition?.lat && userPosition?.lng && isInsideGuatemala(userPosition.lat, userPosition.lng)) {
       return [userPosition.lat, userPosition.lng];
     }
     return [14.6349, -90.5069];
   }, [userPosition?.lat, userPosition?.lng]);
 
+  const isUserInGt = Boolean(userPosition?.lat && userPosition?.lng && isInsideGuatemala(userPosition.lat, userPosition.lng));
+
   return (
     <div className="relative h-full w-full min-h-[320px] min-w-0">
       <MapContainer
         center={defaultCenter}
-        zoom={userPosition ? 13 : 11}
+        zoom={isUserInGt ? 13 : 12}
         scrollWheelZoom={true}
         className="w-full h-full min-h-[320px] z-0 rounded-2xl"
       >
@@ -158,8 +162,8 @@ export default function MapView({ properties = [], userPosition, radarRadius, ra
           }}
         />
 
-        {/* User location marker & radar circle */}
-        {userPosition?.lat && userPosition?.lng && (
+        {/* User location marker & radar circle (solo dentro de Guatemala) */}
+        {userPosition?.lat && userPosition?.lng && isInsideGuatemala(userPosition.lat, userPosition.lng) && (
           <>
             <Marker position={[userPosition.lat, userPosition.lng]} icon={userLocationIcon}>
               <Popup>

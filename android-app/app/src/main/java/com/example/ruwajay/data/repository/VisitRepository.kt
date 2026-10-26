@@ -46,12 +46,46 @@ class VisitRepository(
     }
     fun createVisit(propertyId: String, propertyTitle: String, propertyAddress: String, ownerId: String, ownerName: String,
         visitDate: String, visitTime: String, notes: String, onResult: (Result<String>) -> Unit) {
-        RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId,"date" to visitDate,"time" to visitTime,"notes" to notes))
+        val cleanDate = normalizeDate(visitDate)
+        val cleanTime = normalizeTime(visitTime)
+        RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId,"date" to cleanDate,"time" to cleanTime,"notes" to notes))
             .addOnSuccessListener { response ->
                 val id = response["id"] as? String
-                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta invalida.")))
+                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta inválida del servidor.")))
             }.addOnFailureListener { onResult(Result.failure(it)) }
     }
+
+    private fun normalizeDate(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.matches(Regex("""^\d{4}-\d{2}-\d{2}$"""))) return trimmed
+        val dmy = Regex("""^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$""").find(trimmed)
+        if (dmy != null) {
+            val (d, m, y) = dmy.destructured
+            return String.format(Locale.US, "%04d-%02d-%02d", y.toInt(), m.toInt(), d.toInt())
+        }
+        return trimmed
+    }
+
+    private fun normalizeTime(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.matches(Regex("""^([01]\d|2[0-3]):[0-5]\d$"""))) return trimmed
+        val ampmMatch = Regex("""^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)$""").find(trimmed)
+        if (ampmMatch != null) {
+            val (hStr, mStr, period) = ampmMatch.destructured
+            var h = hStr.toInt()
+            val m = mStr.toInt()
+            if (period.equals("PM", ignoreCase = true) && h < 12) h += 12
+            if (period.equals("AM", ignoreCase = true) && h == 12) h = 0
+            return String.format(Locale.US, "%02d:%02d", h, m)
+        }
+        val shortMatch = Regex("""^(\d{1}):(\d{2})$""").find(trimmed)
+        if (shortMatch != null) {
+            val (hStr, mStr) = shortMatch.destructured
+            return String.format(Locale.US, "%02d:%02d", hStr.toInt(), mStr.toInt())
+        }
+        return trimmed
+    }
+
     fun updateVisitStatus(visitId: String, newStatus: String, onResult: (Result<Unit>) -> Unit) {
         RuwaBackend.invoke("changeVisitStatus", mapOf("visitId" to visitId,"status" to newStatus))
             .addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }

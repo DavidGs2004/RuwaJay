@@ -25,11 +25,8 @@ class WebRtcManager(baseContext: Context) {
     var onRemoteTrackReceived: (() -> Unit)? = null
     var onConnectionStateChanged: ((PeerConnection.PeerConnectionState) -> Unit)? = null
 
-    init {
-        initializeFactory()
-    }
-
     private fun initializeFactory() {
+        if (factory != null) return
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context)
                 .setEnableInternalTracer(false)
@@ -61,6 +58,7 @@ class WebRtcManager(baseContext: Context) {
     )
 
     fun createPeerConnection() {
+        initializeFactory()
         val f = factory ?: return
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
