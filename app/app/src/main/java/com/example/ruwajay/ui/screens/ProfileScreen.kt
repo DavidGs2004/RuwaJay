@@ -77,7 +77,8 @@ fun ProfileScreen(
     onPropertyClick: (String) -> Unit = {},
     onChatClick: (String) -> Unit = {},
     onSearchClick: (String) -> Unit = {},
-    openVerification: Boolean = false
+    openVerification: Boolean = false,
+    initialTab: String = "perfil"
 ) {
     val auth = FirebaseAuth.getInstance()
     val firestore = FirebaseFirestore.getInstance()
@@ -244,6 +245,14 @@ fun ProfileScreen(
     }
 
     var selectedTab by remember { mutableStateOf(0) }
+    LaunchedEffect(initialTab) {
+        selectedTab = when (initialTab) {
+            "busquedas" -> 1
+            "visitas" -> 2
+            "avisos" -> 6
+            else -> 0
+        }
+    }
     // Sub-tab de administración: 0 = Solicitudes DPI, 1 = Usuarios, 2 = Inmuebles, 3 = Comunicados
     var adminSubTab by remember { mutableStateOf(0) }
 
@@ -596,6 +605,13 @@ fun ProfileScreen(
                             )
                         }
                         ProfileTabChip(
+                            icon = Icons.Default.Notifications,
+                            title = "Avisos",
+                            count = null,
+                            selected = selectedTab == 6,
+                            onClick = { selectedTab = 6 }
+                        )
+                        ProfileTabChip(
                             icon = Icons.Default.Settings,
                             title = "Ajustes",
                             count = null,
@@ -608,6 +624,14 @@ fun ProfileScreen(
 
                     // Contenido según Tab seleccionado
                     when (selectedTab) {
+                        6 -> AccountTools(
+                            onPropertyClick = onPropertyClick,
+                            onChatClick = onChatClick,
+                            onSearchClick = onSearchClick,
+                            initialSection = "avisos",
+                            showNavigation = false,
+                            onVisitsClick = { selectedTab = 2 }
+                        )
                         0 -> {
                             // ── TAB 0: MI PERFIL (DATOS Y RESUMEN) ──
                             Column(modifier = Modifier.fillMaxWidth()) {

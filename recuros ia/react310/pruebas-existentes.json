@@ -1,0 +1,37 @@
+[
+  {
+    "suite": "emuladores-existentes",
+    "codigo": 1,
+    "resumen": [
+      "✖ Private profiles cannot be listed or read by strangers (111.2579ms)",
+      "✖ A participant cannot impersonate the other message sender (52.003ms)",
+      "✖ Membership and other users read markers are immutable from clients (45.8424ms)",
+      "✖ Visits and open call signaling cannot be written directly (50.1781ms)",
+      "✖ Video and quoted replies keep their notification job and validated content (5.1911ms)",
+      "ℹ tests 17",
+      "ℹ suites 0",
+      "ℹ pass 12",
+      "ℹ fail 5",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ todo 0",
+      "ℹ duration_ms 19727.6872",
+      "✖ failing tests:",
+      "✖ Private profiles cannot be listed or read by strangers (111.2579ms)",
+      "✖ A participant cannot impersonate the other message sender (52.003ms)",
+      "✖ Membership and other users read markers are immutable from clients (45.8424ms)",
+      "✖ Visits and open call signaling cannot be written directly (50.1781ms)",
+      "✖ Video and quoted replies keep their notification job and validated content (5.1911ms)"
+    ]
+  },
+  {
+    "suite": "browser-existente",
+    "codigo": 1,
+    "resumen": [
+      "Running 2 tests using 1 worker",
+      "[WebServer] 12:36:16 p. m. [vite] (client) [console.error] [2026-10-26T18:36:16.698Z]  @firebase/firestore: Firestore (12.19.0): Could not reach Cloud Firestore backend. Connection failed 1 times. Most recent error: FirebaseError: [code=unavailable]: The operation could not be completed",
+      "  1 failed",
+      "  1 passed (17.4s)"
+    ]
+  }
+]

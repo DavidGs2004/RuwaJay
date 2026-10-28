@@ -27,38 +27,9 @@ export function subscribeToConversation(roomId, userId, onUpdate, onError = cons
 }
 export async function getOrCreateConversation(seekerId, ownerId, propertyId, propertyTitle = '', extras = {}) {
   if (!firebaseAuth?.currentUser) throw new Error('Debes iniciar sesión.');
-  const roomId = [seekerId, ownerId, propertyId].filter(Boolean).sort().join('_').replace(/[^a-zA-Z0-9_]/g, '');
-  try {
-    const roomRef = doc(firestore, 'conversations', roomId);
-    const updates = {
-      participants: [seekerId, ownerId].filter(Boolean),
-      propertyId: propertyId || '',
-      propertyTitle: propertyTitle || 'Propiedad RuwaJay',
-      createdAt: serverTimestamp(),
-      seekerId: seekerId || '',
-      ownerId: ownerId || '',
-      updatedAt: serverTimestamp(),
-    };
-    const sPhoto = extras.tenantPhoto || extras.seekerPhoto || '';
-    const oPhoto = extras.ownerPhoto || '';
-    const sName = extras.tenantName || extras.seekerName || '';
-    const oName = extras.ownerName || '';
-    if (sPhoto) updates.seekerPhoto = sPhoto;
-    if (oPhoto) updates.ownerPhoto = oPhoto;
-    if (sName) updates.seekerName = sName;
-    if (oName) updates.ownerName = oName;
-
-    await setDoc(roomRef, updates, { merge: true });
-    return roomId;
-  } catch (err) {
-    console.warn('Firestore directo falló al abrir conversación, intentando backend:', err);
-    try {
-      const res = await callBackend('openConversation', { seekerId, ownerId, propertyId });
-      return res?.id || roomId;
-    } catch {
-      return roomId;
-    }
-  }
+  const result = await callBackend('openConversation', { seekerId, ownerId, propertyId });
+  if (!result?.id) throw new Error('No se pudo abrir el chat. Comprueba que la visita esté confirmada e inténtalo de nuevo.');
+  return result.id;
 }
 export async function sendMessageToFirestore(roomId, _senderId, senderName, text, extras = {}) {
   const account = firebaseAuth?.currentUser;
@@ -71,16 +42,12 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
   // The gateway commits the message, summary and notification job together.
   // Direct writes remain available for installations without the gateway.
   if (usesSupabaseBackend) {
-    try {
-      return (await callBackend('sendMessage', {
+    return (await callBackend('sendMessage', {
         roomId, type, text: text || '',
         ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
         ...(mediaUrl ? { mediaUrl } : {}),
         ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
-      }, { expectedUid: account.uid })).id;
-    } catch (err) {
-      console.warn('Backend sendMessage no disponible, usando Firestore directo:', err);
-    }
+    }, { expectedUid: account.uid })).id;
   }
   try {
     let recipientIds = [];

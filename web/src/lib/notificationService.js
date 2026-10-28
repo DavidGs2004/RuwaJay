@@ -15,19 +15,28 @@ export async function enableNotifications() {
   if (!token) throw new Error('No se pudo registrar este dispositivo.');
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   const id = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2,'0')).join('');
-  activeDevice = doc(firestore,'users',uid,'devices',id);
-  await setDoc(activeDevice, { token, platform:'web', updatedAt:serverTimestamp() });
+  if (firebaseAuth.currentUser?.uid !== uid) throw new Error('Tu sesión cambió. Vuelve a activar las notificaciones.');
+  const device = doc(firestore,'users',uid,'devices',id);
+  await setDoc(device, { token, platform:'web', updatedAt:serverTimestamp() });
+  if (firebaseAuth.currentUser?.uid !== uid) throw new Error('Tu sesión cambió. Vuelve a activar las notificaciones.');
+  activeDevice = device;
   localStorage.setItem('ruwajay_push_device', JSON.stringify({uid,id}));
 }
 export async function disableNotifications() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem('ruwajay_push_device') || 'null'); } catch { /* discard invalid local device metadata */ }
-  if (saved?.uid === firebaseAuth?.currentUser?.uid) {
-    await deleteDoc(activeDevice || doc(firestore,'users',saved.uid,'devices',saved.id));
+  try {
+    if (saved?.uid === firebaseAuth?.currentUser?.uid) {
+      await deleteDoc(activeDevice || doc(firestore,'users',saved.uid,'devices',saved.id));
+    }
+  } finally {
+    try {
+      if (await isSupported()) await deleteToken(getMessaging(firebaseApp));
+    } finally {
+      activeDevice = null;
+      localStorage.removeItem('ruwajay_push_device');
+    }
   }
-  if (await isSupported()) await deleteToken(getMessaging(firebaseApp));
-  activeDevice = null;
-  localStorage.removeItem('ruwajay_push_device');
 }
 export function subscribeNotifications(uid,onChange,onError) {
   return onSnapshot(collection(firestore,'users',uid,'notifications'),snapshot=>

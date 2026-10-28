@@ -1,20 +1,14 @@
-import { useEffect } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
 import { LogOut } from 'lucide-react';
 
 export default function LogoutConfirmModal({ isOpen, onClose, onConfirm, isBusy = false }) {
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && !isBusy) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isBusy, onClose]);
+  const modalRef = useModalFocus(isOpen, onClose, isBusy);
 
   if (!isOpen) return null;
 
   return (
     <div
+      ref={modalRef}
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in"
       onClick={() => { if (!isBusy) onClose(); }}
       role="dialog"

@@ -18,7 +18,14 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
 
 @Composable
-fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Unit, onSearchClick: (String) -> Unit) {
+fun AccountTools(
+    onPropertyClick: (String) -> Unit,
+    onChatClick: (String) -> Unit,
+    onSearchClick: (String) -> Unit,
+    initialSection: String = "",
+    showNavigation: Boolean = true,
+    onVisitsClick: (() -> Unit)? = null
+) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
@@ -26,7 +33,7 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
     var visits by remember(uid) { mutableStateOf<List<VisitRequest>>(emptyList()) }
     var searches by remember(uid) { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
     var notifications by remember(uid) { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
-    var section by remember { mutableStateOf("") }
+    var section by remember(uid, initialSection) { mutableStateOf(initialSection) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
@@ -59,7 +66,7 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
         onDispose {a?.remove();b.remove();c.remove();d.remove()}
     }
     Column(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Row { listOf("visitas","avisos","busquedas","perfil").forEach { item ->
+        if (showNavigation) Row { listOf("visitas","avisos","busquedas","perfil").forEach { item ->
             TextButton(onClick={section=if(section==item) "" else item}) { Text(item.replaceFirstChar{it.uppercase()}) }
         } }
         error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -100,9 +107,12 @@ fun AccountTools(onPropertyClick: (String) -> Unit, onChatClick: (String) -> Uni
                 notifications.sortedByDescending{(it["createdAt"] as? com.google.firebase.Timestamp)?.toDate()?.time ?: 0L}.take(50).forEach { notice ->
                     TextButton(onClick={
                         db.collection("users").document(uid).collection("notifications").document(notice["id"].toString()).update("readAt",FieldValue.serverTimestamp())
+                            .addOnFailureListener { error = "No se pudo marcar el aviso como leído. Inténtalo de nuevo." }
                         val path=notice["path"] as? String ?: ""
                         val conversation=android.net.Uri.parse(path).getQueryParameter("conversation")
-                        if(conversation!=null)onChatClick(conversation)else if(path.startsWith("/propiedad/"))onPropertyClick(path.removePrefix("/propiedad/"))else section="visitas"
+                        if(!conversation.isNullOrBlank() && !conversation.contains('/')) onChatClick(conversation)
+                        else if(path.startsWith("/propiedad/")) onPropertyClick(android.net.Uri.parse(path).lastPathSegment ?: "")
+                        else if (onVisitsClick != null) onVisitsClick() else section="visitas"
                     }) {Text("${notice["title"]}: ${notice["body"]}")}
                 }
             }

@@ -1,0 +1,56 @@
+﻿diff --git a/web/src/components/ui/SystemUpdatesModal.jsx b/web/src/components/ui/SystemUpdatesModal.jsx
+index cb124fa..1362a05 100644
+--- a/web/src/components/ui/SystemUpdatesModal.jsx
++++ b/web/src/components/ui/SystemUpdatesModal.jsx
+@@ -13,6 +13,8 @@ export default function SystemUpdatesModal({
+   const { isAdmin } = useAuth();
+   const [internalUpdates, setInternalUpdates] = useState([]);
+   const [internalLoading, setInternalLoading] = useState(true);
++  // Debe ejecutarse también con el modal cerrado: moverlo después del retorno
++  // de !isOpen cambia el orden de Hooks al abrirlo (React #310).
+   const [selectedCategory, setSelectedCategory] = useState('todas');
+ 
+   const updates = propUpdates !== undefined ? propUpdates : internalUpdates;
+diff --git a/web/src/pages/LoginPage.jsx b/web/src/pages/LoginPage.jsx
+index 2a0ab72..27ecebb 100644
+--- a/web/src/pages/LoginPage.jsx
++++ b/web/src/pages/LoginPage.jsx
+@@ -64,13 +64,13 @@ export default function LoginPage() {
+     if (alertMsg) {
+       notify(alertMsg, true);
+       sessionStorage.removeItem('ruwajay_auth_alert');
+-      window.history.replaceState({}, '', '/login');
++      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
+     } else if (searchParams.get('suspended') === 'true') {
+       notify('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.', true);
+-      window.history.replaceState({}, '', '/login');
++      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
+     } else if (searchParams.get('inactive') === 'true') {
+       notify('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.', true);
+-      window.history.replaceState({}, '', '/login');
++      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
+     }
+   }, [searchParams]);
+   const strongPassword = (text) => text.length >= 8 && /[A-Z]/.test(text) && /[a-z]/.test(text) && /\d/.test(text) && /[^A-Za-z0-9]/.test(text);
+diff --git a/web/vite.config.js b/web/vite.config.js
+index 8ade162..2350c7c 100644
+--- a/web/vite.config.js
++++ b/web/vite.config.js
+@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
+ import tailwindcss from '@tailwindcss/vite'
+ import { resolve } from 'path'
+ 
+-export default defineConfig({
+-  // Local: /. VPS build: npm run build:vps -> /ruwajay/.
++export default defineConfig(({ command, isPreview }) => ({
++  // Desarrollo: /. Tanto build como build:vps y preview usan la subcarpeta IIS.
++  base: command === 'build' || isPreview ? '/ruwajay/' : '/',
+   plugins: [
+     react(),
+     tailwindcss(),
+@@ -45,4 +46,4 @@ export default defineConfig({
+       },
+     },
+   },
+-})
++}))

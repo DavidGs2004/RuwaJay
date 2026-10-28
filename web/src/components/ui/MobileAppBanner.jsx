@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { mobileDeepLink } from '../../lib/navigation';
 import { Smartphone, X, ExternalLink } from 'lucide-react';
 
 export default function MobileAppBanner({ onOpenModal }) {
@@ -17,8 +18,7 @@ export default function MobileAppBanner({ onOpenModal }) {
     sessionStorage.setItem('ruwajay_app_banner_dismissed', 'true');
   };
 
-  const currentPath = location.pathname.startsWith('/') ? location.pathname.slice(1) : location.pathname;
-  const deepLink = currentPath ? `ruwajay://${currentPath}` : 'ruwajay://home';
+  const deepLink = mobileDeepLink(location.pathname + location.search);
 
   const handleOpenApp = () => {
     window.location.href = deepLink;

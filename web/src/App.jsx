@@ -27,6 +27,7 @@ import RuwaJayLoader from './components/ui/RuwaJayLoader';
 import PropertyCompareModal from './components/property/PropertyCompareModal';
 import ChatNotificationToast from './components/chat/ChatNotificationToast';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import NotificationCenter from './components/ui/NotificationCenter';
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -139,13 +140,16 @@ function AccountBlockedScreen({ type = 'inactive', onReturnToLogin }) {
 
 function RequireSession() {
   const { user } = useAuth();
-  return user ? <Outlet /> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  return user ? <Outlet /> : <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
 }
 
 function RuwaJayRoutes() {
   const { user, logout, isInitializing, isPostAuthLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const requestedPath = location.state?.from;
+  const postLoginPath = typeof requestedPath === 'string' && requestedPath.startsWith('/') && !requestedPath.startsWith('//') && !requestedPath.includes('\\') ? requestedPath : '/';
   const isChatRoute = location.pathname === '/chat';
   const isAuthRoute = ['/login', '/reset-password', '/__/auth/action'].includes(location.pathname);
   const showLayout = !isChatRoute && !isAuthRoute;
@@ -210,7 +214,7 @@ function RuwaJayRoutes() {
             <Route path="/publicar" element={<PublishPage />} />
             <Route path="/publicar/:editId" element={<PublishPage />} />
           </Route>
-          <Route path="/login" element={user && resolveUserStatus(user, user.email) === 'active' ? <Navigate to="/" replace /> : <LoginPage />} />
+          <Route path="/login" element={user && resolveUserStatus(user, user.email) === 'active' ? <Navigate to={postLoginPath} replace /> : <LoginPage />} />
           <Route path="/reset-password" element={user && resolveUserStatus(user, user.email) === 'active' ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
           <Route path="/__/auth/action" element={user && resolveUserStatus(user, user.email) === 'active' ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -220,10 +224,11 @@ function RuwaJayRoutes() {
       {showLayout && <MobileNav />}
       <PropertyCompareModal />
       <ChatNotificationToast />
+      {!isAuthRoute && <NotificationCenter />}
       <MobileAppConnectModal
         isOpen={mobileAppModalOpen}
         onClose={() => setMobileAppModalOpen(false)}
-        targetPath={location.pathname}
+        targetPath={location.pathname + location.search}
       />
     </div>
   );

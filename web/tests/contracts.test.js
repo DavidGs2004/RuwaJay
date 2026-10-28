@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { imageUrls, coordinatesOrNull, normalizeVisit, unreadConversation, conversationId } from '../src/lib/contracts.js';
 import { validSchedule, permittedVisitTransition } from '../../archivos varios/servicios/functions/domain.js';
+import { appPathname, mobileDeepLink } from '../src/lib/navigation.js';
+
+test('Chat reads use the same route at the root and under the VPS base path', () => {
+  assert.equal(appPathname('/chat', '/'), '/chat');
+  assert.equal(appPathname('/ruwajay/chat', '/ruwajay/'), '/chat');
+  assert.equal(appPathname('/ruwajay/chat/', '/ruwajay/'), '/chat');
+  assert.equal(appPathname('/ruwajay/perfil', '/ruwajay/'), '/perfil');
+  assert.equal(appPathname('/ruwajay-other/chat', '/ruwajay/'), '/ruwajay-other/chat');
+});
+
+test('Mobile links preserve the conversation, property and profile tab', () => {
+  assert.equal(mobileDeepLink('/chat?conversation=room%201'), 'ruwajay://chat/room%201');
+  assert.equal(mobileDeepLink('/ruta?property=house'), 'ruwajay://ruta/house');
+  assert.equal(mobileDeepLink('/perfil?tab=visitas'), 'ruwajay://perfil?tab=visitas');
+  assert.equal(mobileDeepLink('/propiedad/house'), 'ruwajay://propiedad/house');
+  assert.equal(mobileDeepLink('/'), 'ruwajay://home');
+});
 test('Legacy web photos never persist temporary URLs or duplicate photos', () => {
   assert.deepEqual(imageUrls({ fachada:['blob:http://localhost/x','https://example.test/a'], general:['https://example.test/a','data:image/png;base64,abc'] }),['https://example.test/a']);
 });

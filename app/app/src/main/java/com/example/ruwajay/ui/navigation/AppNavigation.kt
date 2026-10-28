@@ -140,14 +140,16 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             })
         }
         composable(
-            route = Screen.Profile.route,
+            route = "${Screen.Profile.route}?tab={tab}",
+            arguments = listOf(navArgument("tab") { type = NavType.StringType; defaultValue = "perfil" }),
             deepLinks = listOf(
-                navDeepLink { uriPattern = "ruwajay://profile" },
-                navDeepLink { uriPattern = "ruwajay://perfil" },
-                navDeepLink { uriPattern = "https://ruwajay.com/perfil" }
+                navDeepLink { uriPattern = "ruwajay://profile?tab={tab}" },
+                navDeepLink { uriPattern = "ruwajay://perfil?tab={tab}" },
+                navDeepLink { uriPattern = "https://ruwajay.com/perfil?tab={tab}" }
             )
-        ) {
+        ) { entry ->
             ProfileScreen(
+                initialTab = entry.arguments?.getString("tab") ?: "perfil",
                 onLoginClick = { navController.navigate(Screen.Login.route) },
                 onInboxClick = { navController.navigate(Screen.Inbox.route) },
                 onChatClick = { id -> navController.navigate(Screen.Chat.createRoute(id)) },

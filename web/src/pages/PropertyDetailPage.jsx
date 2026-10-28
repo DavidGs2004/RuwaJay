@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Bed, Bath, Car, Ruler, MapPin, Heart, Share2, Shield, Calendar, CheckCircle,
   MessageCircle, ChevronLeft, ChevronRight, X, Star, AlertTriangle,
@@ -45,6 +45,7 @@ function readStoredVisits() {
 }
 
 function PropertyDetailContent({ property }) {
+  const location = useLocation();
   const { id } = useParams();
   const navigate = useNavigate();
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -726,7 +727,7 @@ function PropertyDetailContent({ property }) {
                     <button
                       onClick={() => {
                         if (!user) {
-                          navigate('/iniciar-sesion', { state: { from: window.location.pathname } });
+                          navigate('/login', { state: { from: location.pathname + location.search } });
                           return;
                         }
                         setShowVisitModal(true);

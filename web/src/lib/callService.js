@@ -426,6 +426,7 @@ export function subscribeToIncomingCalls(userArg, emailArg, callbackArg) {
     };
 
     idSet.forEach((userId) => {
+      listenTo(query(collection(firestore, 'active_calls'), where('receiverId', '==', userId)));
       listenTo(query(collection(firestore, 'active_calls'), where('receiverIds', 'array-contains', userId)));
     });
     emailSet.forEach((email) => {
@@ -608,10 +609,10 @@ export async function answerCallSession(callId, answerSdp, roomId = null) {
     const targetRoom = roomId || localCall?.roomId;
     if (targetRoom) {
       try {
-        await setDoc(doc(firestore, 'conversations', targetRoom), {
+        await updateDoc(doc(firestore, 'conversations', targetRoom), {
           'activeCall.status': 'connected',
           'activeCall.answer': answerSdp,
-        }, { merge: true });
+        });
       } catch (err) {
         console.warn('Error respondiendo en conversations:', err);
       }
@@ -688,9 +689,9 @@ export async function endCallSession(callId, reason = 'ended', roomId = null) {
     const targetRoom = roomId || localCall?.roomId;
     if (targetRoom) {
       try {
-        await setDoc(doc(firestore, 'conversations', targetRoom), {
+        await updateDoc(doc(firestore, 'conversations', targetRoom), {
           'activeCall.status': reason,
-        }, { merge: true });
+        });
       } catch (err) { /* ignore */ }
     }
   }
@@ -724,9 +725,9 @@ export async function updateCallMuteState(callId, isCaller, isMuted, roomId = nu
     const targetRoom = roomId || localCall?.roomId;
     if (targetRoom) {
       try {
-        await setDoc(doc(firestore, 'conversations', targetRoom), {
+        await updateDoc(doc(firestore, 'conversations', targetRoom), {
           [`activeCall.${fieldName}`]: isMuted,
-        }, { merge: true });
+        });
       } catch { /* ignore */ }
     }
   }

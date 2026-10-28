@@ -8,9 +8,6 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -78,6 +75,9 @@ class RuwaMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val recipientId = message.data["recipientId"]
+        if (!recipientId.isNullOrBlank() && recipientId != uid) return
         val type = message.data["type"] ?: "message"
         val callId = message.data["callId"]
         val isCall = type == "call" || !callId.isNullOrBlank()
@@ -165,29 +165,6 @@ object RuwaNotifications {
             delivered.add(eventId)
             if (delivered.size > 200) delivered.remove(delivered.first())
 
-            // Reproducir sonido de notificación explícitamente para garantizar que suene siempre
-            try {
-                val ringtone = RingtoneManager.getRingtone(context.applicationContext, soundUri)
-                ringtone?.play()
-            } catch (_: Exception) {}
-
-            // Vibración explícita
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                    vm?.defaultVibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
-                } else {
-                    @Suppress("DEPRECATION")
-                    val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        v?.vibrate(longArrayOf(0, 300, 150, 300), -1)
-                    }
-                }
-            } catch (_: Exception) {}
-
             return true
         } catch (_: SecurityException) { return false }
     }
@@ -198,6 +175,7 @@ object RuwaNotifications {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_CALLS_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
+        if (eventId in delivered) return true
 
         val uri = android.net.Uri.parse(path)
         val conversationId = uri.getQueryParameter("conversation")
@@ -238,6 +216,7 @@ object RuwaNotifications {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
+            .setTimeoutAfter(45_000L)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .setFullScreenIntent(pending, true)
@@ -255,12 +234,8 @@ object RuwaNotifications {
 
         try {
             manager.notify(eventId.hashCode(), builder.build())
-
-            // Disparar sonido del ringtone explícitamente para asegurar reproducción
-            try {
-                val ringtone = RingtoneManager.getRingtone(context.applicationContext, ringtoneUri)
-                ringtone?.play()
-            } catch (_: Exception) {}
+            delivered.add(eventId)
+            if (delivered.size > 200) delivered.remove(delivered.first())
 
             return true
         } catch (_: SecurityException) { return false }

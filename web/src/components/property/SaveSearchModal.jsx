@@ -1,5 +1,6 @@
 import { saveSearch } from '../../lib/savedSearchService';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
 import { X, Bookmark, Bell, Check, Sparkles, MapPin, SlidersHorizontal } from 'lucide-react';
 
 /**
@@ -42,11 +43,25 @@ export default function SaveSearchModal({
   const [searchName, setSearchName] = useState(suggestedName);
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const savingRef = useRef(false);
+  const modalRef = useModalFocus(isOpen, onClose, saving);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (!isOpen || !savedSuccess) return;
+    const timer = setTimeout(() => closeRef.current(), 1200);
+    return () => clearTimeout(timer);
+  }, [isOpen, savedSuccess]);
 
   useEffect(() => {
     if (isOpen) {
       setSearchName(suggestedName);
       setSavedSuccess(false);
+      setError('');
+      setNotifyEmail(true);
     }
   }, [isOpen, suggestedName]);
 
@@ -54,6 +69,10 @@ export default function SaveSearchModal({
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (savingRef.current || savedSuccess) return;
+    savingRef.current = true;
+    setSaving(true);
+    setError('');
     const newSearch = {
       id: `saved-${Date.now()}`,
       name: searchName.trim() || suggestedName,
@@ -66,18 +85,22 @@ export default function SaveSearchModal({
 
     try {
       await saveSearch(newSearch);
-    } catch (error) { window.alert(error.message || 'No se pudo guardar la busqueda.'); return; }
+    } catch (error) {
+      setError(error.message || 'No se pudo guardar la búsqueda. Revisa tu conexión y vuelve a intentarlo.');
+      return;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
 
     setSavedSuccess(true);
     onSaveSuccess?.(newSearch);
-    setTimeout(() => {
-      onClose();
-    }, 1200);
   };
 
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Guardar búsqueda" aria-busy={saving}
+        className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-border">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-[#FDFBF7] px-6 py-4">
           <div className="flex items-center gap-3">
@@ -93,6 +116,8 @@ export default function SaveSearchModal({
           <button
             type="button"
             onClick={onClose}
+            disabled={saving}
+            aria-label="Cerrar búsqueda"
             className="flex h-9 w-9 items-center justify-center rounded-full text-text-muted hover:bg-cafe/5 hover:text-cafe transition-colors"
           >
             <X size={18} />
@@ -101,7 +126,7 @@ export default function SaveSearchModal({
 
         {/* Form Body */}
         {savedSuccess ? (
-          <div className="p-8 text-center">
+          <div role="status" className="p-8 text-center">
             <div className="w-16 h-16 rounded-full bg-jade/10 text-jade flex items-center justify-center mx-auto mb-3">
               <Check size={32} strokeWidth={3} />
             </div>
@@ -112,10 +137,15 @@ export default function SaveSearchModal({
           </div>
         ) : (
           <form onSubmit={handleSave} className="p-6 space-y-4">
+            {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             <div>
               <label className="block text-xs font-bold text-cafe mb-1.5">Nombre de la búsqueda</label>
               <input
                 type="text"
+                id="saved-search-name"
+                aria-label="Nombre de la búsqueda"
+                maxLength={120}
+                disabled={saving}
                 required
                 value={searchName}
                 onChange={(e) => setSearchName(e.target.value)}
@@ -172,6 +202,7 @@ export default function SaveSearchModal({
             <label className="flex items-start gap-3 p-3 rounded-2xl border border-border bg-[#FDFBF7] cursor-pointer hover:bg-white transition-colors">
               <input
                 type="checkbox"
+                disabled={saving}
                 checked={notifyEmail}
                 onChange={(e) => setNotifyEmail(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded text-forest focus:ring-forest border-border"
@@ -192,15 +223,17 @@ export default function SaveSearchModal({
               <button
                 type="button"
                 onClick={onClose}
+                disabled={saving}
                 className="rounded-xl px-4 py-2.5 text-xs font-bold text-text-muted hover:text-cafe"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
+                disabled={saving}
                 className="rounded-xl bg-forest px-5 py-2.5 text-xs font-black text-white hover:bg-forest-dark transition-all shadow-xs"
               >
-                Guardar búsqueda
+                {saving ? 'Guardando…' : 'Guardar búsqueda'}
               </button>
             </div>
           </form>

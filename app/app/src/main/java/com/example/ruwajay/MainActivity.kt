@@ -206,8 +206,8 @@ class MainActivity : ComponentActivity() {
                             popUpTo(Screen.Home.route) { saveState = false }
                             launchSingleTop = true
                         }
-                    } else if (path.startsWith("/propiedad/")) {
-                        navController.navigate(Screen.PropertyDetail.createRoute(path.removePrefix("/propiedad/"))) {
+                    } else if (path.startsWith("/propiedad/") && !uri.lastPathSegment.isNullOrBlank()) {
+                        navController.navigate(Screen.PropertyDetail.createRoute(android.net.Uri.encode(uri.lastPathSegment))) {
                             launchSingleTop = true
                         }
                     } else if (path == "/inbox" || path == "/mensajes") {
@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
                             launchSingleTop = true
                         }
                     } else {
-                        navController.navigate(Screen.Profile.route) {
+                        navController.navigate(Screen.Profile.createRoute(uri.getQueryParameter("tab") ?: "avisos")) {
                             launchSingleTop = true
                         }
                     }

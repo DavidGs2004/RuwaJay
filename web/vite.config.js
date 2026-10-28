@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
-export default defineConfig({
-  // Local: /. VPS build: npm run build:vps -> /ruwajay/.
+export default defineConfig(({ command, isPreview }) => ({
+  // Desarrollo: /. Tanto build como build:vps y preview usan la subcarpeta IIS.
+  base: command === 'build' || isPreview ? '/ruwajay/' : '/',
   plugins: [
     react(),
     tailwindcss(),
@@ -45,4 +46,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

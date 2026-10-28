@@ -1,39 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
+import { mobileDeepLink } from '../../lib/navigation';
 import { Smartphone, Download, ExternalLink, QrCode, X, Check, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function MobileAppConnectModal({ isOpen, onClose, targetPath = '' }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const modalRef = useModalFocus(isOpen, onClose);
+  useEffect(() => { setCopied(false); setCopyError(''); }, [isOpen, targetPath]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2500);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   if (!isOpen) return null;
 
   // Limpiar ruta para deep link
   const cleanPath = targetPath.startsWith('/') ? targetPath.slice(1) : targetPath;
-  const query = new URLSearchParams(cleanPath.split('?')[1] || '');
-  const route = cleanPath.split('?')[0];
-  const appPath = route === 'ruta' && query.get('property') ? `ruta/${query.get('property')}`
-    : route === 'chat' && query.get('conversation') ? `chat/${query.get('conversation')}` : route;
-  const deepLink = appPath ? `ruwajay://${appPath}` : 'ruwajay://home';
+  const deepLink = mobileDeepLink(targetPath);
   const webLink = `${window.location.origin}${import.meta.env.BASE_URL}${cleanPath}`;
 
   const handleOpenApp = () => {
     // Intentar abrir el esquema nativo de la app
     window.location.href = deepLink;
-    // Timeout para informar si no está instalada
-    setTimeout(() => {
-      // Si la ventana sigue visible después de 2 segundos, la app probablemente no esté instalada
-    }, 2000);
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(deepLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const handleCopyLink = async () => {
+    setCopyError('');
+    try {
+      await navigator.clipboard.writeText(deepLink);
+      setCopied(true);
+    } catch {
+      setCopyError('No se pudo copiar. Mantén pulsado el enlace para copiarlo manualmente.');
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div
-        className="relative w-full max-w-lg overflow-hidden bg-white rounded-3xl shadow-2xl border border-border-light text-cafe"
+        ref={modalRef}
+        className="relative w-full max-w-lg max-h-[90dvh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-border-light text-cafe"
         role="dialog"
         aria-modal="true"
         aria-labelledby="mobile-app-modal-title"
@@ -96,6 +103,7 @@ export default function MobileAppConnectModal({ isOpen, onClose, targetPath = ''
           </div>
 
           {/* Acciones principales */}
+          {copyError && <p role="alert" className="mb-3 text-sm text-red-700">{copyError}</p>}
           <div className="space-y-3">
             <button
               onClick={handleOpenApp}

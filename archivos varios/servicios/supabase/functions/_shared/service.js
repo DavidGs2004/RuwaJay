@@ -102,10 +102,20 @@ export class RuwaService {
   async sendMessage(tx,user,data){
     const id=identifier(data.roomId),room=await tx.get('conversations/'+id);
     assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid),403,'permission-denied','No perteneces a esta conversación.');
-    const type=data.type||'text';assert(['text','image','audio','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
+    const type=data.type||'text';assert(['text','image','audio','video','location'].includes(type),400,'invalid-argument','Tipo de mensaje inválido.');
     let text=boundedText(data.text);assert(type!=='text'||text,400,'invalid-argument','Escribe un mensaje.');
-    const messageId=crypto.randomUUID(),payload={type,text:text||(type==='audio'?'Audio':type==='image'?'Foto':'Ubicación'),senderId:user.uid,senderName:user.name||'Usuario',createdAt:SERVER_TIME,status:'sent'};
-    if(['image','audio'].includes(type)){
+    const messageId=crypto.randomUUID(),payload={type,text:text||(type==='audio'?'Audio':type==='video'?'Video':type==='image'?'Foto':'Ubicación'),senderId:user.uid,senderName:user.name||'Usuario',createdAt:SERVER_TIME,status:'sent'};
+    if (type === 'location') {
+      assert(Number.isFinite(data.latitude) && Math.abs(data.latitude) <= 90 && Number.isFinite(data.longitude) && Math.abs(data.longitude) <= 180,400,'invalid-argument','Ubicación inválida.');
+      payload.latitude=data.latitude;payload.longitude=data.longitude;
+    }
+    if (data.replyTo != null) {
+      const replyId=identifier(data.replyTo.id);
+      const original=await tx.get('conversations/'+id+'/messages/'+replyId);
+      assert(original.exists && !original.data.isDeleted,400,'invalid-argument','El mensaje citado ya no está disponible.');
+      payload.replyTo={id:replyId,text:String(original.data.text||'').slice(0,4000),senderName:original.data.senderName||'Usuario',senderId:original.data.senderId};
+    }
+    if(['image','audio','video'].includes(type)){
       if(typeof data.mediaUrl==='string'&&data.mediaUrl.startsWith('https://')){
         payload.mediaUrl=data.mediaUrl;
       } else {
@@ -164,6 +174,11 @@ export class RuwaService {
     const receiverId=identifier(data.receiverId);assert(receiverId&&receiverId!==user.uid,400,'invalid-argument','Destinatario inválido.');
     const callerName=user.name||data.callerName||'Usuario',propertyTitle=boundedText(data.propertyTitle||'Propiedad RuwaJay',120);
     const callId=identifier(data.callId||('call_'+Date.now())),roomId=data.roomId?identifier(data.roomId):'';
+    const call=await tx.get('active_calls/'+callId);
+    const room=roomId ? await tx.get('conversations/'+roomId) : null;
+    assert(call.exists && call.data.callerId===user.uid && call.data.receiverId===receiverId && call.data.status==='calling'
+      && room?.exists && room.data.participants?.includes(user.uid) && room.data.participants?.includes(receiverId)
+      && call.data.roomId===roomId,403,'permission-denied','La llamada no corresponde a una conversación activa.');
     const eventId='call_'+callId;
     this.job(tx,'notice_'+eventId+'_'+receiverId,'notice',{
       uid:receiverId,
@@ -225,7 +240,7 @@ export class RuwaService {
     const [bucket,prefix]=definitions[kind];prefix.forEach(identifier);const path=[...prefix,crypto.randomUUID()].join('/');
     mime=String(mime||'').split(';')[0].trim().toLowerCase();
     assert(bytes.byteLength>0&&bytes.byteLength<=(kind==='chat'?20:8)*1024*1024,400,'invalid-argument','Archivo vacío o demasiado grande.');
-    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/webm)$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
+    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/(webm|mp4|quicktime))$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
     await this.authorizeFile(user,bucket,path.split('/'),true);return{url:await this.files.upload(bucket,path,bytes,mime)};
   }
   async resolveMedia(user,reference){const media=parseMediaReference(reference);await this.authorizeFile(user,media.bucket,media.parts,false);return this.files.signedUrl(media.bucket,media.path);}

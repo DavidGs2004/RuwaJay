@@ -14,6 +14,8 @@ export default function PrivateMedia({ src, type = 'image', ...props }) {
   useEffect(() => {
     let active = true;
     let timer;
+    setError(false);
+    setUrl(getCachedMediaUrl(src));
 
     if (!src) return;
 
@@ -35,7 +37,7 @@ export default function PrivateMedia({ src, type = 'image', ...props }) {
           setError(false);
         }
       } catch (err) {
-        if (active && !url) {
+        if (active) {
           setError(true);
         }
       }

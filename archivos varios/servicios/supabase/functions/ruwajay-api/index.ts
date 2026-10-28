@@ -5,7 +5,7 @@ import { RuwaService } from '../_shared/service.js';
 import { createHandler } from '../_shared/handler.js';
 
 declare const EdgeRuntime: {waitUntil(promise:Promise<unknown>):void};
-type Notice={title:string;body:string;path:string;eventId:string;type?:string;callId?:string;callerId?:string;callerName?:string;senderName?:string;roomId?:string};
+type Notice={uid:string;title:string;body:string;path:string;eventId:string;type?:string;callId?:string;callerId?:string;callerName?:string;senderName?:string;roomId?:string};
 const projectId='ruwa-jay';
 let serviceAccount: any = {};
 try {
@@ -27,15 +27,14 @@ const db=new FirestoreRest({projectId,tokenProvider});
 const files=new SupabaseFiles({url:Deno.env.get('SUPABASE_URL'),serviceKey:Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')});
 const push=async(token:string,notice:Notice)=>{
   const isCall = notice.type === 'call' || (notice as any).type === 'call';
-  const channelId = isCall ? 'ruwajay_calls' : 'ruwajay_messages_v2';
   const response=await fetch('https://fcm.googleapis.com/v1/projects/'+projectId+'/messages:send',{
     method:'POST',
     headers:{Authorization:'Bearer '+await tokenProvider(),'Content-Type':'application/json'},
     body:JSON.stringify({
       message:{
         token,
-        notification:{title:notice.title,body:notice.body},
         data:{
+            recipientId:notice.uid,
           path:notice.path,
           eventId:notice.eventId,
           title:notice.title,
@@ -49,15 +48,9 @@ const push=async(token:string,notice:Notice)=>{
         },
         android:{
           priority:'HIGH',
-          notification:{
-            channel_id:channelId,
-            tag:notice.eventId,
-            default_sound:true,
-            default_vibrate_timings:true,
-            notification_priority:'PRIORITY_MAX'
-          }
+          ...(isCall ? {ttl:'45s'} : {})
         },
-        webpush:{notification:{tag:notice.eventId},fcm_options:{link:'https://ruwa-jay.web.app'+notice.path}}
+        webpush:{notification:{title:notice.title,body:notice.body,tag:notice.eventId},fcm_options:{link:'https://ruwa-jay.web.app'+notice.path}}
       }
     }),
     signal:AbortSignal.timeout(15000)

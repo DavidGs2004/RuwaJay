@@ -1,0 +1,22 @@
+[
+  {
+    "modo": "desarrollo",
+    "caso": "version-publicada-reproducida",
+    "resultado": "error esperado #310"
+  },
+  {
+    "modo": "desarrollo",
+    "caso": "fuente-local-apertura-cierre-auth-datos-diferidos",
+    "resultado": "correcto"
+  },
+  {
+    "modo": "produccion",
+    "caso": "version-publicada-reproducida",
+    "resultado": "error esperado #310"
+  },
+  {
+    "modo": "produccion",
+    "caso": "fuente-local-apertura-cierre-auth-datos-diferidos",
+    "resultado": "correcto"
+  }
+]

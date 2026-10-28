@@ -128,9 +128,9 @@ async function notify(uid, eventId, title, body, path) {
   for (let offset = 0; offset < valid.length; offset += 500) {
     const slice = valid.slice(offset, offset + 500);
     const response = await getMessaging().sendEachForMulticast({
-      tokens: slice.map(d => d.data().token), notification: { title, body }, data: { path, eventId, title, body },
-      android: { priority: 'high', notification: { channelId: 'ruwajay_messages', tag: eventId, sound: 'default', defaultSound: true, defaultVibrateTimings: true, notificationPriority: 'PRIORITY_MAX', visibility: 'PUBLIC' } },
-      webpush: { notification: { tag: eventId }, fcmOptions: { link: `${webOrigin.value()}${path}` } },
+      tokens: slice.map(d => d.data().token), data: { path, eventId, title, body, recipientId: uid },
+      android: { priority: 'high' },
+      webpush: { notification: { title, body, tag: eventId }, fcmOptions: { link: `${webOrigin.value()}${path}` } },
     });
     await Promise.all(response.responses.map((result, i) =>
       ['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(result.error?.code)

@@ -65,3 +65,25 @@ test('A shared draft is owned by the conversation owner and private to its parti
   await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(),'lease_drafts','room')));
   await assertFails(setDoc(doc(env.authenticatedContext('tenant').firestore(),'lease_drafts','room'),draft));
 });
+
+test('Message summaries commit with the authenticated message and reads stay private',async()=>{
+  const db=env.authenticatedContext('tenant').firestore();
+  const { writeBatch }=await import('firebase/firestore');
+  const batch=writeBatch(db);
+  batch.set(doc(db,'conversations','room','messages','atomic'),{senderId:'tenant',senderName:'Tenant',type:'video',text:'Video',createdAt:serverTimestamp()});
+  batch.update(doc(db,'conversations','room'),{lastMessage:'Video',lastSenderId:'tenant',lastMessageId:'atomic',lastMessageTimestamp:serverTimestamp(),'unreadCount.owner':1});
+  await assertSucceeds(batch.commit());
+  await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(),'conversations','room','messages','atomic')));
+  await assertFails(updateDoc(doc(env.authenticatedContext('owner').firestore(),'conversations','room','messages','atomic'),{text:'Forged'}));
+  await assertSucceeds(updateDoc(doc(env.authenticatedContext('owner').firestore(),'conversations','room'),{'readAt.owner':serverTimestamp(),'unreadCount.owner':0}));
+});
+
+test('Only the chat participants can start and answer a call',async()=>{
+  const caller=env.authenticatedContext('tenant').firestore();
+  await assertSucceeds(setDoc(doc(caller,'active_calls','valid'),{callerId:'tenant',receiverId:'owner',roomId:'room',status:'calling'}));
+  const receiver=env.authenticatedContext('owner').firestore();
+  await assertSucceeds(getDoc(doc(receiver,'active_calls','valid')));
+  await assertSucceeds(updateDoc(doc(receiver,'active_calls','valid'),{status:'connected',answer:{type:'answer',sdp:'test'}}));
+  await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(),'active_calls','valid')));
+  await assertFails(updateDoc(doc(receiver,'active_calls','valid'),{callerId:'owner'}));
+});

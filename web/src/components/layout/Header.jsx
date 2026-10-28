@@ -1114,7 +1114,7 @@ export default function Header() {
       <MobileAppConnectModal
         isOpen={showMobileAppModal}
         onClose={() => setShowMobileAppModal(false)}
-        targetPath={location.pathname}
+        targetPath={location.pathname + location.search}
       />
 
       {/* Modal de Confirmación de Cierre de Sesión */}

@@ -1,0 +1,14 @@
+[
+  {
+    "caso": "AuthProvider real: inicio, perfil, rol, inactivo, reactivacion y cierre",
+    "resultado": "correcto"
+  },
+  {
+    "caso": "build real: /ruwajay/, explorar, login, ruta protegida, recargas, JS y CSS",
+    "resultado": "correcto",
+    "recursos": [
+      "http://localhost:5184/ruwajay/assets/index-D9lmgCzT.js",
+      "http://localhost:5184/ruwajay/assets/index-39rA_oux.css"
+    ]
+  }
+]

@@ -60,7 +60,7 @@ fun observeForegroundNotifications(
             val previous = seenNotices
             seenNotices = snapshot.documents.map { it.id }.toSet()
             if (previous != null) {
-                snapshot.documents.filter { it.id !in previous && it.get("readAt") == null }.forEach {
+                snapshot.documents.filter { it.id !in previous && it.get("readAt") == null && it.getString("type") != "call" }.forEach {
                     RuwaNotifications.show(
                         context,
                         it.getString("title") ?: "RuwaJay",

@@ -54,6 +54,7 @@ class CallRepository(
         onIncoming: (CallSession) -> Unit
     ): ListenerRegistration {
         return firestore.collection("active_calls")
+            .whereEqualTo("receiverId", userId)
             .whereEqualTo("status", "calling")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener

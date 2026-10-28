@@ -72,6 +72,45 @@ test('private pages still require login under the VPS subdirectory', async ({ pa
   }
 });
 
+test('login preserves the destination of a visit notification', async ({ page }) => {
+  await page.goto('perfil?tab=visitas');
+  await expect(page).toHaveURL(/\/login$/);
+  expect(await page.evaluate(() => history.state.usr.from)).toBe('/perfil?tab=visitas');
+});
+
+test('mobile notice center loads alerts, traps focus and restores the trigger', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.addInitScript(() => { window.__testUser = { id: 'fixture-user', name: 'Usuario', accountStatus: 'active' }; });
+  await page.route('**/src/lib/notificationService.js', route => route.fulfill({ contentType: 'application/javascript', body: `
+    export function subscribeNotifications(uid, onChange) {
+      onChange([{ id: 'visit', title: 'Visita confirmada', body: 'Tu visita está lista.', path: '/perfil?tab=visitas', readAt: null }]);
+      return () => {};
+    }
+    export async function enableNotifications() { throw new Error('Permite las notificaciones en tu navegador.'); }
+    export async function disableNotifications() {}
+  ` }));
+  await page.goto('./');
+  const trigger = page.getByRole('button', { name: 'Avisos, 1 sin leer', exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Tus avisos (1 sin leer)', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('link')).toHaveAttribute('href', '/ruwajay/perfil?tab=visitas');
+  await dialog.getByRole('button', { name: 'Activar notificaciones en este dispositivo' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Permite las notificaciones');
+  await dialog.getByRole('link').focus();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Cerrar avisos' })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  const bounds = await dialog.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(640);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+});
+
 for (const [code, message] of [
   ['auth/unauthorized-domain', 'Dominios autorizados'],
   ['auth/popup-blocked', 'Permite ventanas emergentes'],

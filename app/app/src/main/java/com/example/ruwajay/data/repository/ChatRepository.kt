@@ -23,26 +23,11 @@ class ChatRepository(
         onResult: (Result<String>) -> Unit) {
         val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
         val sid = seekerId ?: user.uid
-        val targetOwnerId = if (ownerId.isNotBlank()) ownerId else "owner-1"
-        val cleanRoomId = listOf(sid, targetOwnerId, propertyId).sorted().joinToString("_").replace(Regex("[^a-zA-Z0-9_]"), "")
-        val conversationData = mapOf(
-            "propertyId" to propertyId,
-            "ownerId" to targetOwnerId,
-            "propertyTitle" to propertyTitle,
-            "participants" to listOf(sid, targetOwnerId),
-            "lastMessage" to "Consulta sobre $propertyTitle",
-            "lastMessageTimestamp" to FieldValue.serverTimestamp(),
-            "lastSenderId" to user.uid
-        )
-        firestore.collection("conversations").document(cleanRoomId).set(conversationData, com.google.firebase.firestore.SetOptions.merge())
-            .addOnSuccessListener { onResult(Result.success(cleanRoomId)) }
-            .addOnFailureListener {
-                RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to sid))
+        RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to sid), user.uid)
                     .addOnSuccessListener { result ->
                         val id = result["id"] as? String
                         if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta de chat invalida.")))
                     }.addOnFailureListener { onResult(Result.failure(it)) }
-            }
     }
     fun observeMessages(roomId: String, onError: (Exception) -> Unit = {}, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
@@ -214,7 +199,7 @@ class ChatRepository(
             RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), user.uid)
                 .addOnSuccessListener { onResult(Result.success(Unit)) }
                 .addOnFailureListener {
-                    writeDirectlyToFirestore()
+                    onResult(Result.failure(it))
                 }
         } else {
             writeDirectlyToFirestore()

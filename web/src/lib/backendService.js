@@ -45,19 +45,26 @@ const mediaCache = new Map();
 export function getCachedMediaUrl(reference) {
   if (!reference) return '';
   if (!reference.startsWith('supabase://')) return reference;
-  return mediaCache.get(reference) || null;
+  const entry = mediaCache.get(reference);
+  if (!entry || entry.uid !== firebaseAuth?.currentUser?.uid || entry.expiresAt <= Date.now()) {
+    mediaCache.delete(reference);
+    return null;
+  }
+  return entry.url;
 }
 export async function resolveMediaUrl(reference){
   if(!reference?.startsWith('supabase://'))return reference;
-  if(mediaCache.has(reference)) return mediaCache.get(reference);
+  const cached = getCachedMediaUrl(reference);
+  if(cached) return cached;
+  const uid = requireSession().uid;
   try {
-    const res = await callBackend('resolveMedia',{reference});
+    const res = await callBackend('resolveMedia',{reference},{expectedUid:uid});
     const url = res?.url || null;
-    if (url) mediaCache.set(reference, url);
+    requireSession(uid);
+    if (url) mediaCache.set(reference, {url,uid,expiresAt:Date.now()+Math.max(0,(Number(res.expiresIn)||300)-60)*1000});
     return url;
   } catch (err) {
-    mediaCache.set(reference, null);
-    setTimeout(() => { mediaCache.delete(reference); }, 30000);
+    mediaCache.delete(reference);
     throw err;
   }
 }

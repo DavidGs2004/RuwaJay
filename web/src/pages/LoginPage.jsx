@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, ShieldCheck, ShieldAlert, Sparkles, User, UserCheck } from 'lucide-react';
 import RuwaJayLogo from '../components/ui/RuwaJayLogo';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +45,9 @@ function EmailField({ value, onChange, autoComplete = 'email' }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from;
+  const returnPath = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && !from.includes('\\') ? from : '/';
   const [searchParams] = useSearchParams();
   const { login, loginWithGoogle, register, isLoading, requestPasswordReset } = useAuth();
   const [mode, setMode] = useState('login');
@@ -64,13 +67,13 @@ export default function LoginPage() {
     if (alertMsg) {
       notify(alertMsg, true);
       sessionStorage.removeItem('ruwajay_auth_alert');
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
     } else if (searchParams.get('suspended') === 'true') {
       notify('Tu cuenta ha sido suspendida por no cumplir nuestras normas de la comunidad.', true);
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
     } else if (searchParams.get('inactive') === 'true') {
       notify('Tu cuenta se encuentra inactiva. Contacta al administrador para reactivarla.', true);
-      window.history.replaceState({}, '', '/login');
+      window.history.replaceState({}, '', `${import.meta.env.BASE_URL}login`);
     }
   }, [searchParams]);
   const strongPassword = (text) => text.length >= 8 && /[A-Z]/.test(text) && /[a-z]/.test(text) && /\d/.test(text) && /[^A-Za-z0-9]/.test(text);
@@ -117,7 +120,7 @@ export default function LoginPage() {
     try {
       if (mode === 'register') await register(name, email, password, role, phone);
       else await login(email, password);
-      navigate('/');
+      navigate(returnPath, { replace: true });
     } catch (err) {
       notify(getAuthErrorMessage(err, mode), true);
     }
@@ -128,7 +131,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await loginWithGoogle({ role: mode === 'register' ? role : undefined });
-      navigate('/');
+      navigate(returnPath, { replace: true });
     } catch (err) {
       const messages = {
         'auth/popup-closed-by-user': 'Se cerró la ventana de Google. Puedes volver a intentarlo.',

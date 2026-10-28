@@ -1,0 +1,154 @@
+RUWAJAY — DIAGNÓSTICO DEL ERROR REACT #310
+26 de octubre de 2026
+
+RESULTADO
+La causa del error publicado está identificada y reproducida. El código
+local ya contenía la posición correcta del Hook antes de esta intervención.
+Se verificó esa corrección, se añadieron pruebas de regresión y se preparó
+un build nuevo. No se desplegó: producción seguirá sirviendo el build viejo
+hasta que se publique manualmente la entrega.
+
+1. CAUSA EXACTA Y EVIDENCIA
+La consulta de solo lectura a https://expotec.duckdns.org/ruwajay/ devolvió:
+  /ruwajay/assets/index-BdIg6dPC.js
+  /ruwajay/assets/index-DB08556z.css
+En el JavaScript publicado, función LF, línea 50, alrededor de la columna
+150565 del stack, aparece SystemUpdatesModal con esta secuencia:
+  useAuth()
+  useState([])          // internalUpdates
+  useState(true)        // internalLoading
+  useEffect(...)
+  if (!isOpen) return null
+  useState('todas')     // selectedCategory: aquí está el problema
+El modal cerrado ejecuta menos Hooks que el abierto. Al llegar un aviso,
+Header cambia showUpdatesModal de false a true y React detecta el Hook extra.
+Esto explica el error aunque el usuario todavía no haya iniciado sesión.
+Firebase/Firestore puede desencadenar la apertura, pero la infracción es el
+orden de Hooks del componente, no un fallo de autenticación o de IIS.
+
+Referencia oficial:
+https://react.dev/errors/310
+https://react.dev/reference/rules/rules-of-hooks
+
+2. COMPONENTE RESPONSABLE
+web/src/components/ui/SystemUpdatesModal.jsx
+El archivo local ya situaba selectedCategory junto a los demás estados,
+antes del retorno por !isOpen. La revisión de Git confirma que esa versión
+estaba en el commit e249567; no se atribuye como una corrección nueva.
+El nuevo build emite la función PF, con los tres useState antes del retorno.
+evidencia-build.txt contiene el fragmento del artefacto nuevo.
+No se encontraron otros componentes locales con infracciones de orden de
+Hooks en la auditoría de los 67 archivos JS/JSX de web/src.
+
+3. ARCHIVOS DE APLICACIÓN MODIFICADOS
+- SystemUpdatesModal.jsx: comentario preventivo junto a selectedCategory.
+  Mantiene la corrección existente; no cambia comportamiento ni diseño.
+- web/vite.config.js: base / en desarrollo y /ruwajay/ en build y preview.
+  Tanto npm run build como build:vps producen ahora rutas correctas para IIS.
+- web/src/pages/LoginPage.jsx: tres history.replaceState usaban /login y
+  salían de la subcarpeta al mostrar avisos de cuenta. Ahora usan BASE_URL.
+
+No se modificaron React Router, los Providers, permisos, reglas Firebase,
+credenciales, variables de entorno, package.json/lock, versiones, estructura
+de datos, workflow de GitHub, web.config ni configuración del servidor.
+Los archivos auxiliares y pruebas nuevas están en recuros ia/react310.
+Se instalaron las dependencias fijadas por los lockfiles porque node_modules
+no existía. El linter se instaló aparte; no se añadieron paquetes al proyecto.
+
+4. VALIDACIONES QUE PASARON
+- ESLint con las reglas oficiales rules-of-hooks y exhaustive-deps:
+  67 archivos analizados, 0 errores de orden de Hooks, 25 advertencias de
+  dependencias existentes. No había script lint/config de ESLint disponible.
+- Regresión de SystemUpdatesModal en desarrollo y React de producción:
+  la variante con el orden publicado reproduce el error esperado;
+  el componente real local pasa cerrado → abierto, filtros, cierre,
+  usuario → administrador → invitado, datos diferidos y reaperturas.
+  El caso de producción reproduce literalmente Minified React error #310.
+- AuthProvider real con Auth y Firestore emulados en demo-ruwajay:
+  invitado, aviso recibido, login por correo, perfil, cambio de rol,
+  cuenta inactiva, reactivación y cierre de sesión sin errores de Hooks.
+- Build real servido por Vite preview en /ruwajay/:
+  portada, explorar, login, redirección de perfil protegido y recargas.
+  Avisos inactive/suspended conservan /ruwajay/login al limpiar la query.
+  JavaScript/CSS responden 200 y usan /ruwajay/assets/.
+- npm test: 7/7.
+- npm run test:backend:unit: 4/4.
+- npm test en Functions: 2/2; npm run check: correcto.
+- npm run build y npm run build:vps: ambos correctos.
+- git diff --check: correcto.
+
+5. VALIDACIONES EXISTENTES CON INCIDENCIAS
+- Suite pública de navegador: sus 9 casos pasaron, 0 fallaron; el ejecutor
+  superó 45 segundos al cerrar el webServer y se interrumpió después.
+  No se presenta este comando como una ejecución con salida limpia.
+- Reglas, Storage, integración y gateway: 17 pruebas; 12 pasan, 5 fallan.
+  Cuatro expectativas de seguridad no coinciden con las reglas conservadas:
+  privacidad de perfiles, suplantación de remitente, modificación de miembros
+  y readAt ajenos, y escritura directa de llamadas. La quinta prueba intenta
+  subir video/mp4, rechazado por el validador de medios actual del gateway.
+- Navegador compartido: 2 pruebas; 1 pasa y 1 falla en shared-project.spec.js:58,
+  al esperar que readAt alcance lastMessageTimestamp después de volver a
+  poner visible el chat. El fallo observado no es React #310.
+- Triggers anteriores registran errores body undefined con ciertos datos
+  de pruebas. Functions declara Node 22; el equipo tiene Node 24 y emuladores
+  lo advierten. No se cambiaron versiones ni lógica del servidor.
+- El build advierte sobre un bundle grande y un import dinámico de Firestore
+  que también se importa estáticamente. Ningún aviso impide compilar.
+- Se observó un enlace a /iniciar-sesion en PropertyDetailPage, mientras la
+  ruta registrada es /login. Se deja documentado sin ampliar esta corrección.
+
+No se afirma que toda la aplicación pase sus pruebas. Las incidencias
+anteriores están fuera de la corrección de orden de Hooks y no se ocultaron
+relajando pruebas ni modificando reglas o permisos.
+
+6. LÍMITES
+La autenticación real por correo se validó en emuladores. No se inició sesión
+con cuentas reales ni se abrió OAuth Google de producción. La configuración
+de dominios autorizados y las credenciales del proyecto real no se alteraron.
+Las recargas del build se probaron con preview, no tras un despliegue nuevo
+en IIS. Se leyó public/web.config: la regla SPA existente conserva archivos
+y directorios reales y reescribe navegación HTML a index.html. No se auditó
+ni cambió la configuración efectiva heredada de WordPress o del servidor.
+
+7. ENTREGA PREPARADA
+entrega/ruwajay/ contiene el build completo.
+Artefacto JS: index-D9lmgCzT.js
+Artefacto CSS: index-39rA_oux.css
+entrega/manifest-sha256.json permite verificar el contenido.
+web/dist contiene el mismo build generado con npm run build.
+El bundle original index-BdIg6dPC.js no es el artefacto corregido.
+
+8. GENERAR Y PUBLICAR MANUALMENTE EN IIS
+Desde la raíz:
+  cd web
+  npm run build
+Si faltan dependencias, ejecutar npm ci una sola vez antes de compilar.
+build:vps sigue siendo válido y equivalente para la ruta base.
+
+En el VPS, identificar la ruta física EXISTENTE de /ruwajay. No asumir que
+es la raíz del sitio ni copiar sobre wwwroot, WordPress o /empleados.
+Respaldar la versión actual en una carpeta de respaldos separada.
+Publicar solamente los archivos de RuwaJay: copiar recursos/assets primero
+y sustituir index.html al final. Mantener los recursos con hashes anteriores
+mientras haya sesiones abiertas; retirarlos después según el mantenimiento
+normal del sitio. No mezclar un index.html antiguo con assets del build nuevo.
+Conservar la configuración actual de IIS y su web.config: no sobrescribir
+un archivo del servidor distinto del local como parte de esta corrección.
+No es necesario reiniciar WordPress, Angular, Node ni tocar sus carpetas.
+
+Después de publicar:
+- Confirmar que el HTML de /ruwajay/ referencia index-D9lmgCzT.js para esta
+  entrega concreta, con JS/CSS 200. Otro build posterior puede cambiar el hash.
+- Abrir portada, /ruwajay/explorar y /ruwajay/login y recargar cada URL.
+- Abrir/cerrar los avisos, cambiar categoría e iniciar/cerrar sesión.
+- Comprobar ausencia de #310 y de mensajes de cambio de orden de Hooks.
+- Verificar manualmente Google con una cuenta autorizada y comprobar que
+  WordPress y /empleados siguen respondiendo.
+La comprobación final de producción queda pendiente de esa publicación.
+
+REPETIR PRUEBAS
+  node "recuros ia/react310/auditar-hooks.mjs"
+  node "recuros ia/react310/regresion-modal.mjs"
+Desde web, con Java 21:
+  node scripts/run-emulators.mjs auth,firestore 'node "../recuros ia/react310/auth-rutas.mjs"'
+Los resultados completos están en los JSON/logs de esta carpeta.

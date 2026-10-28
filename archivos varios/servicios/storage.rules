@@ -18,9 +18,9 @@ service firebase.storage {
     }
     match /chat/{roomId}/{userId}/{fileName} {
       allow read: if chatMember(roomId) || isAdmin();
-      allow create: if (chatMember(roomId) && request.auth.uid == userId) || isAdmin()
+      allow create: if ((chatMember(roomId) && request.auth.uid == userId) || isAdmin())
         && request.resource.size < 20 * 1024 * 1024
-        && request.resource.contentType.matches('(image/(jpeg|png|webp)|audio/.*|video/webm)');
+        && request.resource.contentType.matches('(image/(jpeg|png|webp)|audio/.*|video/(webm|mp4|quicktime))');
       allow delete: if (chatMember(roomId) && request.auth.uid == userId) || isAdmin();
     }
     match /profiles/{userId}/{fileName} {

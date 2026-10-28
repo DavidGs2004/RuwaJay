@@ -13,6 +13,8 @@ export default function SystemUpdatesModal({
   const { isAdmin } = useAuth();
   const [internalUpdates, setInternalUpdates] = useState([]);
   const [internalLoading, setInternalLoading] = useState(true);
+  // Debe ejecutarse también con el modal cerrado: moverlo después del retorno
+  // de !isOpen cambia el orden de Hooks al abrirlo (React #310).
   const [selectedCategory, setSelectedCategory] = useState('todas');
 
   const updates = propUpdates !== undefined ? propUpdates : internalUpdates;

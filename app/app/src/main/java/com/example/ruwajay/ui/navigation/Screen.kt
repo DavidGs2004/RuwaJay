@@ -4,7 +4,9 @@ sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Explore : Screen("explore")
     object SavedSearch : Screen("saved_search/{id}") {fun createRoute(id:String)="saved_search/$id"}
-    object Profile : Screen("profile")
+    object Profile : Screen("profile") {
+        fun createRoute(tab: String) = "profile?tab=${android.net.Uri.encode(tab)}"
+    }
     object Verification : Screen("verification")
     object PropertyDetail : Screen("property_detail/{id}") {
         fun createRoute(id: String) = "property_detail/$id"

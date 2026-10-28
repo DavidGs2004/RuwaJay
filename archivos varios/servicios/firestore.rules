@@ -29,10 +29,10 @@ service cloud.firestore {
         && data.get('bio','') is string && data.get('bio','').size() <= 2000;
     }
     match /users/{userId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       allow create: if signedIn() && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt','accountStatus','status'])
-        && (request.resource.data.role in ['seeker','owner','admin'])
+        && (request.resource.data.role in ['seeker','owner'] || request.auth.token.get('role','') == 'admin')
         && validProfile(request.resource.data);
       allow update: if isAdmin() || (validProfile(request.resource.data) && signedIn() && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','verificationStatus','verificationRequestedAt','verificationRejectionReason','dpiData','accountStatus','status'])
@@ -50,7 +50,7 @@ service cloud.firestore {
       }
       match /notifications/{notificationId} {
         allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-        allow create: if signedIn() && (request.auth.uid == userId || isAdmin());
+        allow create: if isAdmin();
         allow update: if signedIn() && (request.auth.uid == userId || isAdmin())
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
         allow delete: if signedIn() && (request.auth.uid == userId || isAdmin());
@@ -88,17 +88,30 @@ service cloud.firestore {
         member(resource.data) ||
         isAdmin()
       );
-      allow create: if signedIn();
-      allow update: if signedIn() && (
-        request.auth.uid in resource.data.get('participants', []) ||
-        member(resource.data) ||
-        isAdmin()
-      );
+      allow create: if false;
+      allow update: if member(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','unreadCount','clearedAt','lastMessage','lastMessageTimestamp','lastSenderId','lastSenderName','lastMessageId','activeCall'])
+        && request.resource.data.get('readAt',{}).diff(resource.data.get('readAt',{})).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.get('clearedAt',{}).diff(resource.data.get('clearedAt',{})).affectedKeys().hasOnly([request.auth.uid])
+        && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','unreadCount','clearedAt','activeCall'])
+          ? request.resource.data.get('unreadCount',{}).diff(resource.data.get('unreadCount',{})).affectedKeys().hasOnly([request.auth.uid])
+          : (request.resource.data.lastSenderId == request.auth.uid
+            && request.resource.data.lastMessageId != resource.data.get('lastMessageId','')
+            && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.senderId == request.auth.uid
+            && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.createdAt == request.time));
       allow delete: if isAdmin();
       match /messages/{messageId} {
-        allow read: if signedIn();
-        allow create: if signedIn();
-        allow update, delete: if signedIn();
+        function roomMember() { return member(get(/databases/$(database)/documents/conversations/$(conversationId)).data); }
+        allow read: if roomMember();
+        allow create: if roomMember() && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.type in ['text','image','audio','video','location']
+          && request.resource.data.text is string && request.resource.data.text.size() <= 4000
+          && request.resource.data.createdAt == request.time;
+        allow update: if roomMember() && (
+          (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','isEdited','editedAt','isDeleted','mediaUrl','image','deletedAt']))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            && request.resource.data.get('reactions',{}).diff(resource.data.get('reactions',{})).affectedKeys().hasOnly([request.auth.uid])));
+        allow delete: if roomMember() && resource.data.senderId == request.auth.uid;
       }
     }
     match /visits/{visitId} {
@@ -133,7 +146,20 @@ service cloud.firestore {
     match /system_updates/{updateId} { allow read: if true; allow write: if isAdmin(); }
     // Authenticated WebRTC call signaling
     match /active_calls/{callId} {
-      allow read, write: if signedIn();
+      function callMember(data) {
+        return signedIn() && (request.auth.uid == data.get('callerId','') || request.auth.uid == data.get('receiverId','')
+          || request.auth.uid in data.get('receiverIds',[]) || request.auth.uid in data.get('participants',[])
+          || request.auth.token.get('email','') in data.get('receiverEmails',[]));
+      }
+      allow read: if callMember(resource.data);
+      allow create: if signedIn() && request.resource.data.callerId == request.auth.uid
+        && request.resource.data.get('receiverId','') != request.auth.uid
+        && request.resource.data.get('roomId','') != ''
+        && member(get(/databases/$(database)/documents/conversations/$(request.resource.data.roomId)).data)
+        && request.resource.data.get('receiverId','') in get(/databases/$(database)/documents/conversations/$(request.resource.data.roomId)).data.participants;
+      allow update: if callMember(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','offer','answer','callerCandidates','receiverCandidates','callerMuted','receiverMuted','connectedAt','endedAt','updatedAt']);
+      allow delete: if callMember(resource.data);
     }
   }
 }
