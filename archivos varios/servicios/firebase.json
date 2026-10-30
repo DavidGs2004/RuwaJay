@@ -6,24 +6,6 @@
   "storage": {
     "rules": "storage.rules"
   },
-  "hosting": {
-    "public": "../../web/dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/__/auth/action**",
-        "destination": "/index.html"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  },
   "functions": [
     {
       "source": "functions",

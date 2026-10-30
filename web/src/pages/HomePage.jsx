@@ -11,6 +11,8 @@ const bannerImages = [
   `${import.meta.env.BASE_URL}Banners/Banner4.png`,
   `${import.meta.env.BASE_URL}Banners/Banner5.png`,
 ];
+const mobileBannerImages = ['hero-banner-new.jpg','hero-bg.jpg','cat-familiar.jpg','cat-urbana.jpg','cat-acogedora.jpg']
+  .map(name => `${import.meta.env.BASE_URL}Casas/${name}`);
 
 export default function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -109,8 +111,8 @@ export default function HomePage() {
             {bannerImages.map((src, index) => (
               <img
                 key={src}
-                src={src}
-                alt={`Banner ${index + 1}`}
+                src={mobileBannerImages[index]}
+                alt="Hogar en Guatemala"
                 className="absolute inset-0 h-full w-full object-cover object-right transition-opacity duration-700 ease-in-out"
                 style={{ opacity: currentSlide === index ? 1 : 0 }}
                 width="1536"

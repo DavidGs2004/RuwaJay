@@ -31,7 +31,7 @@
   --color-surface-elevated: #FFFCF7;
   --color-text-primary: #2D1810;
   --color-text-secondary: #6B5549;
-  --color-text-muted: #9E8C82;
+  --color-text-muted: #756358;
   --color-border: #E8D9C8;
   --color-border-light: #F2E8DB;
 
@@ -95,7 +95,6 @@ svg,
 video,
 canvas {
   max-width: 100%;
-  height: auto;
 }
 
 input,

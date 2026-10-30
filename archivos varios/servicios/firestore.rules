@@ -2,10 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isAccountActive(userData) {
-      return userData.get('accountStatus', '') == 'active'
-        || (userData.get('accountStatus', 'active') != 'suspended'
-            && userData.get('suspended', false) == false
-            && userData.get('status', 'active') != 'suspended');
+      return userData.get('accountStatus', '') in ['active','inactive','suspended']
+        ? userData.accountStatus == 'active'
+        : (userData.get('suspended', false) == false
+            && !(userData.get('status', 'active') in ['suspended','inactive']));
     }
     function signedIn() {
       return request.auth != null && (
@@ -33,9 +33,20 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == userId
         && request.resource.data.keys().hasOnly(['id','name','email','phone','role','avatar','avatarImage','photoURL','createdAt','accountStatus','status'])
         && (request.resource.data.role in ['seeker','owner'] || request.auth.token.get('role','') == 'admin')
+        && request.resource.data.get('accountStatus','active') == 'active'
+        && request.resource.data.get('status','active') == 'active'
         && validProfile(request.resource.data);
       allow update: if isAdmin() || (validProfile(request.resource.data) && signedIn() && request.auth.uid == userId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','verificationStatus','verificationRequestedAt','verificationRejectionReason','dpiData','accountStatus','status'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','bio','avatarId','avatarImage','avatar','photoURL','role','verificationStatus','verificationRequestedAt','verificationRejectionReason','dpiData'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus'])
+          || request.resource.data.get('verificationStatus',null) in ['pendiente',null])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationRejectionReason'])
+          || request.resource.data.get('verificationRejectionReason',null) == null)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['dpiData'])
+          || resource.data.get('verificationStatus','') != 'aprobada'
+          || request.resource.data.get('verificationStatus',null) in ['pendiente',null]
+          || (resource.data.dpiData is map && request.resource.data.dpiData is map
+            && request.resource.data.dpiData.diff(resource.data.dpiData).affectedKeys().hasOnly(['department','municipality','legalAddress','emergencyName','emergencyPhone','emergencyRelation','updatedAt'])))
         && (request.resource.data.get('role','seeker') == resource.data.get('role','seeker')
           || (resource.data.get('role','seeker') in ['seeker','owner'] && request.resource.data.role in ['seeker','owner'])));
       allow delete: if isAdmin();
@@ -59,6 +70,9 @@ service cloud.firestore {
     match /properties/{propertyId} {
       allow read: if true;
       allow create: if isAdmin() || (signedIn() && request.resource.data.ownerId == request.auth.uid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('verified',false) == true
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('verificationStatus','') == 'aprobada'
+        && request.resource.data.get('verified',false) == false
         && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 200
         && request.resource.data.price is number && request.resource.data.price > 0 && request.resource.data.price <= 1000000000
         && request.resource.data.images is list && request.resource.data.images.size() > 0 && request.resource.data.images.size() <= 8);

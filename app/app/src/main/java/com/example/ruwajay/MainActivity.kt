@@ -122,8 +122,8 @@ class MainActivity : ComponentActivity() {
                     val uid = currentUid ?: return@DisposableEffect onDispose {}
                     val listener = FirebaseFirestore.getInstance().collection("users").document(uid)
                         .addSnapshotListener { snapshot, error ->
-                            val status = snapshot?.getString("accountStatus") ?: snapshot?.getString("status") ?: "active"
-                            canStartPublishing = error == null && snapshot?.exists() == true && status == "active" && snapshot.getBoolean("suspended") != true
+                            val status = com.example.ruwajay.data.model.resolveAccountStatus(snapshot?.data)
+                            canStartPublishing = error == null && snapshot?.exists() == true && status == "active"
                         }
                     onDispose { listener.remove() }
                 }

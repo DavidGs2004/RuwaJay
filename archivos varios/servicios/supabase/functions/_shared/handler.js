@@ -53,7 +53,7 @@ export function createHandler({service,verifyIdentity,cronSecret,allowedOrigins=
       onError(error);
       console.error('[RUWAJAY_HANDLER_ERROR]', error);
       if(error instanceof ApiError)return json({error:{code:error.code,message:error.message}},error.status);
-      return json({error:{code:'internal',message:error?.message||'No se pudo completar la operación. Inténtalo de nuevo.'}},500);
+      return json({error:{code:'internal',message:'No se pudo completar la operación. Inténtalo de nuevo.'}},500);
     }
   };
 }

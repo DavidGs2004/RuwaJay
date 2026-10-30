@@ -4,7 +4,7 @@ const openModals = [];
 let originalOverflow;
 const focusable = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]';
 
-export default function useModalFocus(isOpen, onClose, busy = false) {
+export default function useModalFocus(isOpen, onClose, busy = false, returnFocusRef = null) {
   const ref = useRef(null);
   const callbacks = useRef({ onClose, busy });
   callbacks.current = { onClose, busy };
@@ -44,7 +44,8 @@ export default function useModalFocus(isOpen, onClose, busy = false) {
       const wasTop = openModals.at(-1) === modal;
       openModals.splice(openModals.indexOf(modal), 1);
       if (!openModals.length) document.body.style.overflow = originalOverflow;
-      if (wasTop && previousFocus?.isConnected) previousFocus.focus();
+      const returnTarget = returnFocusRef?.current || previousFocus;
+      if (wasTop && returnTarget?.isConnected) returnTarget.focus();
     };
   }, [isOpen]);
   return ref;

@@ -50,7 +50,7 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
 
   // Calculate statistics
   const stats = useMemo(() => {
-    if (!reviews.length) return { average: 5.0, count: 0 };
+    if (!reviews.length) return { average: null, count: 0 };
     const sum = reviews.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
     const avg = sum / reviews.length;
     return {
@@ -143,7 +143,7 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
         {/* Overall Score */}
         <div className="sm:col-span-4 text-center sm:border-r sm:border-border-light sm:pr-6">
           <div className="text-4xl sm:text-5xl font-black text-cafe">
-            {stats.average}
+            {stats.count ? stats.average : 'Sin reseñas'}
           </div>
           <div className="mt-1 flex items-center justify-center gap-1 text-dorado">
             {[1, 2, 3, 4, 5].map((star) => (
@@ -155,29 +155,16 @@ export default function PropertyReviews({ propertyId, propertyTitle }) {
             ))}
           </div>
           <p className="mt-1 text-xs font-extrabold text-text-muted">
-            Basado en {stats.count} {stats.count === 1 ? 'opinión' : 'opiniones'} verificadas
+            {stats.count ? `Basado en ${stats.count} ${stats.count === 1 ? 'opinión' : 'opiniones'}` : 'Sé la primera persona en compartir su experiencia'}
           </p>
         </div>
 
         {/* Category breakdown */}
         <div className="sm:col-span-8 space-y-2.5 text-xs font-bold text-cafe">
-          {[
-            { label: 'Limpieza y estado del inmueble', score: '98%', val: 4.9 },
-            { label: 'Seguridad y tranquilidad del sector', score: '96%', val: 4.8 },
-            { label: 'Comunicación y atención del arrendador', score: '97%', val: 4.9 },
-            { label: 'Relación calidad / precio mensual', score: '94%', val: 4.7 },
-          ].map((cat) => (
-            <div key={cat.label} className="flex items-center gap-3">
-              <span className="w-48 text-[11px] text-text-secondary truncate">{cat.label}</span>
-              <div className="flex-1 h-2 rounded-full bg-[#E8D9C8] overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-forest to-jade"
-                  style={{ width: cat.score }}
-                />
-              </div>
-              <span className="w-8 text-right text-[11px] font-black text-forest">{cat.val}</span>
-            </div>
-          ))}
+          <p className="text-sm leading-relaxed text-text-secondary">
+            La valoración se calcula con las opiniones publicadas. Comparte detalles sobre el inmueble,
+            su ubicación y la atención del propietario para ayudar a otras personas.
+          </p>
         </div>
       </div>
 

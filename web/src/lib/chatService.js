@@ -112,22 +112,23 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
     throw firestoreError;
   }
 }
-export async function markConversationRead(roomId) {
+export async function markConversationRead(roomId, readAt = new Date()) {
   const uid = firebaseAuth?.currentUser?.uid;
   if (!uid || !roomId) return;
   try {
     await updateDoc(doc(firestore, 'conversations', roomId), {
-      [`readAt.${uid}`]: serverTimestamp(),
+      [`readAt.${uid}`]: readAt,
       [`unreadCount.${uid}`]: 0,
     });
   } catch (err) {
     try {
       await setDoc(doc(firestore, 'conversations', roomId), {
-        readAt: { [uid]: serverTimestamp() },
+        readAt: { [uid]: readAt },
         unreadCount: { [uid]: 0 }
       }, { merge: true });
     } catch (setErr) {
       console.warn('No se pudo actualizar readAt en Firestore:', setErr);
+      throw setErr;
     }
   }
 }

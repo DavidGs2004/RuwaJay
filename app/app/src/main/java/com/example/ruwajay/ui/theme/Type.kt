@@ -34,8 +34,8 @@ val Typography = Typography(
     titleSmall = style(FontWeight.Bold, 13, 19),
     bodyLarge = style(FontWeight.Normal, 15, 22),
     bodyMedium = style(FontWeight.Normal, 13, 19),
-    bodySmall = style(FontWeight.Normal, 11, 15),
+    bodySmall = style(FontWeight.Normal, 12, 18),
     labelLarge = style(FontWeight.Bold, 13, 19),
     labelMedium = style(FontWeight.Bold, 11, 15),
-    labelSmall = style(FontWeight.Bold, 10, 14),
+    labelSmall = style(FontWeight.Bold, 12, 16),
 )

@@ -15,7 +15,6 @@ import RuwaPagination from '../components/ui/RuwaPagination';
 import { useAuth, resolveUserStatus } from '../context/AuthContext';
 import { AVATAR_OPTIONS } from '../data/avatars';
 import { useFavorites } from '../context/FavoritesContext';
-import { demoProperties } from '../data/properties';
 import PropertyCard from '../components/property/PropertyCard';
 import RuwaDatePicker from '../components/ui/RuwaDatePicker';
 import RentAffordabilityModal from '../components/property/RentAffordabilityModal';
@@ -148,7 +147,8 @@ export default function ProfilePage() {
   const currentUserPhone = String(user?.phone || '').replace(/\D/g, '');
   const currentUserEmail = String(user?.email || firebaseAuth?.currentUser?.email || '').trim().toLowerCase();
 
-  const favProperties = demoProperties.filter((p) => favorites.includes(p.id));
+  const [catalogProperties, setCatalogProperties] = useState([]);
+  const favProperties = catalogProperties.filter((p) => favorites.includes(p.id));
 
   /* ── Edit Profile State ── */
   const [editingProfile, setEditingProfile] = useState(false);
@@ -390,6 +390,7 @@ export default function ProfilePage() {
     }
 
     return subscribeToProperties((properties) => {
+      setCatalogProperties(properties);
       const filtered = properties.filter((property) => {
         if (!property) return false;
         return (
@@ -1780,7 +1781,7 @@ export default function ProfilePage() {
                   const isOwnerOfThisVisit = Boolean(currentUserId && v.ownerId === currentUserId);
 
                   const visitProperty = myProperties.find((property) => property.id === v.propertyId)
-                    || demoProperties.find((property) => property.id === v.propertyId);
+                    || catalogProperties.find((property) => property.id === v.propertyId);
                   const visitImage = visitProperty?.thumbnail
                     || visitProperty?.thumbnails?.[0]
                     || (Array.isArray(visitProperty?.images) ? visitProperty.images[0] : null)

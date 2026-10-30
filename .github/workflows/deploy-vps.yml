@@ -17,7 +17,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    uses: ./.github/workflows/qa.yml
   build:
+    needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:

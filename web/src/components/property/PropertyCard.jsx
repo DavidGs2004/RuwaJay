@@ -15,14 +15,14 @@ export default function PropertyCard({ property, userPosition = null, compact = 
   const propertyStatus = String(property.status || 'disponible').toLowerCase();
   const statusBadge = propertyStatus === 'ocupada' || propertyStatus === 'alquilada'
     ? { label: 'Ocupada / Alquilada', className: 'bg-red-600 text-white' }
-    : propertyStatus === 'en_cita' || propertyStatus === 'apartada'
+    : propertyStatus === 'en_cita' || propertyStatus === 'apartada' || propertyStatus === 'reservada'
       ? { label: 'Apartada / En cita', className: 'bg-amber-400 text-amber-950' }
       : propertyStatus === 'pausada'
         ? { label: 'No disponible', className: 'bg-gray-700 text-white' }
         : { label: 'Desocupada · Disponible', className: 'bg-emerald-600 text-white' };
 
-  const rawSrc = property.thumbnail || property.thumbnails?.[0] || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
-  const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg` : rawSrc;
+  const rawSrc = property.thumbnail || property.thumbnails?.[0] || `${import.meta.env.BASE_URL}placeholder-property.svg`;
+  const cleanInitialSrc = (!rawSrc || String(rawSrc).startsWith('blob:')) ? `${import.meta.env.BASE_URL}placeholder-property.svg` : rawSrc;
   const [imgSrc, setImgSrc] = useState(cleanInitialSrc);
 
   const coords = getPropertyCoordinates(property);
@@ -67,7 +67,7 @@ export default function PropertyCard({ property, userPosition = null, compact = 
           alt={property.title || 'Vivienda'}
           loading="lazy"
           decoding="async"
-          onError={() => setImgSrc(`${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`)}
+          onError={() => setImgSrc(`${import.meta.env.BASE_URL}placeholder-property.svg`)}
           className="h-full w-full bg-[#e0d3c3] object-cover transition-transform duration-700 ease-out group-hover:scale-110"
         />
 
@@ -75,7 +75,7 @@ export default function PropertyCard({ property, userPosition = null, compact = 
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/5 to-transparent" />
 
         {/* Top badges */}
-        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+        <div className="absolute top-3 left-3 right-28 flex flex-wrap gap-1.5">
           <span className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold shadow-sm backdrop-blur-sm ${statusBadge.className}`}>
             {statusBadge.label}
           </span>

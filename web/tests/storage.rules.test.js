@@ -30,7 +30,7 @@ test('Property uploads require identity and an image content type',async()=>{
 test('Suspension blocks private downloads and every authenticated upload path',async()=>{
   const path='chat/room/tenant/suspension.jpg';
   await assertSucceeds(uploadBytes(ref(env.authenticatedContext('tenant').storage(),path),new Uint8Array([1]),{contentType:'image/jpeg'}));
-  for(const suspension of [{suspended:true},{status:'suspended'}]) {
+  for(const suspension of [{suspended:true},{status:'suspended'},{status:'inactive'},{accountStatus:'inactive'},{accountStatus:'suspended'}]) {
     await env.withSecurityRulesDisabled(async c=>{await setDoc(doc(c.firestore(),'users','tenant'),{name:'Tenant',role:'seeker',...suspension});});
     const storage=env.authenticatedContext('tenant').storage();
     await assertFails(getBytes(ref(storage,path)));

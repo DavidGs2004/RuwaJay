@@ -5,7 +5,6 @@ import { firebaseAuth, firebaseWebEnabled, firestore } from './firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from './firebase';
 import { imageUrls, coordinatesOrNull } from './contracts';
-import { demoProperties } from '../data/properties';
 import { publishRealtimeEvent } from './realtimeService';
 
 function numberOr(value, fallback = 0) {
@@ -93,12 +92,8 @@ export async function publishPropertyToFirebase(property) {
 
   property = persistedProperty(property);
   if (usesServerOperations) {
-    try {
       await callBackend('saveProperty', { property }, { expectedUid: firebaseAuth?.currentUser?.uid });
       return true;
-    } catch (err) {
-      console.warn('Backend call failed, saving directly to Firestore:', err);
-    }
   }
   const propertyRef = doc(firestore, 'properties', property.id);
   await setDoc(propertyRef, {
@@ -132,12 +127,8 @@ export async function publishPropertyToFirebase(property) {
 
 export async function updatePropertyStatus(propertyId, status) {
   if (usesServerOperations) {
-    try {
       await callBackend('updatePropertyStatus', { propertyId, status });
       return;
-    } catch (err) {
-      console.warn('Backend call failed on updatePropertyStatus, updating in Firestore:', err);
-    }
   }
   await updateDoc(doc(firestore, 'properties', propertyId), { status });
 }
@@ -145,12 +136,8 @@ export async function updatePropertyStatus(propertyId, status) {
 export async function updatePropertyToFirebase(property) {
   const data = persistedProperty(property);
   if (usesServerOperations) {
-    try {
       await callBackend('saveProperty', { property: data }, { expectedUid: firebaseAuth?.currentUser?.uid });
       return true;
-    } catch (err) {
-      console.warn('Backend call failed on update, updating directly in Firestore:', err);
-    }
   }
   await setDoc(doc(firestore, 'properties', property.id), {
     ...data,
@@ -192,16 +179,17 @@ export async function uploadPropertyImages(files, propertyId, ownerId, onProgres
   if (!currentUser) throw new Error('Debes iniciar sesión para publicar.');
   if (!files?.length || files.length > 8) throw new Error('Sube entre 1 y 8 fotografías.');
 
-  // 1. Try Supabase backend if configured
+  for (const file of files) {
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || !file.size || file.size > 8*1024*1024) {
+      throw new Error('Selecciona fotografías JPEG, PNG o WebP de hasta 8 MB.');
+    }
+  }
   if (usesServerOperations) {
-    try {
       const urls = await uploadPropertyImagesToSupabase(files, propertyId, ownerId, onProgress);
-      if (Array.isArray(urls) && urls.length > 0 && urls.every(u => typeof u === 'string' && u.startsWith('https://'))) {
+      if (Array.isArray(urls) && urls.length === files.length && urls.every(u => typeof u === 'string' && u.startsWith('https://'))) {
         return urls;
       }
-    } catch (err) {
-      console.warn('Supabase media upload unavailable (503/network), trying resilient storage fallback:', err);
-    }
+      throw new Error('No se pudieron guardar todas las fotografías. Inténtalo de nuevo.');
   }
 
   // 2. Try Firebase Storage if active
@@ -224,47 +212,7 @@ export async function uploadPropertyImages(files, propertyId, ownerId, onProgres
     }
   }
 
-  // 3. Resilient public image hosting (catbox.moe)
-  try {
-    let finished = 0;
-    const catboxUrls = await Promise.all(files.map(async (file, idx) => {
-      try {
-        const form = new FormData();
-        form.append('reqtype', 'fileupload');
-        form.append('fileToUpload', file, file.name || `propiedad-${idx}.jpg`);
-        const res = await fetch('https://catbox.moe/user/api.php', {
-          method: 'POST',
-          body: form,
-        });
-        if (res.ok) {
-          const url = (await res.text()).trim();
-          if (url.startsWith('https://')) {
-            onProgress(Math.round(++finished / files.length * 100));
-            return url;
-          }
-        }
-      } catch (e) {
-        console.warn('Host upload error:', e);
-      }
-      return '';
-    }));
-
-    const validUrls = catboxUrls.filter((u) => u && u.startsWith('https://'));
-    if (validUrls.length === files.length) {
-      return validUrls;
-    }
-  } catch (err) {
-    console.warn('Public host upload error:', err);
-  }
-
-  // 4. Safe fallback: sample high quality Guatemala architectural photos so publication never blocks
-  const sampleFallbacks = [
-    'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80',
-    'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=800&q=80',
-    'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&q=80',
-    'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800&q=80',
-  ];
-  return files.map((_, idx) => sampleFallbacks[idx % sampleFallbacks.length]);
+  throw new Error('No se pudieron subir las fotografías. Revisa tu conexión e inténtalo de nuevo.');
 }
 
 export async function deleteOwnedProperty(propertyId, ownerId) {

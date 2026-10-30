@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 fun rememberProperties(
     firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ): List<Property> {
-    var properties by remember { mutableStateOf<List<Property>>(MockDataRepository.properties) }
+    var properties by remember { mutableStateOf<List<Property>>(emptyList()) }
 
     DisposableEffect(firestore) {
         val listener = firestore.collection("properties")
@@ -37,10 +37,7 @@ fun rememberProperties(
                         .sortedByDescending { documentTimestamp(it) }
                         .mapNotNull { propertyFromDocument(it) }
                     
-                    val map = LinkedHashMap<String, Property>()
-                    MockDataRepository.properties.forEach { map[it.id] = it }
-                    firestoreProps.forEach { map[it.id] = it }
-                    properties = map.values.toList()
+                    properties = firestoreProps
                 }
             }
 
@@ -143,10 +140,13 @@ private fun uploadPropertyImages(
     val tasks = imageUris.map { uri ->
         val rawMime = contentResolver.getType(uri) ?: "image/jpeg"
         val mime = rawMime.lowercase().split(";")[0].trim().let {
-            if (it == "image/jpg" || it == "image/heic" || it.isBlank()) "image/jpeg" else it
+            if (it == "image/jpg" || it.isBlank()) "image/jpeg" else it
         }
-        val safeMime = if (mime in listOf("image/jpeg","image/png","image/webp")) mime else "image/jpeg"
-        RuwaBackend.upload("property",uri,contentResolver,propertyId=propertyId,mime=safeMime,expectedUid=userId)
+        if (mime !in listOf("image/jpeg","image/png","image/webp")) {
+            Tasks.forException<String>(Exception("Selecciona fotografías JPEG, PNG o WebP. Convierte las imágenes HEIC antes de subirlas."))
+        } else {
+            RuwaBackend.upload("property",uri,contentResolver,propertyId=propertyId,mime=mime,expectedUid=userId)
+        }
     }
     return Tasks.whenAllSuccess<String>(tasks)
 }

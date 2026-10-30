@@ -33,19 +33,16 @@ export function ChatProvider({ children }) {
 
   const markAsRead = useCallback(async room => {
     const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
-    if (!room || !currentUid) return;
+    if (!room || !currentUid || !isViewingChat()) return;
 
     // La bandeja agrupa por contacto varias conversaciones (por inmueble). Al
     // abrir una, todas las conversaciones de ese contacto deben quedar leidas.
     const target = itemsRef.current.find(item => item.id === room);
     const contactId = otherParticipantId(target, currentUid);
-    const targetName = (target?.participantName || target?.seekerName || target?.ownerName || '').trim().toLowerCase();
     const matchingRooms = itemsRef.current.filter(item => {
       if (item.id === room) return true;
       const otherId = otherParticipantId(item, currentUid);
       if (contactId && otherId === contactId) return true;
-      const name = (item.participantName || item.seekerName || item.ownerName || item.otherUserName || '').trim().toLowerCase();
-      if (targetName && name && name === targetName) return true;
       return false;
     }).map(item => item.id);
     const uniqueRoomIds = [...new Set([room, ...matchingRooms].filter(Boolean))];
@@ -73,7 +70,7 @@ export function ChatProvider({ children }) {
         }
       : item));
 
-    const results = await Promise.allSettled(uniqueRoomIds.map(markConversationRead));
+    const results = await Promise.allSettled(uniqueRoomIds.map(id => markConversationRead(id, readAt)));
     const failure = results.find(result => result.status === 'rejected');
     if (failure) setChatError(failure.reason?.message || 'No se pudo marcar el chat como leido.');
   }, [user?.id]);

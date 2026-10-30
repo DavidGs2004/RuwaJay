@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
 import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import { subscribeToUserVisits } from '../../lib/visitService';
@@ -23,6 +24,7 @@ export default function LeaseContractModal({
   user,
 }) {
   const [activeTab, setActiveTab] = useState('preview'); // 'preview' | 'edit'
+  const modalRef = useModalFocus(isOpen && Boolean(property), onClose);
   const [copied, setCopied] = useState(false);
   const [visits,setVisits] = useState([]);
   const [selectedVisit,setSelectedVisit] = useState('');
@@ -101,7 +103,7 @@ export default function LeaseContractModal({
 
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto bg-black/60 p-2 sm:p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Borrador de contrato de alquiler" className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
         <div className="p-4 border-b print:hidden">
           <p className="text-sm">Borrador sin firma. Las condiciones guardadas se comparten entre web y app.</p>
           {visits.length>1 && <select value={visit?.id || ''} onChange={event=>setSelectedVisit(event.target.value)} className="p-2 border rounded">

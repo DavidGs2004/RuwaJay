@@ -8,6 +8,7 @@
     "dev:frontend": "vite",
     "build": "vite build",
     "build:vps": "vite build --base=/ruwajay/",
+    "build:firebase": "vite build --base=/",
     "preview": "vite preview",
     "test": "node --test tests/contracts.test.js",
     "test:rules": "node scripts/run-emulators.mjs firestore \"node --test tests/firestore.rules.test.js\"",

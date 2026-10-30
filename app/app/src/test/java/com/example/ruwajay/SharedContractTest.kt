@@ -6,6 +6,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SharedContractTest {
+    @Test fun canonicalAccountStatusMatchesTheServerAndLegacyRestrictions() {
+        assertEquals("inactive", com.example.ruwajay.data.model.resolveAccountStatus(mapOf("accountStatus" to "inactive")))
+        assertEquals("suspended", com.example.ruwajay.data.model.resolveAccountStatus(mapOf("suspended" to true, "status" to "active")))
+        assertEquals("inactive", com.example.ruwajay.data.model.resolveAccountStatus(mapOf("status" to "inactive")))
+        assertEquals("active", com.example.ruwajay.data.model.resolveAccountStatus(mapOf("accountStatus" to "active", "suspended" to true)))
+        assertEquals("active", com.example.ruwajay.data.model.resolveAccountStatus(null))
+    }
     @Test fun oldWebPhotosKeepOnlyPersistentUniqueUrls() {
         assertEquals(listOf("https://example.test/photo"), persistedImageUrls(mapOf(
             "fachada" to listOf("blob:http://localhost/photo","https://example.test/photo"),

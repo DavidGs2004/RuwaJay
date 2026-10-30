@@ -3,9 +3,39 @@ import assert from 'node:assert/strict';
 import { firebaseVerifier, googleTokenProvider } from '../../archivos varios/servicios/supabase/functions/_shared/google.js';
 import { parseMediaReference, SupabaseFiles } from '../../archivos varios/servicios/supabase/functions/_shared/storage.js';
 import { createHandler } from '../../archivos varios/servicios/supabase/functions/_shared/handler.js';
+import { active, ApiError } from '../../archivos varios/servicios/supabase/functions/_shared/errors.js';
+import { RuwaService } from '../../archivos varios/servicios/supabase/functions/_shared/service.js';
 const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const publicKey=await crypto.subtle.exportKey('jwk',keys.publicKey);publicKey.kid='test-signing-key';
 const b64=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+test('Canonical account status overrides legacy flags and inactive accounts are blocked',()=>{
+  for(const profile of [{accountStatus:'inactive'},{accountStatus:'suspended'},{status:'inactive'},{status:'suspended'},{suspended:true,status:'active'}]) assert.equal(active(profile),false);
+  assert.equal(active({accountStatus:'active',suspended:true,status:'suspended'}),true);
+  assert.equal(active({name:'Legacy active user'}),true);
+});
+
+test('Configuration errors never bypass profile or private media authorization',async()=>{
+  const configuration=new ApiError(500,'configuration','Configura una cuenta de servicio.');
+  let uploads=0,signatures=0;
+  const service=new RuwaService({db:{get:async()=>{throw configuration;}},files:{upload:async()=>{uploads++;},signedUrl:async()=>{signatures++;}}});
+  await assert.rejects(service.account({uid:'user',email:'user@example.test',claims:{}}),error=>error===configuration);
+  await assert.rejects(service.resolveMedia({uid:'user'},'supabase://chat-media/chat/room/other/file'),error=>error===configuration);
+  await assert.rejects(service.authorizeFile({uid:'user'},'property-images',['properties','house','user','file'],true),error=>error===configuration);
+  assert.equal(uploads,0);assert.equal(signatures,0);
+});
+
+test('Administrator permissions come from stored roles or signed claims, never email',async()=>{
+  const service=new RuwaService({db:{get:async()=>({exists:true,data:{role:'seeker'}})},files:{}});
+  const user=await service.account({uid:'user',email:'xleon04gd@gmail.com',claims:{}});
+  assert.equal(user.isAdmin,false);
+  assert.equal((await service.account({uid:'admin',email:'admin@example.test',claims:{role:'admin'}})).isAdmin,true);
+});
+
+test('New listings require a verified owner even when called directly',async()=>{
+  const service=new RuwaService({db:{},files:{}});
+  const tx={get:async()=>({exists:false})};
+  await assert.rejects(service.saveProperty(tx,{uid:'user',role:'owner'},{property:{id:'house'}}),error=>error.status===403);
+});
 async function jwt(patch={},headerPatch={},otherKey=keys.privateKey){const now=Math.floor(Date.now()/1000),header=b64({alg:'RS256',typ:'JWT',kid:publicKey.kid,...headerPatch}),claims=b64({aud:'ruwa-jay',iss:'https://securetoken.google.com/ruwa-jay',sub:'verified-user',iat:now,auth_time:now,exp:now+3600,...patch});const bytes=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',otherKey,new TextEncoder().encode(header+'.'+claims));return header+'.'+claims+'.'+Buffer.from(bytes).toString('base64url');}
 test('Production identity verification checks signature, project, expiry and algorithm',async()=>{
   const verifier=firebaseVerifier('ruwa-jay',{fetcher:async()=>Response.json({keys:[publicKey]})});

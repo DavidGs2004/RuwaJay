@@ -24,8 +24,8 @@ android {
         applicationId = "com.example.ruwajay"
         minSdk = 24
         targetSdk = 37
-        versionCode = 5
-        versionName = "2.6.0"
+        versionCode = 6
+        versionName = "2.6.1"
 
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"${localSetting("MAPBOX_ACCESS_TOKEN")}\"")
         buildConfigField("String", "RUWA_BACKEND_URL", "\"${localSetting("RUWA_BACKEND_URL")}\"")

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
 import {
   X, Calculator, ArrowRight, ShieldCheck, Sparkles,
   AlertCircle, Home, MapPin, PieChart, CheckCircle2,
@@ -21,6 +22,7 @@ export default function RentAffordabilityModal({
   onSelectSuggestedLocation,
 }) {
   const [income, setIncome] = useState(10000);
+  const modalRef = useModalFocus(isOpen, onClose);
   const [tierPercent, setTierPercent] = useState(30);
   const [expenseMode, setExpenseMode] = useState('simple'); // 'simple' | 'detailed'
   const [simpleExpenses, setSimpleExpenses] = useState(2500);
@@ -127,7 +129,7 @@ export default function RentAffordabilityModal({
 
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Calculadora de presupuesto de alquiler" className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-3xl bg-white shadow-2xl overflow-hidden border border-border">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-[#FDFBF7] px-5 sm:px-6 py-4">
           <div className="flex items-center gap-3">

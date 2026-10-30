@@ -45,6 +45,16 @@ test('the center publish action opens verification for an active unverified acco
   await expect(page.getByText('Completar verificación en mi perfil', { exact: true })).toBeVisible();
 });
 
+test('mobile hero photography fills its container without embedded banner text',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('./');
+  const photo=page.getByAltText('Hogar en Guatemala').first();
+  await expect(photo).toBeVisible();
+  const bounds=await photo.boundingBox();
+  expect(bounds.height).toBeGreaterThanOrEqual(300);
+  await expect(photo).toHaveAttribute('src',/Casas\/hero-banner-new\.jpg$/);
+});
+
 test('the publish action is hidden for suspended accounts', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => { window.__testUser = { id: 'fixture-user', role: 'owner', suspended: true }; });
@@ -76,6 +86,54 @@ test('login preserves the destination of a visit notification', async ({ page })
   await page.goto('perfil?tab=visitas');
   await expect(page).toHaveURL(/\/login$/);
   expect(await page.evaluate(() => history.state.usr.from)).toBe('/perfil?tab=visitas');
+});
+
+async function catalogFixture(page, properties) {
+  await page.route('**/src/lib/propertyService.js', route => route.fulfill({ contentType:'application/javascript', body:`
+    export * from '/ruwajay/src/lib/propertyService.js?actual=1';
+    export function subscribeToProperties(onChange) { onChange(${JSON.stringify(properties)}); return () => {}; }
+  ` }));
+}
+
+test('empty catalog and missing demo IDs never substitute fictional listings',async({page})=>{
+  await catalogFixture(page,[]);
+  await page.goto('explorar');
+  await expect(page.getByText('0 viviendas encontradas',{exact:true})).toBeVisible();
+  await expect(page.locator('article')).toHaveCount(0);
+  await page.goto('propiedad/prop-1');
+  await expect(page.getByText('Esta vivienda no existe o fue eliminada.')).toBeVisible();
+});
+
+test('reserved listings keep their status and the mobile comparison traps focus',async({page},testInfo)=>{
+  await page.setViewportSize({width:390,height:844});
+  const fixtures=[1,2].map(id=>({id:'qa-house-'+id,title:'Vivienda real '+id,price:2500+id,deposit:0,status:'reservada',images:[],address:{approximate:'Guatemala'},bedrooms:2,bathrooms:1,area:60}));
+  await catalogFixture(page,fixtures);
+  await page.goto('explorar');
+  await expect(page.getByText('Apartada / En cita',{exact:true})).toHaveCount(2);
+  const compare=page.getByRole('button',{name:'Agregar al comparador',exact:true});
+  await compare.first().click();await compare.last().click();
+  await page.getByRole('button',{name:'Comparar (2)',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Comparar viviendas',exact:true});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('row').filter({hasText:'Depósito en garantía'})).toContainText('Q0');
+  await page.keyboard.press('Shift+Tab');
+  expect(await dialog.evaluate(element=>element.contains(document.activeElement))).toBe(true);
+  await page.screenshot({path:testInfo.outputPath('comparador-mobile.png'),animations:'disabled'});
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Comparar (2)',exact:true})).toBeFocused();
+});
+
+test('rental calculator fits mobile and closes with Escape',async({page},testInfo)=>{
+  await page.setViewportSize({width:390,height:844});
+  await catalogFixture(page,[]);
+  await page.goto('explorar?calculator=true');
+  const dialog=page.getByRole('dialog',{name:'Calculadora de presupuesto de alquiler',exact:true});
+  await expect(dialog).toBeVisible();
+  const bounds=await dialog.boundingBox();
+  expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(390);
+  await page.screenshot({path:testInfo.outputPath('calculadora-mobile.png'),animations:'disabled'});
+  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
 });
 
 test('mobile notice center loads alerts, traps focus and restores the trigger', async ({ page }) => {

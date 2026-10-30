@@ -1,0 +1,42 @@
+name: Validar web y reglas
+
+on:
+  pull_request:
+    paths: ['web/**', 'archivos varios/servicios/**', '.github/workflows/qa.yml']
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-and-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run test:backend:unit
+      - name: Probar permisos e integración local
+        run: node scripts/run-emulators.mjs auth,firestore,storage "node --test --test-concurrency=1 tests/firestore.rules.test.js tests/storage.rules.test.js tests/supabase.backend.test.js"
+      - name: Probar identidad y chat en navegador
+        run: node scripts/run-emulators.mjs auth,firestore,storage "npx playwright test"
+      - run: npm run test:web:public
+      - run: npm run build:vps
+      - run: npm run build:firebase

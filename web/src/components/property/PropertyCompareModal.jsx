@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import useModalFocus from '../../hooks/useModalFocus';
 import { Link } from 'react-router-dom';
 import {
   X, ArrowLeftRight, Check, Trash2, Bed, Bath, Car, Ruler,
@@ -12,16 +13,16 @@ import { formatPrice } from '../../data/properties';
 
 // Safely get the first image from a property, handles null/undefined/array/object
 function getSafeImage(property) {
-  if (!property) return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+  if (!property) return `${import.meta.env.BASE_URL}placeholder-property.svg`;
   if (property.thumbnail) return property.thumbnail;
   try {
     const imgs = property.images;
-    if (!imgs || typeof imgs !== 'object') return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
-    if (Array.isArray(imgs)) return imgs[0] || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+    if (!imgs || typeof imgs !== 'object') return `${import.meta.env.BASE_URL}placeholder-property.svg`;
+    if (Array.isArray(imgs)) return imgs[0] || `${import.meta.env.BASE_URL}placeholder-property.svg`;
     const values = Object.values(imgs).flat();
-    return (values && values[0]) || `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+    return (values && values[0]) || `${import.meta.env.BASE_URL}placeholder-property.svg`;
   } catch {
-    return `${import.meta.env.BASE_URL}Casas/cat-familiar.jpg`;
+    return `${import.meta.env.BASE_URL}placeholder-property.svg`;
   }
 }
 
@@ -48,23 +49,8 @@ export default function PropertyCompareModal() {
 
   // User-defined budget for starting the rental (first month + deposit)
   const [customBudget, setCustomBudget] = useState(null);
-
-  // Prevent background scroll when modal is open
-  useEffect(() => {
-    if (!isCompareModalOpen) return undefined;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closeCompareModal();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [isCompareModalOpen, closeCompareModal]);
+  const compareTriggerRef = useRef(null);
+  const modalRef = useModalFocus(isCompareModalOpen, closeCompareModal, false, compareTriggerRef);
 
   // Determine best price and largest area among compared properties
   const stats = useMemo(() => {
@@ -320,6 +306,7 @@ export default function PropertyCompareModal() {
               <button
                 type="button"
                 onClick={openCompareModal}
+                ref={compareTriggerRef}
                 disabled={comparedProperties.length < 2}
                 className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-extrabold transition-all ${
                   comparedProperties.length >= 2
@@ -349,7 +336,7 @@ export default function PropertyCompareModal() {
       {/* ========================================================= */}
       {isCompareModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-sm animate-[fade-in_0.2s_ease-out]">
-          <div className="flex flex-col max-h-[92vh] w-full max-w-5xl rounded-3xl bg-white shadow-2xl overflow-hidden border border-border-light animate-[scale-up_0.3s_ease-out]">
+          <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Comparar viviendas" className="flex flex-col max-h-[92vh] w-full max-w-5xl rounded-3xl bg-white shadow-2xl overflow-hidden border border-border-light animate-[scale-up_0.3s_ease-out]">
             
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-border-light bg-[#FAF5EE] px-5 py-4 sm:px-7">
@@ -454,7 +441,7 @@ export default function PropertyCompareModal() {
                     <td className="py-3 pr-4 font-bold text-text-secondary">Depósito en garantía</td>
                     {comparedProperties.map((p) => (
                       <td key={p.id} className="py-3 px-3">
-                        {p.deposit ? formatPrice(p.deposit) : '1 mes'}
+                        {p.deposit != null ? formatPrice(p.deposit) : '1 mes'}
                       </td>
                     ))}
                   </tr>

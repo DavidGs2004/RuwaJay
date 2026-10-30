@@ -11,8 +11,10 @@ test('Login uses Firebase identity and property routes never substitute a differ
   const email=`browser-${Date.now()}@example.test`,password='testing-password';
   const {user}=await createUserWithEmailAndPassword(auth,email,password);
   await setDoc(doc(db,'users',user.uid),{name:'Browser Test User',email,role:'owner'});
-  await setDoc(doc(db,'properties','browser-house'),{ownerId:user.uid,title:'Vivienda compartida de prueba',price:3500.50,
-    status:'disponible',images:['https://example.test/photo.jpg'],coordinates:{lat:14.6,lng:-90.5},verified:false});
+  const fixtureEnv=await initializeTestEnvironment({projectId:'demo-ruwajay'});
+  await fixtureEnv.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'properties','browser-house'),{ownerId:user.uid,title:'Vivienda compartida de prueba',price:3500.50,
+    status:'disponible',images:['https://example.test/photo.jpg'],coordinates:{lat:14.6,lng:-90.5},verified:false}));
+  await fixtureEnv.cleanup();
   const failures=[];page.on('pageerror',error=>failures.push(error.message));
   await page.goto('/login');
   await page.locator('input[type=email]').fill(email);

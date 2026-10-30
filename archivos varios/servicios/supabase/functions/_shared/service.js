@@ -12,30 +12,21 @@ export class RuwaService {
   /** @param {{db:any,files:any,push?:(token:string,notice:any)=>Promise<any>,now?:()=>Date}} options */
   constructor({db,files,push=async(_token,_notice)=>undefined,now=()=>new Date()}){this.db=db;this.files=files;this.push=push;this.now=now;}
   async account(identity){
-    const isSuper = String(identity.email || '').trim().toLowerCase() === 'xleon04gd@gmail.com';
-    try {
       const profile=await this.db.get('users/'+identifier(identity.uid));
       assert(profile.exists,412,'failed-precondition','Primero completa tu perfil de RuwaJay.');
       assert(active(profile.data),403,'permission-denied','Cuenta suspendida.');
-      return{...profile.data,uid:identity.uid,email:identity.email,claimAdmin:isSuper||identity.claims?.role==='admin',isAdmin:isSuper||profile.data.role==='admin'||identity.claims?.role==='admin'};
-    } catch(err) {
-      if(err?.message?.includes('cuenta de servicio') || err?.code === 'configuration') {
-        return{uid:identity.uid,email:identity.email,claimAdmin:isSuper||identity.claims?.role==='admin',isAdmin:isSuper||identity.claims?.role==='admin'};
-      }
-      throw err;
-    }
+      return{...profile.data,uid:identity.uid,email:identity.email,claimAdmin:identity.claims?.role==='admin',isAdmin:profile.data.role==='admin'||identity.claims?.role==='admin'};
   }
   job(tx,id,type,payload){tx.set('server_jobs/'+id,{type,payload,dueAt:this.now(),attempts:0},{create:true});}
   notices(tx,eventId,uids,title,body,path,extra={}){for(const uid of new Set(uids.filter(Boolean)))this.job(tx,'notice_'+eventId+'_'+uid,'notice',{uid,eventId,title,body:String(body||'').slice(0,160),path,senderName:title,type:'message',...extra});}
   async mutate(user,action,data,operation){
     const requestId=identifier(data.requestId);assert(requestId.length<=128,400,'invalid-argument','Solicitud inválida.');
     const key=await hash(user.uid+':'+requestId),digest=await hash(JSON.stringify({action,data}));
-    const isSuper = String(user.email || '').trim().toLowerCase() === 'xleon04gd@gmail.com';
     return this.db.transaction(async tx=>{
       const prior=await tx.get('server_requests/'+key);
       if(prior.exists){assert(prior.data.digest===digest,409,'already-exists','La solicitud ya se utilizó para otra operación.');return prior.data.result;}
       const fresh=await tx.get('users/'+user.uid);assert(fresh.exists&&active(fresh.data),403,'permission-denied','Cuenta suspendida.');
-      const current={...user,...fresh.data,uid:user.uid,email:user.email,isAdmin:isSuper||fresh.data.role==='admin'||user.claimAdmin};
+      const current={...user,...fresh.data,uid:user.uid,email:user.email,isAdmin:fresh.data.role==='admin'||user.claimAdmin};
       const result=await operation(tx,current);
       tx.create('server_requests/'+key,{digest,result,createdAt:SERVER_TIME,expiresAt:new Date(this.now().getTime()+7*86400000)});
       return result;
@@ -146,6 +137,7 @@ export class RuwaService {
     const input=data.property;assert(input&&typeof input==='object'&&!Array.isArray(input),400,'invalid-argument','Vivienda inválida.');
     const id=identifier(input.id),existing=await tx.get('properties/'+id);
     assert(!existing.exists||existing.data.ownerId===user.uid||user.isAdmin,403,'permission-denied','No puedes editar esta vivienda.');
+    assert(existing.exists||user.isAdmin||(user.verified===true&&user.verificationStatus==='aprobada'),403,'permission-denied','Completa la verificación de casero antes de publicar.');
     const images=imageUrls(input.images);assert(images.length>0&&images.length<=8,400,'invalid-argument','Sube entre una y ocho fotografías.');
     const coordinates=coordinatesOrNull(input.coordinates||input.location?.mapCoordinates);assert(coordinates,400,'invalid-argument','Selecciona la ubicación real de la vivienda.');
     const title=boundedText(input.title,200);assert(title&&typeof input.price==='number'&&Number.isFinite(input.price)&&input.price>0&&input.price<=1e9,400,'invalid-argument','Título o precio inválidos.');
@@ -196,43 +188,17 @@ export class RuwaService {
     return{id:callId,ok:true};
   }
   async authorizeFile(user,bucket,parts,upload){
-    try {
       if(bucket==='chat-media'){
         assert(parts.length===4&&parts[0]==='chat',400,'invalid-argument','Ruta de chat inválida.');
-        let room;
-        try {
-          room=await this.db.get('conversations/'+identifier(parts[1]));
-        } catch(e) {
-          if(e?.message?.includes('cuenta de servicio') || e?.code === 'configuration') {
-            assert(!upload||parts[2]===user.uid,403,'permission-denied','No tienes acceso a este archivo de chat.');
-            return;
-          }
-          throw e;
-        }
+        const room=await this.db.get('conversations/'+identifier(parts[1]));
         assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid)&&(!upload||parts[2]===user.uid),403,'permission-denied','No tienes acceso a este archivo de chat.');
       } else if(bucket==='verification')assert(parts.length===3&&parts[0]==='verification'&&(parts[1]===user.uid||(!upload&&user.isAdmin)),403,'permission-denied','Documento privado.');
       else if(bucket==='profile-images')assert(upload&&parts.length===3&&parts[0]==='profiles'&&parts[1]===user.uid,403,'permission-denied','Foto de perfil ajena.');
       else if(bucket==='property-images'){
         assert(upload&&parts.length===4&&parts[0]==='properties'&&parts[2]===user.uid,403,'permission-denied','Fotografía ajena.');
-        let property;
-        try {
-          property=await this.db.get('properties/'+identifier(parts[1]));
-        } catch(e) {
-          if(e?.message?.includes('cuenta de servicio') || e?.code === 'configuration') return;
-          throw e;
-        }
+        const property=await this.db.get('properties/'+identifier(parts[1]));
         assert(!property.exists||property.data.ownerId===user.uid||user.isAdmin,403,'permission-denied','No puedes subir fotos a esa vivienda.');
       } else throw new ApiError(400,'invalid-argument','Bucket desconocido.');
-    } catch(err) {
-      if(err instanceof ApiError) throw err;
-      if(err?.message?.includes('cuenta de servicio') || err?.code === 'configuration') {
-        if(bucket==='chat-media') {
-          assert(!upload||parts[2]===user.uid,403,'permission-denied','No tienes acceso a este archivo de chat.');
-          return;
-        }
-      }
-      throw err;
-    }
   }
   async upload(identity,{kind,roomId,propertyId,mime,bytes}){
     const user=await this.account(identity);const definitions={property:['property-images',['properties',propertyId,user.uid]],profile:['profile-images',['profiles',user.uid]],verification:['verification',['verification',user.uid]],chat:['chat-media',['chat',roomId,user.uid]]};

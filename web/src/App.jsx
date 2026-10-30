@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, Clock3, ArrowLeft } from 'lucide-react';
 import { AuthProvider, useAuth, resolveUserStatus } from './context/AuthContext';
@@ -14,15 +14,15 @@ import MobileAppBanner from './components/ui/MobileAppBanner';
 import MobileAppConnectModal from './components/ui/MobileAppConnectModal';
 
 // Pages
-import HomePage from './pages/HomePage';
-import ExplorePage from './pages/ExplorePage';
-import PropertyDetailPage from './pages/PropertyDetailPage';
-import RoutePage from './pages/RoutePage';
-import ChatPage from './pages/ChatPage';
-import LoginPage from './pages/LoginPage';
-import ProfilePage from './pages/ProfilePage';
-import PublishPage from './pages/PublishPage';
-import ResetPasswordPage from './pages/ResetPasswordPage'; // <--- Importamos la nueva página
+const HomePage = lazy(() => import('./pages/HomePage'));
+const ExplorePage = lazy(() => import('./pages/ExplorePage'));
+const PropertyDetailPage = lazy(() => import('./pages/PropertyDetailPage'));
+const RoutePage = lazy(() => import('./pages/RoutePage'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const PublishPage = lazy(() => import('./pages/PublishPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 import RuwaJayLoader from './components/ui/RuwaJayLoader';
 import PropertyCompareModal from './components/property/PropertyCompareModal';
 import ChatNotificationToast from './components/chat/ChatNotificationToast';
@@ -203,6 +203,7 @@ function RuwaJayRoutes() {
       {showLayout && <MobileAppBanner onOpenModal={() => setMobileAppModalOpen(true)} />}
       {showLayout && <Header />}
       <div className={`min-w-0 flex-1 ${showLayout ? 'pb-20 md:pb-0' : ''}`}>
+        <Suspense fallback={<div role="status" className="flex min-h-[40vh] items-center justify-center text-forest">Cargando página…</div>}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/explorar" element={<ExplorePage />} />
@@ -219,6 +220,7 @@ function RuwaJayRoutes() {
           <Route path="/__/auth/action" element={user && resolveUserStatus(user, user.email) === 'active' ? <Navigate to="/" replace /> : <ResetPasswordPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </div>
       {showLayout && <Footer />}
       {showLayout && <MobileNav />}

@@ -215,14 +215,13 @@ fun ProfileScreen(
     val systemUpdates = rememberSystemUpdates(includeInactive = true)
 
     val userRole = (userData?.get("role") as? String) ?: "seeker"
-    val isSuperAdmin = currentUser?.email?.trim()?.equals("xleon04gd@gmail.com", ignoreCase = true) == true
+    val isSuperAdmin = userRole == "admin"
     val isAdmin = userRole == "admin" || isSuperAdmin
     val isVerified = (userData?.get("verified") as? Boolean) == true && userData?.get("verificationStatus") !in listOf("pendiente", "rechazada")
     val verificationStatus = (userData?.get("verificationStatus") as? String).orEmpty()
     val verificationRejectionReason = (userData?.get("verificationRejectionReason") as? String).orEmpty()
 
-    val accountStatus = (userData?.get("accountStatus") as? String)
-        ?: (userData?.get("status") as? String) ?: "active"
+    val accountStatus = com.example.ruwajay.data.model.resolveAccountStatus(userData)
 
     // Listeners exclusivos para Admin
     DisposableEffect(isAdmin) {

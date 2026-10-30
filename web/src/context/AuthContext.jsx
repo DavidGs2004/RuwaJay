@@ -22,9 +22,6 @@ import { firebaseAuth, firestore, firebaseWebEnabled, googleProvider } from '../
 
 const AuthContext = createContext(null);
 
-export const GLOBAL_ADMIN_EMAILS = ['xleon04gd@gmail.com'];
-export const isGlobalAdminEmail = (email) => GLOBAL_ADMIN_EMAILS.includes(String(email || '').trim().toLowerCase());
-
 /**
  * Resuelve el estado canónico de la cuenta.
  * Si está en 'active', NINGUNA restricción aplica (se remueve suspensión o inactividad).
@@ -36,7 +33,6 @@ export function resolveUserStatus(data, _email = '') {
   if (data.accountStatus === 'suspended') return 'suspended';
   if (data.accountStatus === 'inactive') return 'inactive';
   // 2. Compatibilidad con registros antiguos
-  if (data.status === 'active') return 'active';
   if (data.suspended === true || data.status === 'suspended') return 'suspended';
   if (data.status === 'inactive') return 'inactive';
   return 'active';
@@ -215,14 +211,13 @@ export function AuthProvider({ children }) {
           if (currentGeneration !== generation) return;
           if (!snapshot.exists()) {
             // Auto-crear documento en Firestore si el usuario está autenticado en Firebase Auth pero no tiene perfil (ej. Google Sign-In)
-            const isSuperAdmin = isGlobalAdminEmail(account.email);
             try {
               await setDoc(doc(firestore, 'users', account.uid), {
                 name: account.displayName || 'Usuario',
                 email: account.email,
                 avatarImage: account.photoURL || null,
                 phone: null,
-                role: isSuperAdmin ? 'admin' : 'seeker',
+                role: claims.claims.role === 'admin' ? 'admin' : 'seeker',
                 createdAt: serverTimestamp(),
               });
               return;
@@ -235,7 +230,7 @@ export function AuthProvider({ children }) {
           }
           const profile = snapshot.data() || {};
           const userStatus = resolveUserStatus(profile, account.email);
-          const effectiveRole = profile.role || (claims.claims.role === 'admin' ? 'admin' : 'seeker');
+          const effectiveRole = claims.claims.role === 'admin' ? 'admin' : (profile.role || 'seeker');
 
           const isUserVerified = Boolean(profile.verified && profile.dpiData?.cui && profile.verificationStatus === 'aprobada');
 
@@ -272,11 +267,11 @@ export function AuthProvider({ children }) {
   const login = (email, password) => authenticate(async () => {
     const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
     const account=credential.user,ref=doc(firestore,'users',account.uid);
-    const isSuperAdmin = isGlobalAdminEmail(account.email);
+    const isAdmin = (await account.getIdTokenResult()).claims.role === 'admin';
     const snap = await fetchAuthoritativeDoc(ref);
     if(!snap.exists()) {
       await setDoc(ref,{name:account.displayName||'Usuario',email:account.email,
-        phone:null,role:isSuperAdmin ? 'admin' : 'seeker',accountStatus:'active',createdAt:serverTimestamp()});
+        phone:null,role:isAdmin ? 'admin' : 'seeker',accountStatus:'active',createdAt:serverTimestamp()});
     }
     return account;
   });
@@ -286,7 +281,7 @@ export function AuthProvider({ children }) {
       : await signInWithPopup(firebaseAuth, googleProvider);
     const account = credential.user;
     const ref = doc(firestore, 'users', account.uid);
-    const isSuperAdmin = isGlobalAdminEmail(account.email);
+    const isAdmin = (await account.getIdTokenResult()).claims.role === 'admin';
     const snap = await fetchAuthoritativeDoc(ref);
     if (!snap.exists()) {
       const chosenRole = payload.role === 'owner' ? 'owner' : 'seeker';
@@ -295,7 +290,7 @@ export function AuthProvider({ children }) {
         email: account.email,
         avatarImage: account.photoURL || null,
         phone: null,
-        role: isSuperAdmin ? 'admin' : chosenRole,
+        role: isAdmin ? 'admin' : chosenRole,
         createdAt: serverTimestamp(),
       });
     }
@@ -329,12 +324,8 @@ export function AuthProvider({ children }) {
       }
     }
     if (usesServerOperations) {
-      try {
         await callBackend('updateProfile', { profile: patch }, { expectedUid: account.uid });
         return;
-      } catch (backendError) {
-        console.warn('Backend updateProfile no disponible, guardando directamente en Firestore:', backendError);
-      }
     }
     await setDoc(doc(firestore, 'users', account.uid), patch, { merge: true });
   };
@@ -412,6 +403,9 @@ export function AuthProvider({ children }) {
   };
   const updateDpiData = async (updatedDpi) => {
     const account = requireAccount();
+    if (user?.verificationStatus === 'aprobada' && ['cui','birthDate','expirationDate','documentPhoto'].some(key => key in updatedDpi && updatedDpi[key] !== user.dpiData?.[key])) {
+      throw new Error('Para cambiar tu documento o datos de identidad, presenta una nueva solicitud de verificación.');
+    }
     const cleanDpi = {
       ...(user?.dpiData || {}),
       ...updatedDpi,

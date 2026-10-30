@@ -69,7 +69,7 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
     val displayReviews = firestoreReviews
     
     val stats = remember(displayReviews) {
-        if (displayReviews.isEmpty()) return@remember Pair(5.0, 0)
+        if (displayReviews.isEmpty()) return@remember Pair(0.0, 0)
         val avg = displayReviews.map { it.rating }.average()
         Pair(avg, displayReviews.size)
     }
@@ -142,9 +142,9 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    String.format("%.1f", stats.first),
+                    if (stats.second == 0) "Sin reseñas" else String.format("%.1f", stats.first),
                     fontWeight = FontWeight.Black,
-                    fontSize = 32.sp,
+                    fontSize = if (stats.second == 0) 20.sp else 32.sp,
                     color = BrandCafe
                 )
                 Row {
@@ -157,17 +157,14 @@ fun PropertyReviews(propertyId: String, propertyTitle: String) {
                         )
                     }
                 }
-                Text("Basado en ${stats.second} opiniones", color = BrandTextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(if (stats.second == 0) "Comparte tu experiencia" else "Basado en ${stats.second} opiniones", color = BrandTextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
             // Categories
             Column(modifier = Modifier.weight(2f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                CategoryBar("Limpieza y estado", 4.9f)
-                CategoryBar("Seguridad del sector", 4.8f)
-                CategoryBar("Comunicación", 4.9f)
-                CategoryBar("Calidad / precio", 4.7f)
+                Text("La valoración se calcula con las opiniones publicadas sobre esta vivienda.", color = BrandTextSecondary, fontSize = 13.sp)
             }
         }
 

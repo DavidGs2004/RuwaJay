@@ -1,0 +1,79 @@
+1. Abrir el proyecto Supabase yrwrvmcmxqmvkwmsuegc.
+
+2. En Edge Functions > Secrets, configurar:
+
+RUWA_FIREBASE_SERVICE_ACCOUNT = JSON completo de una cuenta de servicio del proyecto Firebase ruwa-jay, con permisos Cloud Datastore User y Firebase Cloud Messaging API Admin.
+RUWA_CRON_SECRET = generar y guardar una cadena aleatoria de al menos 32 caracteres.
+RUWA_EXTRA_ORIGINS = https://expotec.duckdns.org
+
+Conservar las variables automaticas SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY.
+
+3. En SQL Editor, ejecutar el contenido de:
+
+archivos varios/servicios/supabase/storage_setup.sql
+
+4. En SQL Editor, ejecutar:
+
+update storage.buckets
+set allowed_mime_types = array[
+  'image/jpeg','image/png','image/webp',
+  'audio/webm','audio/ogg','audio/mp4','audio/mpeg','audio/wav',
+  'video/webm','video/mp4','video/quicktime'
+]
+where id = 'chat-media';
+
+5. En PowerShell, desde la raiz de RuwaJay, ejecutar con el codigo actualizado:
+
+npx.cmd --yes supabase login
+Push-Location -LiteralPath 'archivos varios/servicios'
+try {
+  npx.cmd --yes supabase functions deploy ruwajay-api --project-ref yrwrvmcmxqmvkwmsuegc --no-verify-jwt --use-api
+  if ($LASTEXITCODE -ne 0) { throw 'No se pudo desplegar ruwajay-api.' }
+} finally {
+  Pop-Location
+}
+
+6. En SQL Editor, reemplazar PEGAR_EL_MISMO_RUWA_CRON_SECRET por el valor configurado en el paso 2 y ejecutar:
+
+select vault.create_secret(
+  'https://yrwrvmcmxqmvkwmsuegc.supabase.co/functions/v1/ruwajay-api',
+  'ruwajay_api_url'
+)
+where not exists (select 1 from vault.secrets where name = 'ruwajay_api_url');
+
+select vault.update_secret(
+  id,
+  'https://yrwrvmcmxqmvkwmsuegc.supabase.co/functions/v1/ruwajay-api'
+)
+from vault.secrets where name = 'ruwajay_api_url';
+
+select vault.create_secret(
+  'PEGAR_EL_MISMO_RUWA_CRON_SECRET',
+  'ruwajay_cron_secret'
+)
+where not exists (select 1 from vault.secrets where name = 'ruwajay_cron_secret');
+
+select vault.update_secret(id, 'PEGAR_EL_MISMO_RUWA_CRON_SECRET')
+from vault.secrets where name = 'ruwajay_cron_secret';
+
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+select cron.unschedule(jobid)
+from cron.job where jobname = 'ruwajay-maintenance';
+
+select cron.schedule('ruwajay-maintenance', '*/5 * * * *', $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'ruwajay_api_url') || '/scheduled',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-ruwa-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'ruwajay_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
+  );
+$job$);
+
+7. En PowerShell, comprobar:
+
+Invoke-RestMethod -Uri 'https://yrwrvmcmxqmvkwmsuegc.supabase.co/functions/v1/ruwajay-api/health'

@@ -102,12 +102,11 @@ fun PublishScreen(
     }
 
     val userRole = (userData?.get("role") as? String) ?: "seeker"
-    val isSuperAdmin = currentUser?.email?.trim()?.equals("xleon04gd@gmail.com", ignoreCase = true) == true
+    val isSuperAdmin = userRole == "admin"
     val isVerified = (userData?.get("verified") as? Boolean) == true
     val verificationStatus = (userData?.get("verificationStatus") as? String).orEmpty()
-    val accountStatus = (userData?.get("accountStatus") as? String)
-        ?: (userData?.get("status") as? String) ?: "active"
-    val isSuspended = accountStatus == "suspended" || (userData?.get("suspended") as? Boolean) == true
+    val accountStatus = com.example.ruwajay.data.model.resolveAccountStatus(userData)
+    val isSuspended = accountStatus == "suspended"
 
     // Wizard Step: 1 = Tipo y Ubicación, 2 = Espacios y Servicios, 3 = Precios y Fotos, 4 = Revisión final
     var currentStep by remember { mutableIntStateOf(1) }

@@ -29,6 +29,33 @@ test('Private profiles cannot be listed or read by strangers',async()=>{
   await assertFails(getDoc(doc(env.authenticatedContext('owner').firestore(),'users','tenant')));
   await assertSucceeds(getDoc(doc(env.authenticatedContext('admin').firestore(),'users','tenant')));
 });
+
+test('Account status and verification decisions cannot be changed by their subject',async()=>{
+  const db=env.authenticatedContext('tenant').firestore(),profile=doc(db,'users','tenant');
+  for(const patch of [{accountStatus:'active'},{status:'active'},{verificationStatus:'aprobada'},{verified:true}]) await assertFails(updateDoc(profile,patch));
+  await assertSucceeds(updateDoc(profile,{verificationStatus:'pendiente',dpiData:{cui:'test-document'}}));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users','tenant'),{verificationStatus:'aprobada',verified:true}));
+  await assertFails(updateDoc(profile,{dpiData:{cui:'different-document'}}));
+  await assertSucceeds(updateDoc(profile,{'dpiData.legalAddress':'Updated contact address','dpiData.emergencyPhone':'55555555'}));
+});
+
+test('Canonical inactive and suspended accounts cannot write or reactivate themselves',async()=>{
+  const db=env.authenticatedContext('tenant').firestore();
+  for(const status of ['inactive','suspended']) {
+    await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users','tenant'),{accountStatus:status}));
+    await assertFails(updateDoc(doc(db,'users','tenant'),{accountStatus:'active'}));
+    await assertFails(setDoc(doc(db,'conversations','room','messages','blocked'),{senderId:'tenant',type:'text',text:'Blocked',createdAt:serverTimestamp()}));
+  }
+});
+
+test('New listings require owner verification and cannot claim a verified badge',async()=>{
+  const db=env.authenticatedContext('owner').firestore();
+  const property={ownerId:'owner',title:'Real listing',price:2500,images:['https://example.test/real.jpg'],verified:false};
+  await assertFails(setDoc(doc(db,'properties','new-house'),property));
+  await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),'users','owner'),{verified:true,verificationStatus:'aprobada'}));
+  await assertFails(setDoc(doc(db,'properties','new-house'),{...property,verified:true}));
+  await assertSucceeds(setDoc(doc(db,'properties','new-house'),property));
+});
 test('A participant cannot impersonate the other message sender',async()=>{
   const db=env.authenticatedContext('tenant').firestore();
   const message={type:'text',text:'Hello',senderId:'owner',senderName:'Owner',createdAt:serverTimestamp()};

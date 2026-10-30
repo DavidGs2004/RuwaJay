@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 const MapView = lazy(() => import('../components/map/MapView'));
-import { demoProperties, demoOwners, formatPrice, formatDistance, calculateDistance, getPropertyCoordinates } from '../data/properties';
+import { formatPrice, formatDistance, calculateDistance, getPropertyCoordinates } from '../data/properties';
 import { useFavorites } from '../context/FavoritesContext';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { useCompare } from '../context/CompareContext';
@@ -64,15 +64,13 @@ function PropertyDetailContent({ property }) {
     name: property?.ownerName || (isCurrentUserOwner ? user.name : 'Propietario RuwaJay'),
     phone: property?.ownerPhone || (isCurrentUserOwner ? user.phone : '') || '',
     photo: (isCurrentUserOwner && currentUserPhoto) || property?.ownerPhoto || property?.ownerAvatar || null,
-    rating: 4.8,
-    responseTime: '~15 min',
     verified: Boolean(property?.verified || (isCurrentUserOwner && user?.verified)),
   };
   const fav = isFavorite(property?.id);
   const inCompare = isInCompare(property?.id);
   const propertyStatus = String(property?.status || 'disponible').toLowerCase();
   const isOccupied = propertyStatus === 'ocupada' || propertyStatus === 'alquilada';
-  const isReserved = propertyStatus === 'en_cita' || propertyStatus === 'apartada';
+  const isReserved = propertyStatus === 'en_cita' || propertyStatus === 'apartada' || propertyStatus === 'reservada';
   const isUnavailable = isOccupied || isReserved || propertyStatus === 'pausada';
 
   const [activeTab, setActiveTab] = useState('todas');
@@ -705,9 +703,8 @@ function PropertyDetailContent({ property }) {
                     </h4>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
                       <span className="flex items-center gap-0.5 text-dorado font-extrabold">
-                        <Star size={12} fill="currentColor" /> {owner?.rating || 4.8}
+                        <Shield size={12} /> Perfil del propietario
                       </span>
-                      <span>• Resp. {owner?.responseTime || '~15 min'}</span>
                     </div>
                   </div>
                 </div>
@@ -1124,7 +1121,7 @@ export default function PropertyDetailPage() {
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   useEffect(()=>subscribeToProperties(items=>{setProperties(items);setLoading(false);},()=>{setError('No se pudo cargar la vivienda.');setLoading(false);}),[]);
-  const property = properties.find(p => p.id === id) || demoProperties.find(p => p.id === id);
+  const property = properties.find(p => p.id === id);
   if(loading) return <div className="p-12 text-center">Cargando vivienda...</div>;
   if(!property) return <div className="p-12 text-center">{error || 'Esta vivienda no existe o fue eliminada.'}</div>;
   return <PropertyDetailContent property={property} />;

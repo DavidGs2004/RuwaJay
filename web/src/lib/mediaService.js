@@ -5,12 +5,7 @@ async function upload(kind, source, extra = {}) {
   const uid = firebaseAuth?.currentUser?.uid;
   if (!uid) throw new Error('Debes iniciar sesión para subir archivos.');
   if (usesSupabaseBackend) {
-    try {
       return await uploadBackendMedia(kind, source, { ...extra, expectedUid: uid });
-    } catch (err) {
-      console.warn('Subida vía backend no disponible, intentando Firebase Storage:', err);
-      if (!storage) throw err;
-    }
   }
   if (storage) {
     const blob = source instanceof Blob ? source : await (await fetch(source)).blob();

@@ -6,7 +6,7 @@ import {
   Sparkles, Download, Compass, ExternalLink, ShieldCheck, Home, Phone,
   Info, AlertTriangle, LocateFixed, CloudRain, AlertOctagon, Activity
 } from 'lucide-react';
-import { demoProperties, formatDistance, calculateDistance, formatPrice } from '../data/properties';
+import { formatDistance, calculateDistance, formatPrice } from '../data/properties';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { subscribeToProperties, readLocalCustomProperties } from '../lib/propertyService';
 import RuwaJayNavigationView from '../components/map/RuwaJayNavigationView';
@@ -36,9 +36,7 @@ export default function RoutePage() {
 
   const propertyId = searchParams.get('property') || 'prop-1';
 
-  const property = firebaseProperties.find((p) => p.id === propertyId) ||
-    readLocalCustomProperties().find((p) => p.id === propertyId) ||
-    demoProperties.find((p) => p.id === propertyId);
+  const property = firebaseProperties.find((p) => p.id === propertyId);
 
   const destination = property?.coordinates || property?.location?.mapCoordinates;
   const origin = position || { lat: 14.6349, lng: -90.5069 };

@@ -8,7 +8,7 @@ import {
   Shield, Droplets, ArrowUpDown, BookmarkPlus, Bookmark, Calculator, Sparkles
 } from 'lucide-react';
 import PropertyCard from '../components/property/PropertyCard';
-import { demoProperties, calculateDistance, getPropertyCoordinates, popularMunicipalities } from '../data/properties';
+import { calculateDistance, getPropertyCoordinates, popularMunicipalities } from '../data/properties';
 import { useGeolocation } from '../hooks/useGeolocation';
 import RuwaSelect from '../components/ui/RuwaSelect';
 import { GUATEMALA_DEPARTMENTS, getZonesForDepartment, getCoordinatesForDepartment, getCoordinatesForLocation } from '../data/guatemalaLocations';
@@ -92,8 +92,17 @@ export default function ExplorePage() {
   );
   const [savedSearches, setSavedSearches] = useState([]);
   const [firebaseProperties, setFirebaseProperties] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
 
-  useEffect(() => subscribeToProperties(setFirebaseProperties), []);
+  useEffect(() => subscribeToProperties(items => {
+    setFirebaseProperties(items);
+    setCatalogLoading(false);
+    setCatalogError('');
+  }, () => {
+    setCatalogLoading(false);
+    setCatalogError('No se pudo cargar el catálogo. Revisa tu conexión y vuelve a intentarlo.');
+  }), []);
 
   useEffect(() => {
     if (searchParams.get('calculator') === 'true' || searchParams.get('calculadora') === 'true') {
@@ -290,10 +299,9 @@ export default function ExplorePage() {
     }
   }, [position]);
 
-  // Merge demo properties with firebase properties so the page stays well-populated
+  // Only persisted listings belong in the public catalog.
   const allProperties = useMemo(() => {
     const map = new Map();
-    demoProperties.forEach((property) => map.set(property.id, property));
     firebaseProperties.forEach((property) => map.set(property.id, property));
     return Array.from(map.values());
   }, [firebaseProperties]);
@@ -909,6 +917,8 @@ export default function ExplorePage() {
 
       {/* Content area */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {catalogLoading && <p role="status" className="py-4 text-sm text-text-secondary">Cargando viviendas…</p>}
+        {catalogError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{catalogError}</p>}
         {viewMode === 'map' ? (
           <div className="flex h-[min(68dvh,640px)] min-h-[420px] gap-6 lg:h-[calc(100dvh-250px)] lg:min-h-[520px]">
             {/* Property list sidebar (desktop only) */}
