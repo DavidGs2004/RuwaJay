@@ -88,6 +88,17 @@ export function AuthProvider({ children }) {
 
     if (firebaseWebEnabled && firebaseAuth) {
       try {
+        const currentUid = firebaseAuth?.currentUser?.uid;
+        if (currentUid && firestore) {
+          await updateDoc(doc(firestore, 'users', currentUid), {
+            isOnline: false,
+            lastSeen: serverTimestamp()
+          }).catch(() => {});
+          await setDoc(doc(firestore, 'public_profiles', currentUid), {
+            isOnline: false,
+            lastSeen: serverTimestamp()
+          }, { merge: true }).catch(() => {});
+        }
         await disableNotifications().catch(() => {});
         await signOut(firebaseAuth);
       } catch (err) {
@@ -254,6 +265,51 @@ export function AuthProvider({ children }) {
     });
     return () => { generation++; unsubscribeProfile(); unsubscribeAuth(); };
   }, []);
+
+  // Presencia en línea en tiempo real para la web
+  useEffect(() => {
+    const accountId = user?.id;
+    if (!accountId || !firestore) return;
+
+    const updatePresence = (isOnline) => {
+      try {
+        updateDoc(doc(firestore, 'users', accountId), {
+          isOnline: isOnline,
+          lastSeen: serverTimestamp()
+        }).catch(() => {});
+
+        const rawAvatar = user?.avatarImage || user?.photoURL || user?.avatar || '';
+        const effectiveAvatar = typeof rawAvatar === 'string' && rawAvatar.length <= 2048 && !rawAvatar.startsWith('data:') ? rawAvatar : '';
+        const effectiveName = String(user?.name || user?.displayName || 'Usuario').slice(0, 120);
+
+        setDoc(doc(firestore, 'public_profiles', accountId), {
+          name: effectiveName,
+          avatarImage: effectiveAvatar,
+          isOnline: isOnline,
+          lastSeen: serverTimestamp()
+        }, { merge: true }).catch(() => {});
+      } catch {}
+    };
+
+    updatePresence(true);
+
+    const handleVisibilityChange = () => {
+      updatePresence(document.visibilityState === 'visible');
+    };
+
+    const handleBeforeUnload = () => {
+      updatePresence(false);
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      updatePresence(false);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user?.id]);
 
   const requireAccount = () => {
     if (!firebaseAuth?.currentUser || !firestore) throw new Error('Debes iniciar sesión.');

@@ -29,13 +29,14 @@ object VerificationRepository {
         userId: String,
         onResult: (Result<String>) -> Unit
     ) {
-        val mime = (contentResolver.getType(uri) ?: "image/jpeg").lowercase()
-        if (mime !in setOf("image/jpeg", "image/png", "image/webp")) {
-            onResult(Result.failure(Exception("Selecciona una fotografía JPG, PNG o WebP.")))
-            return
+        var mime = (contentResolver.getType(uri) ?: "image/jpeg").substringBefore(';').lowercase().trim()
+        if (mime == "image/jpg") mime = "image/jpeg"
+        if (!mime.startsWith("image/")) {
+            val uriStr = uri.toString().lowercase()
+            mime = if (uriStr.endsWith(".png")) "image/png" else if (uriStr.endsWith(".webp")) "image/webp" else "image/jpeg"
         }
         if (RuwaBackend.isConfigured) {
-            RuwaBackend.upload("verification", uri, contentResolver, expectedUid = userId)
+            RuwaBackend.upload("verification", uri, contentResolver, expectedUid = userId, mime = mime)
                 .addOnSuccessListener { onResult(Result.success(it)) }
                 .addOnFailureListener { onResult(Result.failure(it)) }
             return
@@ -96,6 +97,32 @@ object VerificationRepository {
         val requestRef = firestore.collection("verification_requests").document(user.uid)
         userRef.get().addOnSuccessListener { profile ->
             requestRef.get().addOnSuccessListener { previous ->
+                val approvedDpi = profile.get("dpiData") as? Map<*, *>
+                val isApproved = profile.getString("verificationStatus") == "aprobada"
+                val existingCui = (approvedDpi?.get("cui") as? String)?.filter { it.isDigit() }
+                val isReplacing = photoUri != null || (approvedDpi != null && cleanCui != existingCui)
+
+                if (!isReplacing && isApproved && approvedDpi != null) {
+                    // Actualización directa de datos de contacto y domicilio sin revocar certificación
+                    val cleanDpi = approvedDpi.toMutableMap().apply {
+                        put("department", department.trim())
+                        put("municipality", municipality.trim())
+                        put("legalAddress", legalAddress.trim())
+                        put("emergencyName", emergencyName.trim())
+                        put("emergencyPhone", emergencyPhone.trim())
+                        put("emergencyRelation", emergencyRelation.trim())
+                        put("updatedAt", DpiDates.today())
+                    }
+                    userRef.set(mapOf("dpiData" to cleanDpi), SetOptions.merge())
+                        .addOnSuccessListener {
+                            requestRef.set(cleanDpi, SetOptions.merge()).addOnCompleteListener {
+                                onResult(Result.success(Unit))
+                            }
+                        }
+                        .addOnFailureListener { onResult(Result.failure(it)) }
+                    return@addOnSuccessListener
+                }
+
                 fun saveRequest(photoUrl: String) {
                     if (auth.currentUser?.uid != user.uid) {
                         onResult(Result.failure(Exception("La sesión cambió. Vuelve a iniciar sesión.")))
@@ -116,7 +143,6 @@ object VerificationRepository {
                         "documentPhoto" to photoUrl, "status" to "pendiente",
                         "rejectionReason" to null, "createdAt" to FieldValue.serverTimestamp()
                     )
-                    // Solicitud y estado cambian juntos; no se borra el DPI aprobado anterior.
                     val batch = firestore.batch()
                     batch.set(requestRef, payload)
                     batch.set(userRef, mapOf(
@@ -131,7 +157,6 @@ object VerificationRepository {
                         result.onSuccess { saveRequest(it) }.onFailure { onResult(Result.failure(it)) }
                     }
                 } else {
-                    val approvedDpi = profile.get("dpiData") as? Map<*, *>
                     val photo = previous.getString("documentPhoto")?.takeIf { it.isNotBlank() }
                         ?: (approvedDpi?.get("documentPhoto") as? String)?.takeIf { it.isNotBlank() }
                     if (photo == null) onResult(Result.failure(Exception("Debes adjuntar la fotografía de tu DPI.")))

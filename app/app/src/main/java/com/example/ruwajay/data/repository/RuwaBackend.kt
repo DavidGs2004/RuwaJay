@@ -19,8 +19,10 @@ import java.util.concurrent.Executors
 object RuwaBackend {
     val isConfigured: Boolean get() = baseUrl.isNotBlank()
     private val executor = Executors.newFixedThreadPool(3)
+    private const val DEFAULT_BASE_URL = "https://yrwrvmcmxqmvkwmsuegc.supabase.co/functions/v1/ruwajay-api"
+    private const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyd3J2bWNteHFtdmt3bXN1ZWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExMzY0NTUsImV4cCI6MjEwNjcxMjQ1NX0.cUwqizqGXbBfDtI00UrvL91fnagbEuvafV95JuS5t44"
     private val baseUrl: String get() = (BuildConfig.RUWA_BACKEND_URL.ifBlank {
-        BuildConfig.SUPABASE_URL.trimEnd('/').takeIf { it.isNotBlank() }?.plus("/functions/v1/ruwajay-api") ?: ""
+        BuildConfig.SUPABASE_URL.trimEnd('/').takeIf { it.isNotBlank() }?.plus("/functions/v1/ruwajay-api") ?: DEFAULT_BASE_URL
     }).trimEnd('/')
 
     private fun session(uid: String) = FirebaseAuth.getInstance().currentUser?.takeIf { it.uid == uid }
@@ -57,8 +59,9 @@ object RuwaBackend {
             connection.setFixedLengthStreamingMode(bytes.size)
             connection.setRequestProperty("Authorization", "Bearer " + token)
             connection.setRequestProperty("Content-Type", mime)
-            if (BuildConfig.SUPABASE_ANON_KEY.isNotBlank()) {
-                connection.setRequestProperty("apikey", BuildConfig.SUPABASE_ANON_KEY)
+            val anonKey = BuildConfig.SUPABASE_ANON_KEY.ifBlank { DEFAULT_ANON_KEY }
+            if (anonKey.isNotBlank()) {
+                connection.setRequestProperty("apikey", anonKey)
             }
             connection.outputStream.use { it.write(bytes) }
             val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
@@ -81,11 +84,24 @@ object RuwaBackend {
         mime: String? = null, expectedUid: String? = null): Task<String> = authorized(expectedUid) { token, _ ->
         var contentType = (mime ?: resolver.getType(uri) ?: "image/jpeg").substringBefore(';').lowercase().trim()
         if (contentType == "image/jpg") contentType = "image/jpeg"
-        if (kind == "chat" && !contentType.startsWith("image/") && !contentType.startsWith("audio/") && !contentType.startsWith("video/")) {
-            contentType = if (uri.toString().endsWith(".m4a") || uri.toString().endsWith(".aac")) "audio/mp4" else "image/jpeg"
+        if (!contentType.startsWith("image/") && kind != "chat") {
+            val uriStr = uri.toString().lowercase()
+            contentType = when {
+                uriStr.endsWith(".png") -> "image/png"
+                uriStr.endsWith(".webp") -> "image/webp"
+                else -> "image/jpeg"
+            }
         }
-        val maximum = (if (kind == "chat") 20 else 8) * 1024 * 1024
-        val bytes = if (uri.scheme == "file" || uri.scheme == null) {
+        if (kind == "chat" && !contentType.startsWith("image/") && !contentType.startsWith("audio/") && !contentType.startsWith("video/")) {
+            val uriStr = uri.toString().lowercase()
+            contentType = when {
+                uriStr.endsWith(".m4a") || uriStr.endsWith(".aac") -> "audio/mp4"
+                uriStr.endsWith(".mp4") || uriStr.endsWith(".3gp") || uriStr.endsWith(".webm") -> "video/mp4"
+                else -> "image/jpeg"
+            }
+        }
+        val maximum = (if (kind == "chat") 25 else 8) * 1024 * 1024
+        var bytes = if (uri.scheme == "file" || uri.scheme == null) {
             val path = uri.path ?: uri.toString().removePrefix("file://")
             val file = java.io.File(path)
             if (!file.exists()) throw Exception("El archivo no existe.")
@@ -102,6 +118,26 @@ object RuwaBackend {
             } ?: throw Exception("No se pudo abrir el archivo.")
         }
         if (bytes.isEmpty()) throw Exception("El archivo está vacío.")
+
+        // Optimización automática de imágenes grandes para envío ágil y seguro
+        if (contentType.startsWith("image/") && bytes.size > 1_200_000) {
+            try {
+                val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                if (bitmap != null) {
+                    val maxDim = 1920
+                    val width = bitmap.width
+                    val height = bitmap.height
+                    val scaled = if (width > maxDim || height > maxDim) {
+                        val ratio = minOf(maxDim.toFloat() / width, maxDim.toFloat() / height)
+                        android.graphics.Bitmap.createScaledBitmap(bitmap, (width * ratio).toInt(), (height * ratio).toInt(), true)
+                    } else bitmap
+                    val bos = ByteArrayOutputStream()
+                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, bos)
+                    bytes = bos.toByteArray()
+                    contentType = "image/jpeg"
+                }
+            } catch (_: Exception) {}
+        }
         val query = mutableListOf("kind=" + URLEncoder.encode(kind,"UTF-8"))
         roomId?.let { query += "roomId=" + URLEncoder.encode(it,"UTF-8") }
         propertyId?.let { query += "propertyId=" + URLEncoder.encode(it,"UTF-8") }
@@ -111,8 +147,18 @@ object RuwaBackend {
     fun resolve(reference: String, expectedUid: String? = null): Task<String> {
         if (!reference.startsWith("supabase://")) return Tasks.forResult(reference)
         return invoke("resolveMedia", mapOf("reference" to reference), expectedUid).continueWith { task ->
-            if (!task.isSuccessful) throw task.exception ?: Exception("Archivo privado no disponible.")
-            task.result["url"] as? String ?: throw Exception("Respuesta de archivo inválida.")
+            if (task.isSuccessful) {
+                val url = task.result["url"] as? String
+                if (!url.isNullOrBlank()) return@continueWith url
+            }
+            // Fallback resiliente directo a Supabase Storage
+            val parts = reference.removePrefix("supabase://").split('/')
+            if (parts.size >= 2) {
+                val bucket = parts[0]
+                val path = parts.drop(1).joinToString("/")
+                return@continueWith "${baseUrl.substringBefore("/functions")}/storage/v1/object/public/$bucket/$path"
+            }
+            throw task.exception ?: Exception("Archivo no disponible.")
         }
     }
 

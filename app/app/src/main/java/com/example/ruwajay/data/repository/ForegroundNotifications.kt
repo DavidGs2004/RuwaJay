@@ -15,7 +15,9 @@ fun observeForegroundNotifications(
     isViewingRoom: (String) -> Boolean
 ): () -> Unit {
     val db = FirebaseFirestore.getInstance()
-    val tracker = IncomingMessageTracker(uid)
+    // Hora de inicio para ignorar cualquier mensaje o aviso anterior a que el usuario abriera la app
+    val sessionStartTime = System.currentTimeMillis() - 3_000L
+    val tracker = IncomingMessageTracker(uid, sessionStartTime)
     val messages = db.collection("conversations").whereArrayContains("participants", uid)
         .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
             if (error != null) { Log.w("RuwaNotifications", "No se pudieron observar mensajes", error); return@addSnapshotListener }
@@ -57,10 +59,14 @@ fun observeForegroundNotifications(
         .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
             if (error != null) { Log.w("RuwaNotifications", "No se pudieron observar avisos", error); return@addSnapshotListener }
             if (snapshot == null || snapshot.metadata.isFromCache || FirebaseAuth.getInstance().currentUser?.uid != uid) return@addSnapshotListener
+            val currentDocs = snapshot.documents
             val previous = seenNotices
-            seenNotices = snapshot.documents.map { it.id }.toSet()
+            seenNotices = currentDocs.map { it.id }.toSet()
             if (previous != null) {
-                snapshot.documents.filter { it.id !in previous && it.get("readAt") == null && it.getString("type") != "call" }.forEach {
+                currentDocs.filter {
+                    val createdAt = (it.get("createdAt") as? Timestamp)?.toDate()?.time ?: 0L
+                    it.id !in previous && it.get("readAt") == null && it.getString("type") != "call" && (createdAt == 0L || createdAt >= sessionStartTime)
+                }.forEach {
                     RuwaNotifications.show(
                         context,
                         it.getString("title") ?: "RuwaJay",

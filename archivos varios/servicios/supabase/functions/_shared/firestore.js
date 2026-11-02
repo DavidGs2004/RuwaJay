@@ -42,6 +42,14 @@ export class FirestoreRest {
     this.base='projects/'+projectId+'/databases/(default)/documents';this.origin=emulatorHost?'http://'+emulatorHost:'https://firestore.googleapis.com';
   }
   name(path){assert(typeof path==='string' && !path.startsWith('/') && !path.endsWith('/') && path.split('/').every(part=>part&&part!=='.'&&part!=='..'),400,'invalid-argument','Ruta inválida.');return this.base+'/'+path;}
+  encodeResource(resourcePath){
+    const prefix = this.base + '/';
+    if(resourcePath.startsWith(prefix)){
+      return this.base + '/' + resourcePath.slice(prefix.length).split('/').map(encodeURIComponent).join('/');
+    }
+    if(resourcePath === this.base) return this.base;
+    return resourcePath.split('/').map(part=>part==='(default)'?'(default)':encodeURIComponent(part)).join('/');
+  }
   async request(path,body=null,method=body?'POST':'GET'){
     const token=await this.tokenProvider();const response=await this.fetcher(this.origin+'/v1/'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20000)});
     const data=await response.json();if(!response.ok){const error=new ApiError(response.status===404?404:503,data.error?.status||'unavailable',response.status===404?'Documento inexistente.':'No se pudo completar la operación de datos.');throw error;}return data;
@@ -53,7 +61,7 @@ export class FirestoreRest {
         const rows=await this.request(this.base+':batchGet',{documents:[this.name(path)],transaction});
         value=rows.find(row=>row.found)?.found;
         if(!value)return{path,id:path.split('/').at(-1),exists:false,data:null};
-      }else value=await this.request(this.name(path).split('/').map(encodeURIComponent).join('/'));
+      }else value=await this.request(this.encodeResource(this.name(path)));
       return{path,id:path.split('/').at(-1),exists:true,data:Object.fromEntries(Object.entries(value.fields||{}).map(([k,v])=>[k,decode(v)])),updateTime:value.updateTime};
     }catch(error){if(error.status===404)return{path,id:path.split('/').at(-1),exists:false,data:null};throw error;}
   }
@@ -62,7 +70,7 @@ export class FirestoreRest {
     const where=filters.map(([field,op,value])=>({fieldFilter:{field:{fieldPath:field},op,value:encode(value)}}));
     const structuredQuery={from:[{collectionId,...(group?{allDescendants:true}:{})}],limit,...(where.length?{where:where.length===1?where[0]:{compositeFilter:{op:'AND',filters:where}}}:{}),...(orderBy.length?{orderBy:orderBy.map(field=>({field:{fieldPath:field},direction:'ASCENDING'}))}:{})};
     if(startAfter)structuredQuery.startAt={values:[{referenceValue:this.name(startAfter)}],before:false};
-    const rows=await this.request(parent.split('/').map(encodeURIComponent).join('/')+':runQuery',{structuredQuery,...(transaction?{transaction}:{})});
+    const rows=await this.request(this.encodeResource(parent)+':runQuery',{structuredQuery,...(transaction?{transaction}:{})});
     const documents=rows.filter(row=>row.document);
     assert(allowTruncated||limit!==500||documents.length<limit,503,'resource-exhausted','La consulta requiere paginación antes de continuar.');
     return documents.map(({document})=>{const path=document.name.slice(this.base.length+1);return{path,id:path.split('/').at(-1),exists:true,data:Object.fromEntries(Object.entries(document.fields||{}).map(([k,v])=>[k,decode(v)])),updateTime:document.updateTime};});

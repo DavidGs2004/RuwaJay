@@ -1,8 +1,9 @@
 import { firebaseAuth, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
-const supabaseUrl=(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'');
-export const backendUrl=(import.meta.env.VITE_RUWA_BACKEND_URL||(supabaseUrl?supabaseUrl+'/functions/v1/ruwajay-api':'')).replace(/\/$/,'');
-export const usesSupabaseBackend=Boolean(backendUrl);
+const defaultSupabaseUrl = 'https://yrwrvmcmxqmvkwmsuegc.supabase.co';
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || defaultSupabaseUrl).replace(/\/$/, '');
+export const backendUrl = (import.meta.env.VITE_RUWA_BACKEND_URL || (supabaseUrl ? supabaseUrl + '/functions/v1/ruwajay-api' : '')).replace(/\/$/, '');
+export const usesSupabaseBackend = Boolean(backendUrl);
 const legacyEmulators = import.meta.env.DEV && import.meta.env.VITE_FIREBASE_EMULATORS === 'true' && !backendUrl;
 // Solo usar operaciones del servidor si hay un backend configurado O emuladores activos
 export const usesServerOperations = Boolean(backendUrl) || legacyEmulators;
@@ -38,7 +39,11 @@ export async function uploadBackendMedia(kind,source,{roomId,propertyId,expected
   const blob=source instanceof Blob?source:await(await fetch(source)).blob();
   if(!blob.size||blob.size>(kind==='chat'?20:8)*1024*1024)throw new Error('El archivo está vacío o supera el tamaño permitido.');
   const url=new URL(backendUrl+'/upload');url.searchParams.set('kind',kind);if(roomId)url.searchParams.set('roomId',roomId);if(propertyId)url.searchParams.set('propertyId',propertyId);
-  const contentType = blob.type || (kind === 'chat' ? 'audio/webm' : 'application/octet-stream');
+  let contentType = blob.type;
+  if (!contentType || contentType === 'application/octet-stream') {
+    if (kind === 'chat') contentType = 'audio/webm';
+    else contentType = 'image/jpeg';
+  }
   const result=await authorizedRequest(url,{method:'POST',headers:{'Content-Type':contentType},body:blob},uid);return result.url;
 }
 const mediaCache = new Map();

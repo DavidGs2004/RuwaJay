@@ -1,5 +1,14 @@
 package com.example.ruwajay.ui.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Numbers
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
 import android.app.DatePickerDialog
 import java.util.Calendar
 import android.content.Intent
@@ -12,8 +21,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -703,18 +714,48 @@ fun ProfileScreen(
 
                                         Button(
                                             onClick = {
-                                                currentUser?.uid?.let { uid ->
-                                                    isSavingProfile = true
-                                                    firestore.collection("users").document(uid).update(
-                                                        mapOf(
-                                                            "name" to editName,
-                                                            "phone" to editPhone,
-                                                            "bio" to editBio
-                                                        )
-                                                    ).addOnCompleteListener {
-                                                        isSavingProfile = false
-                                                        adminNoticeMessage = "Perfil actualizado correctamente."
-                                                    }
+                                                val cleanName = editName.trim()
+                                                val cleanPhone = editPhone.trim()
+                                                val cleanBio = editBio.trim()
+                                                if (cleanName.isBlank()) {
+                                                    adminNoticeMessage = "El nombre completo no puede estar vacío."
+                                                    return@Button
+                                                }
+                                                val user = currentUser ?: return@Button
+                                                isSavingProfile = true
+                                                val profileUpdates = hashMapOf<String, Any?>(
+                                                    "name" to cleanName,
+                                                    "phone" to cleanPhone.ifBlank { null },
+                                                    "bio" to cleanBio
+                                                )
+                                                fun finalizeSuccess() {
+                                                    isSavingProfile = false
+                                                    adminNoticeMessage = "Perfil actualizado correctamente."
+                                                    try {
+                                                        user.updateProfile(com.google.firebase.auth.UserProfileChangeRequest.Builder().setDisplayName(cleanName).build())
+                                                    } catch (_: Exception) {}
+                                                }
+                                                if (RuwaBackend.isConfigured) {
+                                                    RuwaBackend.invoke("updateProfile", mapOf("profile" to profileUpdates), expectedUid = user.uid)
+                                                        .addOnSuccessListener {
+                                                            firestore.collection("users").document(user.uid).set(profileUpdates.filterValues { it != null }, com.google.firebase.firestore.SetOptions.merge())
+                                                            finalizeSuccess()
+                                                        }
+                                                        .addOnFailureListener { error ->
+                                                            firestore.collection("users").document(user.uid).set(profileUpdates.filterValues { it != null }, com.google.firebase.firestore.SetOptions.merge())
+                                                                .addOnSuccessListener { finalizeSuccess() }
+                                                                .addOnFailureListener { firestoreErr ->
+                                                                    isSavingProfile = false
+                                                                    adminNoticeMessage = "No se pudo actualizar el perfil: ${firestoreErr.localizedMessage ?: error.localizedMessage}"
+                                                                }
+                                                        }
+                                                } else {
+                                                    firestore.collection("users").document(user.uid).set(profileUpdates.filterValues { it != null }, com.google.firebase.firestore.SetOptions.merge())
+                                                        .addOnSuccessListener { finalizeSuccess() }
+                                                        .addOnFailureListener { firestoreErr ->
+                                                            isSavingProfile = false
+                                                            adminNoticeMessage = "No se pudo actualizar el perfil: ${firestoreErr.localizedMessage}"
+                                                        }
                                                 }
                                             },
                                             enabled = !isSavingProfile,
@@ -2249,7 +2290,10 @@ fun ProfileScreen(
             text = { Text("Tendrás que iniciar sesión de nuevo para acceder a tu cuenta.") },
             confirmButton = { TextButton(onClick = {
                 showLogoutConfirmation = false
-                NotificationRepository.signOut { currentUser = null }
+                NotificationRepository.signOut {
+                    currentUser = null
+                    onLoginClick()
+                }
             }) { Text("Cerrar sesión") } },
             dismissButton = { TextButton(onClick = { showLogoutConfirmation = false }) { Text("Cancelar") } }
         )
@@ -2502,7 +2546,6 @@ fun ProfileScreen(
 /**
  * Modal / Diálogo interactivo para que el usuario complete su formulario de verificación con DPI.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DpiVerificationFormModal(
     initialData: Map<*, *>,
@@ -2510,22 +2553,20 @@ private fun DpiVerificationFormModal(
     onSuccess: () -> Unit
 ) {
     val context = LocalContext.current
-    var cuiInput by remember { mutableStateOf((initialData["cui"] as? String) ?: "") }
-    var department by remember { mutableStateOf((initialData["department"] as? String) ?: "Guatemala") }
-    var departmentExpanded by remember { mutableStateOf(false) }
-    var municipality by remember { mutableStateOf((initialData["municipality"] as? String) ?: "") }
-    var birthDate by remember { mutableStateOf(DpiDates.display(((initialData["birthDate"] as? String) ?: ""))) }
-    var expirationDate by remember { mutableStateOf(DpiDates.display(((initialData["expirationDate"] as? String) ?: ""))) }
-    var legalAddress by remember { mutableStateOf((initialData["legalAddress"] as? String) ?: "") }
-    var emergencyName by remember { mutableStateOf((initialData["emergencyName"] as? String) ?: "") }
-    var emergencyPhone by remember { mutableStateOf((initialData["emergencyPhone"] as? String) ?: "") }
-    var emergencyRelation by remember { mutableStateOf((initialData["emergencyRelation"] as? String) ?: "Familiar") }
-    var swornDeclaration by remember { mutableStateOf(false) }
+    var cuiInput by remember(initialData) { mutableStateOf(formatCuiDisplay((initialData["cui"] as? String) ?: "")) }
+    var department by remember(initialData) { mutableStateOf((initialData["department"] as? String)?.ifBlank { "Guatemala" } ?: "Guatemala") }
+    var showDepartmentPicker by remember { mutableStateOf(false) }
+    var municipality by remember(initialData) { mutableStateOf((initialData["municipality"] as? String) ?: "") }
+    var birthDate by remember(initialData) { mutableStateOf(DpiDates.display(((initialData["birthDate"] as? String) ?: ""))) }
+    var expirationDate by remember(initialData) { mutableStateOf(DpiDates.display(((initialData["expirationDate"] as? String) ?: ""))) }
+    var legalAddress by remember(initialData) { mutableStateOf((initialData["legalAddress"] as? String) ?: "") }
+    var emergencyName by remember(initialData) { mutableStateOf((initialData["emergencyName"] as? String) ?: "") }
+    var emergencyPhone by remember(initialData) { mutableStateOf((initialData["emergencyPhone"] as? String) ?: "") }
+    var emergencyRelation by remember(initialData) { mutableStateOf((initialData["emergencyRelation"] as? String) ?: "Familiar") }
+    var swornDeclaration by remember { mutableStateOf(true) }
 
     var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     val existingPhoto = (initialData["documentPhoto"] as? String).orEmpty()
-    var confirmSubmission by remember { mutableStateOf(false) }
-    var confirmDiscard by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
 
@@ -2534,10 +2575,32 @@ private fun DpiVerificationFormModal(
     }
 
     fun submitDpi() {
+        val cleanCui = cuiInput.filter { it.isDigit() }
+        if (cleanCui.length != 13) {
+            formError = "El CUI debe contener exactamente 13 dígitos numéricos."
+            return
+        }
+        if (municipality.isBlank() || legalAddress.isBlank() || emergencyName.isBlank() || emergencyPhone.isBlank()) {
+            formError = "Completa todos los campos obligatorios del formulario."
+            return
+        }
+        if (selectedPhotoUri == null && existingPhoto.isBlank()) {
+            formError = "Debes adjuntar o seleccionar la fotografía de tu DPI."
+            return
+        }
+        if (!swornDeclaration) {
+            formError = "Debes marcar la declaración jurada para continuar."
+            return
+        }
+        val dateError = DpiDates.validationError(birthDate, expirationDate)
+        if (dateError != null) {
+            formError = dateError
+            return
+        }
         isSubmitting = true
         formError = null
         VerificationRepository.submitVerificationRequest(
-            cui = cuiInput.filter { it.isDigit() },
+            cui = cleanCui,
             department = department,
             municipality = municipality,
             birthDate = birthDate,
@@ -2558,260 +2621,357 @@ private fun DpiVerificationFormModal(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = { if (!isSubmitting) confirmDiscard = true },
-        modifier = Modifier.fillMaxWidth().widthIn(max = 680.dp),
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Badge, contentDescription = null, tint = BrandForest, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Verificación de Identidad con DPI", fontWeight = FontWeight.Black, fontSize = 17.sp, color = BrandCafe)
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Text(
-                    "Ingresa los datos exactos que figuran en tu Documento Personal de Identificación (DPI).",
-                    fontSize = 12.sp,
-                    color = BrandTextSecondary
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                formError?.let { err ->
-                    Text(err, color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))
-                }
-
-                // CUI
-                OutlinedTextField(
-                    value = cuiInput,
-                    onValueChange = { input ->
-                        val digits = input.filter { it.isDigit() }.take(13)
-                        cuiInput = formatCuiDisplay(digits)
-                    },
-                    label = { Text("CUI del DPI (13 dígitos)", fontSize = 12.sp) },
-                    placeholder = { Text("0000 00000 0000") },
-                    leadingIcon = { Icon(Icons.Default.Numbers, contentDescription = null, tint = BrandForest) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Departamento
-                ExposedDropdownMenuBox(
-                    expanded = departmentExpanded,
-                    onExpandedChange = { departmentExpanded = it }
+    Dialog(
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding(),
+            color = Color(0xFFF9F7F2)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header Bar
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = department,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Departamento de Emisión") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = departmentExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    ExposedDropdownMenu(
-                        expanded = departmentExpanded,
-                        onDismissRequest = { departmentExpanded = false }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        GT_DEPARTMENTS_VERIF.forEach { dept ->
-                            DropdownMenuItem(
-                                text = { Text(dept) },
-                                onClick = {
-                                    department = dept
-                                    departmentExpanded = false
-                                }
+                        IconButton(onClick = onDismiss, enabled = !isSubmitting) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás", tint = BrandCafe)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (existingPhoto.isNotBlank()) "Actualizar datos o sustituir DPI" else "Verificación de Identidad con DPI",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp,
+                                color = BrandCafe
                             )
+                            Text(
+                                text = "Datos oficiales de identidad en Guatemala",
+                                fontSize = 11.sp,
+                                color = BrandTextSecondary
+                            )
+                        }
+                        IconButton(onClick = onDismiss, enabled = !isSubmitting) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = BrandTextSecondary)
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Municipio
-                OutlinedTextField(
-                    value = municipality,
-                    onValueChange = { municipality = it },
-                    label = { Text("Municipio de Emisión", fontSize = 12.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                DpiDateField("Fecha de nacimiento", birthDate, { birthDate = it }, birth = true)
-                Spacer(Modifier.height(8.dp))
-                DpiDateField("Vencimiento del DPI", expirationDate, { expirationDate = it }, birth = false)
-                Spacer(Modifier.height(8.dp))
-
-                // Dirección Legal
-                OutlinedTextField(
-                    value = legalAddress,
-                    onValueChange = { legalAddress = it },
-                    label = { Text("Dirección Domiciliar Completa", fontSize = 12.sp) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Contacto de Emergencia
-                Text("Contacto de Emergencia / Referencia:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = emergencyName,
-                        onValueChange = { emergencyName = it },
-                        label = { Text("Nombre Completo", fontSize = 11.sp) },
-                        modifier = Modifier.weight(1.2f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    OutlinedTextField(
-                        value = emergencyPhone,
-                        onValueChange = { emergencyPhone = it },
-                        label = { Text("Teléfono", fontSize = 11.sp) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Foto del DPI
-                Text("Fotografía del Documento DPI:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
-                Spacer(modifier = Modifier.height(4.dp))
-                Surface(
+                // Scrollable Body
+                Column(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .height(90.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { imagePicker.launch("image/*") },
-                    color = BrandCremaDark,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
                 ) {
-                    if (selectedPhotoUri != null) {
-                        Row(modifier = Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(
-                                model = selectedPhotoUri,
-                                contentDescription = null,
-                                modifier = Modifier.size(70.dp).clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
+                    formError?.let { err ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFFEF2F2),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5))
+                        ) {
+                            Text(
+                                text = err,
+                                color = Color(0xFFDC2626),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(12.dp)
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("✓ Foto seleccionada", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandForest)
-                                Text("Toca para cambiarla", fontSize = 10.sp, color = BrandTextSecondary)
+                        }
+                    }
+
+                    // CUI Input
+                    Text("Número CUI del DPI (13 dígitos)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = cuiInput,
+                        onValueChange = { input ->
+                            val digits = input.filter { it.isDigit() }.take(13)
+                            cuiInput = formatCuiDisplay(digits)
+                        },
+                        placeholder = { Text("0000 00000 0000") },
+                        leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = BrandForest) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Departamento
+                    Text("Departamento de Emisión", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showDepartmentPicker = true },
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = BrandForest, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(department, fontSize = 14.sp, color = BrandCafe, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = BrandTextSecondary)
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Municipio
+                    Text("Municipio de Emisión", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = municipality,
+                        onValueChange = { municipality = it },
+                        placeholder = { Text("Ej. Guatemala, Mixco, Villa Nueva...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Fechas
+                    DpiDateField("Fecha de nacimiento", birthDate, { birthDate = it }, birth = true)
+                    Spacer(Modifier.height(12.dp))
+                    DpiDateField("Vencimiento del DPI", expirationDate, { expirationDate = it }, birth = false)
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Dirección Legal
+                    Text("Dirección Domiciliar Completa", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = legalAddress,
+                        onValueChange = { legalAddress = it },
+                        placeholder = { Text("Zona, colonia, calle o avenida completa...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 2,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Contacto de Emergencia
+                    Text("Contacto de Emergencia / Referencia", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = emergencyName,
+                            onValueChange = { emergencyName = it },
+                            label = { Text("Nombre Completo", fontSize = 11.sp) },
+                            modifier = Modifier.weight(1.3f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                        OutlinedTextField(
+                            value = emergencyPhone,
+                            onValueChange = { emergencyPhone = it },
+                            label = { Text("Teléfono", fontSize = 11.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Fotografía del DPI
+                    Text("Fotografía del Documento DPI", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                    Spacer(Modifier.height(6.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(105.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { imagePicker.launch("image/*") },
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, if (selectedPhotoUri != null) BrandForest else BrandBorder)
+                    ) {
+                        if (selectedPhotoUri != null) {
+                            Row(modifier = Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(
+                                    model = selectedPhotoUri,
+                                    contentDescription = "Foto elegida",
+                                    modifier = Modifier.size(80.dp).clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("✓ Nueva foto seleccionada", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandForest)
+                                    Text("Toca para cambiarla si deseas otra", fontSize = 10.sp, color = BrandTextSecondary)
+                                }
+                            }
+                        } else if (existingPhoto.isNotBlank()) {
+                            Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                DpiDocumentImage(existingPhoto, "DPI registrado", Modifier.size(80.dp).clip(RoundedCornerShape(8.dp)))
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("DPI registrado actual", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandCafe)
+                                    Text("Toca aquí para sustituir por una nueva foto", fontSize = 11.sp, color = BrandForest, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = BrandForest, modifier = Modifier.size(30.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Toca para seleccionar foto de tu DPI", fontSize = 12.sp, color = BrandForest, fontWeight = FontWeight.Bold)
+                                Text("Formatos admitidos: JPG, PNG, WebP", fontSize = 10.sp, color = BrandTextSecondary)
                             }
                         }
-                    } else if (existingPhoto.isNotBlank()) {
-                        Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            DpiDocumentImage(existingPhoto, "DPI registrado", Modifier.size(70.dp))
-                            Text("Documento registrado. Toca para sustituirlo.", fontSize = 11.sp, modifier = Modifier.weight(1f).padding(8.dp))
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Declaración Jurada
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { swornDeclaration = !swornDeclaration }
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = swornDeclaration,
+                            onCheckedChange = { swornDeclaration = it },
+                            colors = CheckboxDefaults.colors(checkedColor = BrandForest)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Declaro bajo juramento que los datos y fotografía del DPI ingresados son auténticos y me pertenecen.",
+                            fontSize = 11.sp,
+                            color = BrandTextPrimary,
+                            lineHeight = 15.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Submit Button
+                    Button(
+                        onClick = { submitDpi() },
+                        enabled = !isSubmitting,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandForest)
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Guardando y enviando...", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (existingPhoto.isNotBlank()) "Guardar y Actualizar DPI" else "Enviar Solicitud de Verificación",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
-                    } else {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = BrandForest, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Toca para seleccionar o tomar foto de tu DPI", fontSize = 11.sp, color = BrandForest, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Declaración jurada
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = swornDeclaration, onCheckedChange = { swornDeclaration = it })
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        "Declaro bajo juramento que los datos y fotografía del DPI ingresados son auténticos y me pertenecen.",
-                        fontSize = 10.sp,
-                        color = BrandTextPrimary,
-                        lineHeight = 14.sp
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Column {
-            formError?.let { Text(it, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp)) }
-            Button(
-                onClick = {
-                    val cleanCui = cuiInput.filter { it.isDigit() }
-                    if (cleanCui.length != 13) {
-                        formError = "El CUI debe contener exactamente 13 dígitos numéricos."
-                        return@Button
-                    }
-                    if (municipality.isBlank() || legalAddress.isBlank() || emergencyName.isBlank() || emergencyPhone.isBlank()) {
-                        formError = "Completa todos los campos del formulario."
-                        return@Button
-                    }
-                    if (selectedPhotoUri == null && existingPhoto.isBlank()) {
-                        formError = "Debes adjuntar la fotografía de tu DPI."
-                        return@Button
-                    }
-                    if (!swornDeclaration) {
-                        formError = "Debes aceptar la declaración jurada para continuar."
-                        return@Button
                     }
 
-                    val dateError = DpiDates.validationError(birthDate, expirationDate)
-                    if (dateError != null) {
-                        formError = dateError
-                        return@Button
-                    }
-                    formError = null
-                    confirmSubmission = true
-                },
-                enabled = !isSubmitting,
-                colors = ButtonDefaults.buttonColors(containerColor = BrandForest)
-            ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Subiendo...", fontSize = 12.sp)
-                } else {
-                    Text("Enviar Solicitud", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(16.dp))
                 }
-            }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { confirmDiscard = true }, enabled = !isSubmitting) {
-                Text("Cancelar")
             }
         }
-    )
-    if (confirmSubmission) {
-        AlertDialog(
-            onDismissRequest = { confirmSubmission = false },
-            title = { Text("¿Enviar DPI a revisión?") },
-            text = { Text("Confirma que los datos y el documento son correctos. Los cambios serán revisados por un administrador.") },
-            confirmButton = { TextButton(onClick = { confirmSubmission = false; submitDpi() }) { Text("Confirmar envío") } },
-            dismissButton = { TextButton(onClick = { confirmSubmission = false }) { Text("Revisar datos") } }
-        )
-    }
-    if (confirmDiscard) {
-        AlertDialog(
-            onDismissRequest = { confirmDiscard = false },
-            title = { Text("¿Salir del formulario?") },
-            text = { Text("Los cambios que no hayas enviado se perderán.") },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("Salir sin guardar") } },
-            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Continuar editando") } }
-        )
     }
 
+    // Modal selector de Departamento
+    if (showDepartmentPicker) {
+        AlertDialog(
+            onDismissRequest = { showDepartmentPicker = false },
+            title = { Text("Selecciona tu Departamento", fontWeight = FontWeight.Black, fontSize = 16.sp, color = BrandCafe) },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 380.dp).fillMaxWidth()) {
+                    items(GT_DEPARTMENTS_VERIF) { dept ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    department = dept
+                                    showDepartmentPicker = false
+                                },
+                            color = if (dept == department) BrandForest.copy(alpha = 0.1f) else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = dept,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (dept == department) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (dept == department) BrandForest else BrandTextPrimary
+                                )
+                                if (dept == department) {
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = BrandForest, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = BrandBorder.copy(alpha = 0.3f))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDepartmentPicker = false }) { Text("Cerrar") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -2892,27 +3052,55 @@ private fun ProfileTabChip(
 private fun DpiDateField(label: String, value: String, onChange: (String) -> Unit, birth: Boolean) {
     val context = LocalContext.current
     OutlinedTextField(
-        value = value, onValueChange = onChange,
-        label = { Text(label) }, placeholder = { Text("DD/MM/AAAA") },
-        modifier = Modifier.fillMaxWidth(), singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        value = value,
+        onValueChange = { input ->
+            val digits = input.filter { it.isDigit() }.take(8)
+            val formatted = when {
+                digits.length >= 5 -> "${digits.substring(0, 2)}/${digits.substring(2, 4)}/${digits.substring(4)}"
+                digits.length >= 3 -> "${digits.substring(0, 2)}/${digits.substring(2)}"
+                else -> digits
+            }
+            onChange(formatted)
+        },
+        label = { Text(label, fontSize = 12.sp) },
+        placeholder = { Text("DD/MM/AAAA") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        ),
         trailingIcon = {
             IconButton(onClick = {
-                val initial = DpiDates.normalize(value) ?: if (birth) "2000-01-01" else DpiDates.today()
-                val (year, month, day) = initial.split("-").map { it.toInt() }
-                DatePickerDialog(context, { _, y, m, d ->
-                    onChange(String.format(java.util.Locale.US, "%02d/%02d/%04d", d, m + 1, y))
-                }, year, month - 1, day).apply {
-                    val (ty, tm, td) = DpiDates.today().split("-").map { it.toInt() }
-                    val boundary = Calendar.getInstance().apply { clear(); set(ty, tm - 1, td) }
-                    if (birth) {
-                        boundary.add(Calendar.DAY_OF_MONTH, -1)
-                        datePicker.maxDate = boundary.timeInMillis
-                        datePicker.minDate = Calendar.getInstance().apply { clear(); set(1900, 0, 1) }.timeInMillis
-                    } else datePicker.minDate = boundary.timeInMillis
-                }.show()
-            }) { Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir $label") }
-        }
+                try {
+                    val initial = DpiDates.normalize(value) ?: if (birth) "2000-01-01" else DpiDates.today()
+                    val parts = initial.split("-").mapNotNull { it.toIntOrNull() }
+                    val year = if (parts.size == 3) parts[0] else 2000
+                    val month = if (parts.size == 3) parts[1] else 1
+                    val day = if (parts.size == 3) parts[2] else 1
+
+                    val act = if (context is android.app.Activity) context else null
+                    if (act != null && !act.isFinishing) {
+                        DatePickerDialog(act, { _, y, m, d ->
+                            onChange(String.format(java.util.Locale.US, "%02d/%02d/%04d", d, m + 1, y))
+                        }, year, month - 1, day).apply {
+                            val todayParts = DpiDates.today().split("-").mapNotNull { it.toIntOrNull() }
+                            val ty = if (todayParts.size == 3) todayParts[0] else 2026
+                            val tm = if (todayParts.size == 3) todayParts[1] else 1
+                            val td = if (todayParts.size == 3) todayParts[2] else 1
+                            val boundary = Calendar.getInstance().apply { clear(); set(ty, tm - 1, td) }
+                            if (birth) {
+                                boundary.add(Calendar.DAY_OF_MONTH, -1)
+                                datePicker.maxDate = boundary.timeInMillis
+                                datePicker.minDate = Calendar.getInstance().apply { clear(); set(1900, 0, 1) }.timeInMillis
+                            } else datePicker.minDate = boundary.timeInMillis
+                        }.show()
+                    }
+                } catch (_: Exception) {}
+            }) { Icon(Icons.Default.CalendarMonth, contentDescription = "Elegir $label", tint = BrandForest) }
+        },
+        shape = RoundedCornerShape(12.dp)
     )
 }
 
@@ -2922,20 +3110,81 @@ private fun DpiDocumentImage(
     contentScale: ContentScale = ContentScale.Fit
 ) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
-    var resolved by remember(reference, uid) { mutableStateOf<String?>(null) }
-    var error by remember(reference, uid) { mutableStateOf(false) }
-    DisposableEffect(reference, uid) {
+    var retryCount by remember { mutableStateOf(0) }
+    var resolved by remember(reference, uid, retryCount) { mutableStateOf<String?>(null) }
+    var error by remember(reference, uid, retryCount) { mutableStateOf(false) }
+    var imageLoadFailed by remember(reference, uid, retryCount) { mutableStateOf(false) }
+
+    DisposableEffect(reference, uid, retryCount) {
         var active = true
-        RuwaBackend.resolve(reference, expectedUid = uid)
-            .addOnSuccessListener { if (active) resolved = it }
-            .addOnFailureListener { if (active) error = true }
+        if (reference.isBlank()) {
+            error = true
+        } else if (!reference.startsWith("supabase://")) {
+            resolved = reference
+        } else {
+            RuwaBackend.resolve(reference, expectedUid = uid)
+                .addOnSuccessListener { if (active) { resolved = it; error = false } }
+                .addOnFailureListener { if (active) error = true }
+        }
         onDispose { active = false }
     }
+
+    val decodedBitmap = remember(resolved) {
+        val curr = resolved
+        if (curr != null && curr.startsWith("data:image/") && curr.contains(",")) {
+            try {
+                val base64Data = curr.substringAfter(",")
+                val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+    }
+
     Box(modifier, contentAlignment = Alignment.Center) {
         when {
-            error -> Text("No se pudo cargar el DPI. Inténtalo de nuevo.", fontSize = 11.sp, color = Color.Red)
-            resolved == null -> CircularProgressIndicator(Modifier.size(24.dp))
-            else -> AsyncImage(model = resolved, contentDescription = contentDescription, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
+            error || imageLoadFailed -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(4.dp)
+                ) {
+                    Text(
+                        text = "No se pudo cargar la foto",
+                        fontSize = 11.sp,
+                        color = Color.Red,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    TextButton(
+                        onClick = {
+                            error = false
+                            imageLoadFailed = false
+                            resolved = null
+                            retryCount++
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp), tint = BrandForest)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Reintentar", fontSize = 10.sp, color = BrandForest, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            resolved == null && !error -> {
+                CircularProgressIndicator(Modifier.size(24.dp), color = BrandForest, strokeWidth = 2.dp)
+            }
+            else -> {
+                val imageModel: Any? = decodedBitmap ?: resolved
+                AsyncImage(
+                    model = imageModel,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale,
+                    onError = { imageLoadFailed = true }
+                )
+            }
         }
     }
 }

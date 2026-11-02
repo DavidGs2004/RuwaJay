@@ -10,6 +10,7 @@ import { useChat } from '../../context/ChatContext';
 
 import { AVATAR_OPTIONS } from '../../data/avatars';
 import SystemUpdatesModal from '../ui/SystemUpdatesModal';
+import NotificationCenter from '../ui/NotificationCenter';
 import MobileAppConnectModal from '../ui/MobileAppConnectModal';
 import LogoutConfirmModal from '../ui/LogoutConfirmModal';
 
@@ -390,6 +391,8 @@ export default function Header() {
               </button>
 
 
+
+              {user && <NotificationCenter className="mr-1" />}
 
               {user ? (
                 <div className="relative" ref={userMenuRef}>

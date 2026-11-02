@@ -149,7 +149,7 @@ export async function editMessageInFirestore(roomId, messageId, newText) {
   });
 }
 
-export async function deleteMessageFromFirestore(roomId, messageId) {
+export async function deleteMessageForEveryone(roomId, messageId) {
   if (!roomId || !messageId) throw new Error('Parámetros inválidos.');
   const messageRef = doc(firestore, 'conversations', roomId, 'messages', messageId);
   await updateDoc(messageRef, {
@@ -160,6 +160,17 @@ export async function deleteMessageFromFirestore(roomId, messageId) {
     deletedAt: serverTimestamp(),
   });
 }
+
+export async function deleteMessageForMe(roomId, messageId, currentUid) {
+  const uid = currentUid || firebaseAuth?.currentUser?.uid;
+  if (!roomId || !messageId || !uid) throw new Error('Parámetros inválidos.');
+  const messageRef = doc(firestore, 'conversations', roomId, 'messages', messageId);
+  await updateDoc(messageRef, {
+    [`deletedFor.${uid}`]: true,
+  });
+}
+
+export const deleteMessageFromFirestore = deleteMessageForEveryone;
 
 export async function toggleReactionInFirestore(roomId, messageId, emoji, userId, currentEmoji) {
   if (!roomId || !messageId || !userId) throw new Error('Parámetros inválidos.');

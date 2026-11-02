@@ -13,16 +13,26 @@ data class IncomingMessage(
 }
 
 /** Establishes a baseline first, so opening the app never replays its history. */
-class IncomingMessageTracker(private val uid: String) {
+class IncomingMessageTracker(
+    private val uid: String,
+    private val baselineTime: Long = 0L
+) {
     private var previous: Map<String, Long>? = null
 
     fun update(messages: List<IncomingMessage>): List<IncomingMessage> {
         val baseline = previous
-        val incoming = if (baseline == null) emptyList() else messages.filter {
-            it.senderId.isNotBlank() && it.senderId != uid && it.timestamp > it.readAt &&
-                it.timestamp > (baseline[it.roomId] ?: 0L)
+        val incoming = if (baseline == null) {
+            emptyList()
+        } else {
+            messages.filter {
+                it.senderId.isNotBlank() &&
+                    it.senderId != uid &&
+                    it.timestamp > it.readAt &&
+                    it.timestamp >= baselineTime &&
+                    it.timestamp > (baseline[it.roomId] ?: baselineTime)
+            }
         }
-        previous = messages.associate { it.roomId to it.timestamp }
+        previous = messages.associate { it.roomId to maxOf(it.timestamp, baselineTime) }
         return incoming
     }
 }

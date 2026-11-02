@@ -93,7 +93,9 @@ class RuwaMessagingService : FirebaseMessagingService() {
         val eventId = message.data["eventId"] ?: message.messageId ?: "ruwajay_${System.currentTimeMillis()}"
 
         if (isCall) {
-            RuwaNotifications.showCall(this, title, body, path, eventId, callId ?: "")
+            val actualCallId = callId ?: ""
+            val callEventId = if (actualCallId.isNotBlank()) "call_$actualCallId" else eventId
+            RuwaNotifications.showCall(this, title, body, path, callEventId, actualCallId)
         } else {
             RuwaNotifications.show(this, title, body, path, eventId)
         }
@@ -216,7 +218,7 @@ object RuwaNotifications {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            .setTimeoutAfter(45_000L)
+            .setTimeoutAfter(25_000L)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .setFullScreenIntent(pending, true)
@@ -224,8 +226,23 @@ object RuwaNotifications {
             .setVibrate(longArrayOf(0, 1000, 1000, 1000, 1000))
             .addAction(
                 R.drawable.ic_notification,
-                "Atender Llamada",
+                "Atender",
                 pending
+            )
+            .addAction(
+                R.drawable.ic_notification,
+                "Rechazar",
+                PendingIntent.getActivity(
+                    context,
+                    (eventId + "_reject").hashCode(),
+                    Intent(context, MainActivity::class.java).apply {
+                        putExtra("path", path)
+                        putExtra("action", "reject_call")
+                        putExtra("callId", callId)
+                        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
 
         if (logoBitmap != null) {

@@ -48,6 +48,19 @@ class CallRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
 
+    companion object {
+        private val dismissedCallIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        private val sessionStartTime = System.currentTimeMillis() - 15_000L
+    }
+
+    fun dismissCall(callId: String) {
+        if (callId.isNotBlank()) dismissedCallIds.add(callId)
+    }
+
+    fun isCallDismissed(callId: String): Boolean {
+        return dismissedCallIds.contains(callId)
+    }
+
     fun observeIncomingCalls(
         userId: String,
         userEmail: String,
@@ -59,10 +72,31 @@ class CallRepository(
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
 
+                val now = System.currentTimeMillis()
                 for (doc in snapshot.documents) {
+                    val callId = doc.id
+                    if (isCallDismissed(callId)) continue
+
                     val data = doc.data ?: continue
                     val callerId = data["callerId"] as? String ?: ""
                     if (callerId == userId) continue // Ignorar llamadas generadas por nosotros mismos
+
+                    // Descartar llamadas viejas / huérfanas (más de 45 segundos o creadas antes del arranque)
+                    val createdAt = (data["createdAt"] as? com.google.firebase.Timestamp)?.toDate()?.time
+                        ?: (data["createdAt"] as? Number)?.toLong()
+                        ?: 0L
+
+                    if (createdAt > 0L) {
+                        val ageMs = now - createdAt
+                        if (ageMs > 45_000L || createdAt < sessionStartTime) {
+                            dismissCall(callId)
+                            endCall(callId, "expired")
+                            continue
+                        }
+                    } else if (!doc.metadata.hasPendingWrites()) {
+                        dismissCall(callId)
+                        continue
+                    }
 
                     val receiverId = data["receiverId"] as? String ?: ""
                     val receiverEmail = (data["receiverEmail"] as? String ?: "").lowercase().trim()

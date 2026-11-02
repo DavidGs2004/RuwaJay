@@ -72,6 +72,7 @@ fun BottomNavBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(BrandSurfaceElevated)
+            .navigationBarsPadding()
     ) {
         // Línea superior con gradiente tricolor de marca (idéntica a MobileNav.jsx)
         Box(
@@ -84,9 +85,8 @@ fun BottomNavBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(60.dp)
-                .padding(horizontal = 4.dp),
+                .height(68.dp)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceAround
         ) {
@@ -95,18 +95,22 @@ fun BottomNavBar(
             items.forEachIndexed { index, item ->
                 if (index == 2 && showPublishButton) {
                     Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         FilledIconButton(
                             onClick = onPublishClick,
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(42.dp),
                             shape = CircleShape,
                             colors = IconButtonDefaults.filledIconButtonColors(containerColor = BrandTerracota)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Publicar vivienda", tint = Color.White, modifier = Modifier.size(30.dp))
+                            Icon(Icons.Default.Add, contentDescription = "Publicar vivienda", tint = Color.White, modifier = Modifier.size(26.dp))
                         }
-                        Text("Publicar", color = BrandTerracota, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Publicar", color = BrandTerracota, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
                 val selected = when (item.route) {
@@ -161,11 +165,17 @@ fun BottomNavBar(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .width(48.dp)
-                            .height(30.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) BrandForest.copy(alpha = 0.12f) else Color.Transparent)
+                            .width(52.dp)
+                            .height(32.dp)
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .width(46.dp)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) BrandForest.copy(alpha = 0.12f) else Color.Transparent)
+                        )
+
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.label,
@@ -173,13 +183,12 @@ fun BottomNavBar(
                             modifier = Modifier.size(22.dp)
                         )
 
-                        // Badge de mensajes no leídos
                         if (item.route == Screen.Inbox.route && unreadCount > 0) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .offset(x = 6.dp, y = (-2).dp)
-                                    .size(16.dp)
+                                    .offset(x = 2.dp, y = (-2).dp)
+                                    .size(17.dp)
                                     .clip(CircleShape)
                                     .background(BrandTerracota),
                                 contentAlignment = Alignment.Center

@@ -191,7 +191,7 @@ export class RuwaService {
       if(bucket==='chat-media'){
         assert(parts.length===4&&parts[0]==='chat',400,'invalid-argument','Ruta de chat inválida.');
         const room=await this.db.get('conversations/'+identifier(parts[1]));
-        assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&room.data.participants?.length===2&&room.data.participants.includes(user.uid)&&(!upload||parts[2]===user.uid),403,'permission-denied','No tienes acceso a este archivo de chat.');
+        assert(room.exists&&!room.data.archived&&!room.data.migratedTo&&Array.isArray(room.data.participants)&&room.data.participants.includes(user.uid)&&(!upload||parts[2]===user.uid),403,'permission-denied','No tienes acceso a este archivo de chat.');
       } else if(bucket==='verification')assert(parts.length===3&&parts[0]==='verification'&&(parts[1]===user.uid||(!upload&&user.isAdmin)),403,'permission-denied','Documento privado.');
       else if(bucket==='profile-images')assert(upload&&parts.length===3&&parts[0]==='profiles'&&parts[1]===user.uid,403,'permission-denied','Foto de perfil ajena.');
       else if(bucket==='property-images'){
@@ -206,7 +206,7 @@ export class RuwaService {
     const [bucket,prefix]=definitions[kind];prefix.forEach(identifier);const path=[...prefix,crypto.randomUUID()].join('/');
     mime=String(mime||'').split(';')[0].trim().toLowerCase();
     assert(bytes.byteLength>0&&bytes.byteLength<=(kind==='chat'?20:8)*1024*1024,400,'invalid-argument','Archivo vacío o demasiado grande.');
-    assert(kind==='chat'?/^(image\/(jpeg|png|webp)|audio\/[a-zA-Z0-9.+-]+|video\/(webm|mp4|quicktime))$/.test(mime):/^image\/(jpeg|png|webp)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
+    assert(kind==='chat'?/^(image\/(jpeg|jpg|png|webp|heic|heif)|audio\/[a-zA-Z0-9.+-]+|video\/(webm|mp4|quicktime|3gpp|x-matroska|ogg))$/.test(mime):/^image\/(jpeg|jpg|png|webp|heic|heif)$/.test(mime),400,'invalid-argument','Formato de archivo no permitido.');
     await this.authorizeFile(user,bucket,path.split('/'),true);return{url:await this.files.upload(bucket,path,bytes,mime)};
   }
   async resolveMedia(user,reference){const media=parseMediaReference(reference);await this.authorizeFile(user,media.bucket,media.parts,false);return this.files.signedUrl(media.bucket,media.path);}

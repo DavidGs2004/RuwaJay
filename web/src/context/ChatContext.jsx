@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { subscribeToMessages, subscribeToConversation, subscribeToConversations, sendMessageToFirestore,
-  getOrCreateConversation, markConversationRead, editMessageInFirestore, deleteMessageFromFirestore, toggleReactionInFirestore, clearChatInFirestore } from '../lib/chatService';
+  getOrCreateConversation, markConversationRead, editMessageInFirestore, deleteMessageFromFirestore, deleteMessageForEveryone, deleteMessageForMe, toggleReactionInFirestore, clearChatInFirestore } from '../lib/chatService';
 import { fetchPropertyById } from '../lib/propertyService';
 import { unreadConversation, timestampMillis } from '../lib/contracts';
 import { firebaseAuth, firestore } from '../lib/firebase';
@@ -29,6 +30,44 @@ export function ChatProvider({ children }) {
   const locallyReadRoomsRef = useRef(new Map());
   const activeConversationIdRef = useRef(activeConversationId);
   useEffect(() => { activeConversationIdRef.current = activeConversationId; }, [activeConversationId]);
+  const [userPresences, setUserPresences] = useState({});
+
+  useEffect(() => {
+    if (!firestore || !user?.id) return;
+    const participantIds = items.map(item => otherParticipantId(item, user.id)).filter(Boolean);
+    const uniqueIds = [...new Set(participantIds)];
+    if (uniqueIds.length === 0) return;
+
+    const unsubs = uniqueIds.map(otherId => {
+      return onSnapshot(doc(firestore, 'public_profiles', otherId), snap => {
+        if (!snap.exists()) return;
+        const data = snap.data() || {};
+        const avatar = data.avatarImage || data.avatar || data.photoURL || data.photoUrl || null;
+        const isOnline = Boolean(data.isOnline);
+        const name = data.name || null;
+        setUserPresences(prev => ({
+          ...prev,
+          [otherId]: { avatar, isOnline, name }
+        }));
+      }, () => {
+        onSnapshot(doc(firestore, 'users', otherId), fallbackSnap => {
+          if (!fallbackSnap.exists()) return;
+          const data = fallbackSnap.data() || {};
+          const avatar = data.avatarImage || data.avatar || data.photoURL || data.photoUrl || null;
+          const isOnline = Boolean(data.isOnline);
+          const name = data.name || null;
+          setUserPresences(prev => ({
+            ...prev,
+            [otherId]: { avatar, isOnline, name }
+          }));
+        }, () => {});
+      });
+    });
+
+    return () => {
+      unsubs.forEach(u => u());
+    };
+  }, [items, user?.id]);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
   const markAsRead = useCallback(async room => {
@@ -126,18 +165,21 @@ export function ChatProvider({ children }) {
       }
     }
 
+    const presence = userPresences[participantId];
+    const resolvedAvatar = presence?.avatar || participantAvatar;
+
     return {
       ...item,
       participantId: participantId || '',
-      participantName: String(participantName),
+      participantName: String(presence?.name || participantName),
       participantPhone,
-      participantAvatar,
+      participantAvatar: resolvedAvatar,
       participantRole: isOwner ? 'Interesado' : 'Propietario',
       currentUserRole: isOwner ? 'Propietario' : 'Interesado',
-      participantOnline: false,
+      participantOnline: presence?.isOnline === true,
       unreadCount: calculatedUnread
     };
-  }, [user?.id]);
+  }, [user?.id, userPresences]);
   useEffect(() => {
     setItems([]); setMessages([]); setDirect(null); setActiveConversationId(null); setActiveToast(null); previous.current = null;
     sessionStartTime.current = Date.now();
@@ -282,7 +324,14 @@ export function ChatProvider({ children }) {
     });
   }, [user?.id, user?.name]);
   const editMessage = useCallback((room, messageId, newText) => editMessageInFirestore(room, messageId, newText), []);
-  const deleteMessage = useCallback((room, messageId) => deleteMessageFromFirestore(room, messageId), []);
+  const deleteMessage = useCallback((room, messageId, forEveryone = true) => {
+    const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
+    if (forEveryone) {
+      return deleteMessageForEveryone(room, messageId);
+    } else {
+      return deleteMessageForMe(room, messageId, currentUid);
+    }
+  }, [user?.id]);
   const toggleReaction = useCallback((room, messageId, emoji, currentEmoji) => toggleReactionInFirestore(room, messageId, emoji, user?.id || firebaseAuth?.currentUser?.uid, currentEmoji), [user?.id]);
   const clearChat = useCallback((room) => clearChatInFirestore(room), []);
   return <ChatContext.Provider value={{ conversations, activeConversation, activeConversationId, setActiveConversationId:openConversation,

@@ -42,8 +42,17 @@ class MainActivity : ComponentActivity() {
 
         val incomingCallId = intent.getStringExtra("callId")
         if (!incomingCallId.isNullOrBlank()) {
-            CallRequestBus.notifyIncomingPush(incomingCallId)
-            RuwaNotifications.cancel(this, "call_$incomingCallId")
+            val action = intent.getStringExtra("action")
+            if (action == "reject_call") {
+                com.example.ruwajay.data.repository.CallRepository().apply {
+                    dismissCall(incomingCallId)
+                    endCall(incomingCallId, "rejected")
+                }
+                RuwaNotifications.cancel(this, "call_$incomingCallId")
+            } else {
+                CallRequestBus.notifyIncomingPush(incomingCallId)
+                RuwaNotifications.cancel(this, "call_$incomingCallId")
+            }
         }
     }
 
@@ -55,18 +64,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var hasRequestedNotificationPermission = false
     private fun checkAndRequestNotificationPermission() {
+        if (hasRequestedNotificationPermission) return
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (androidx.core.content.ContextCompat.checkSelfPermission(
                     this,
                     android.Manifest.permission.POST_NOTIFICATIONS
                 ) != android.content.pm.PackageManager.PERMISSION_GRANTED
             ) {
+                hasRequestedNotificationPermission = true
                 notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                 return
             }
         }
+        hasRequestedNotificationPermission = true
         NotificationRepository.register()
+    }
+
+    private fun updateUserPresence(isOnline: Boolean) {
+        try {
+            com.example.ruwajay.data.repository.PublicProfileRepository.publishPresence(isOnline)
+        } catch (_: Exception) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        window.decorView.post {
+            window.decorView.invalidate()
+        }
+        updateUserPresence(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        updateUserPresence(false)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,11 +108,20 @@ class MainActivity : ComponentActivity() {
 
         val incomingCallId = intent.getStringExtra("callId")
         if (!incomingCallId.isNullOrBlank()) {
-            CallRequestBus.notifyIncomingPush(incomingCallId)
-            RuwaNotifications.cancel(this, "call_$incomingCallId")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-                setShowWhenLocked(true)
-                setTurnScreenOn(true)
+            val action = intent.getStringExtra("action")
+            if (action == "reject_call") {
+                com.example.ruwajay.data.repository.CallRepository().apply {
+                    dismissCall(incomingCallId)
+                    endCall(incomingCallId, "rejected")
+                }
+                RuwaNotifications.cancel(this, "call_$incomingCallId")
+            } else {
+                CallRequestBus.notifyIncomingPush(incomingCallId)
+                RuwaNotifications.cancel(this, "call_$incomingCallId")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(true)
+                    setTurnScreenOn(true)
+                }
             }
         }
 
@@ -89,7 +130,6 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
-        checkAndRequestNotificationPermission()
 
         // Inicialización ligera de OSM en segundo plano sin purgas de disco bloqueantes
         kotlin.concurrent.thread(name = "osm-init") {
@@ -131,7 +171,10 @@ class MainActivity : ComponentActivity() {
                 DisposableEffect(Unit) {
                     val listener = FirebaseAuth.AuthStateListener { auth ->
                         currentUid = auth.currentUser?.uid
-                        if (currentUid != null) checkAndRequestNotificationPermission()
+                        if (currentUid != null) {
+                            checkAndRequestNotificationPermission()
+                            updateUserPresence(true)
+                        }
                     }
                     FirebaseAuth.getInstance().addAuthStateListener(listener)
                     onDispose { FirebaseAuth.getInstance().removeAuthStateListener(listener) }
@@ -180,13 +223,13 @@ class MainActivity : ComponentActivity() {
                 } else null
 
                 // Notificaciones con sonido cuando llega un mensaje y el usuario no está en ese chat o salió de la app
-                DisposableEffect(currentUid, activeConversationId) {
-                    val stop = currentUid?.let { uid ->
-                        com.example.ruwajay.data.repository.observeForegroundNotifications(applicationContext, uid) { roomId ->
-                            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && activeConversationId == roomId
-                        }
+                val latestActiveConversationId by androidx.compose.runtime.rememberUpdatedState(activeConversationId)
+                DisposableEffect(currentUid) {
+                    val uid = currentUid ?: return@DisposableEffect onDispose {}
+                    val stop = com.example.ruwajay.data.repository.observeForegroundNotifications(applicationContext, uid) { roomId ->
+                        lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && latestActiveConversationId == roomId
                     }
-                    onDispose { stop?.invoke() }
+                    onDispose { stop() }
                 }
 
                 LaunchedEffect(notificationPath, currentUid) {
@@ -222,6 +265,11 @@ class MainActivity : ComponentActivity() {
                     notificationPath = null
                 }
 
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(1000)
+                    checkAndRequestNotificationPermission()
+                }
+
                 // Rutas donde NO mostramos la barra inferior
                 val hiddenNavRoutes = listOf(
                     Screen.PropertyDetail.route,
@@ -231,31 +279,37 @@ class MainActivity : ComponentActivity() {
                 )
                 val showBottomNav = hiddenNavRoutes.none { currentRoute?.startsWith(it.split("/")[0]) == true }
 
-                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize().imePadding(),
-                        bottomBar = {
-                            if (showBottomNav) {
-                                BottomNavBar(
-                                    navController = navController,
-                                    unreadCount = unreadMessagesCount,
-                                    showPublishButton = canStartPublishing
-                                )
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                ) {
+                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize().imePadding(),
+                            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background,
+                            bottomBar = {
+                                if (showBottomNav) {
+                                    BottomNavBar(
+                                        navController = navController,
+                                        unreadCount = unreadMessagesCount,
+                                        showPublishButton = canStartPublishing
+                                    )
+                                }
                             }
+                        ) { innerPadding ->
+                            AppNavigation(
+                                navController = navController,
+                                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+                            )
                         }
-                    ) { innerPadding ->
-                        AppNavigation(
-                            navController = navController,
-                            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
+
+                        // Global Call Overlay (recibe y atiende llamadas desde la web en tiempo real)
+                        val activeUser = FirebaseAuth.getInstance().currentUser
+                        com.example.ruwajay.ui.components.GlobalCallOverlay(
+                            currentUserId = activeUser?.uid,
+                            currentUserEmail = activeUser?.email
                         )
                     }
-
-                    // Global Call Overlay (recibe y atiende llamadas desde la web en tiempo real)
-                    val activeUser = FirebaseAuth.getInstance().currentUser
-                    com.example.ruwajay.ui.components.GlobalCallOverlay(
-                        currentUserId = activeUser?.uid,
-                        currentUserEmail = activeUser?.email
-                    )
                 }
             }
         }

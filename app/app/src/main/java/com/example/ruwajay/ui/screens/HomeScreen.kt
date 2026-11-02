@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -127,8 +128,8 @@ fun HomeScreen(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize()
                     ) { page ->
-                        Image(
-                            painter = painterResource(id = bannerDrawables[page]),
+                        AsyncImage(
+                            model = bannerDrawables[page],
                             contentDescription = "Banner RuwaJay ${page + 1}",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()

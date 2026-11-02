@@ -4,5 +4,7 @@
     <style name="Theme.RuwaJay" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/brand_crema</item>
+        <item name="android:colorBackground">@color/brand_crema</item>
     </style>
 </resources>

@@ -1,4 +1,5 @@
 import PrivateMedia from '../components/chat/PrivateMedia';
+import NotificationCenter from '../components/ui/NotificationCenter';
 import MediaSendPreviewModal from '../components/chat/MediaSendPreviewModal';
 import MediaViewerModal from '../components/chat/MediaViewerModal';
 import FullEmojiPickerModal from '../components/chat/FullEmojiPickerModal';
@@ -8,7 +9,7 @@ import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Image as ImageIcon, MapPin, Calendar, CheckCheck,
-  ArrowLeft, Search, User, Clock, Phone, Video, MoreVertical,
+  ArrowLeft, Search, User, Clock, Phone, Video, Camera, MoreVertical,
   ShieldAlert, Mic, Smile, Paperclip, X, Check, Eye, ChevronRight,
   RotateCcw, Home, Lock, Trash2, Pencil, Ban, Square, Play, Pause,
   Reply, Palette, Plus
@@ -160,6 +161,8 @@ export default function ChatPage() {
   // Messages feed ref
   const messagesFeedRef = useRef(null);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const initialScrollDoneRef = useRef({});
   const prevMsgCountRef = useRef({});
 
@@ -380,10 +383,10 @@ export default function ChatPage() {
     setInputText('');
   };
 
-  const handleDeleteMessage = async (messageId) => {
+  const handleDeleteMessage = async (messageId, forEveryone = true) => {
     if (!activeConversation?.id || !messageId) return;
     try {
-      await deleteMessage(activeConversation.id, messageId);
+      await deleteMessage(activeConversation.id, messageId, forEveryone);
       setConfirmDeleteId(null);
     } catch (error) {
       console.error('Error al eliminar mensaje:', error);
@@ -660,6 +663,7 @@ export default function ChatPage() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <NotificationCenter />
           <div className="flex items-center gap-2 text-xs font-bold text-cafe bg-[#FAF8F5] p-1 pr-3 rounded-2xl border border-border shadow-2xs">
             <ChatAvatar
               src={currentUserPhoto}
@@ -752,13 +756,21 @@ export default function ChatPage() {
                         : 'hover:bg-[#FAF8F5]'
                     }`}
                   >
-                    {/* User Avatar */}
-                    <ChatAvatar
-                      src={conv.participantAvatar}
-                      name={conv.participantName}
-                      size="md"
-                      fallbackBg="light"
-                    />
+                    {/* User Avatar con indicador en línea exclusivo si está conectado */}
+                    <div className="relative shrink-0">
+                      <ChatAvatar
+                        src={conv.participantAvatar}
+                        name={conv.participantName}
+                        size="md"
+                        fallbackBg="light"
+                      />
+                      {conv.participantOnline && (
+                        <span
+                          className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-500/20"
+                          title="En línea"
+                        />
+                      )}
+                    </div>
 
                     {/* Middle Info */}
                     <div className="min-w-0 flex-1">
@@ -816,13 +828,21 @@ export default function ChatPage() {
                     <ArrowLeft size={16} />
                   </button>
 
-                  {/* Contact Avatar */}
-                  <ChatAvatar
-                    src={activeConversation.participantAvatar || activeOwner?.photo}
-                    name={activeConversation.participantName}
-                    size="lg"
-                    fallbackBg="solid"
-                  />
+                  {/* Contact Avatar con indicador en línea exclusivo */}
+                  <div className="relative shrink-0">
+                    <ChatAvatar
+                      src={activeConversation.participantAvatar || activeOwner?.photo}
+                      name={activeConversation.participantName}
+                      size="lg"
+                      fallbackBg="solid"
+                    />
+                    {activeConversation.participantOnline && (
+                      <span
+                        className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-500/20"
+                        title="En línea"
+                      />
+                    )}
+                  </div>
 
                   {/* Contact Details */}
                   <div className="min-w-0 text-left">
@@ -838,7 +858,10 @@ export default function ChatPage() {
                       {typingMap[activeConversation.id] ? (
                         <span className="text-forest font-bold animate-pulse">Escribiendo...</span>
                       ) : activeConversation.participantOnline ? (
-                        <span className="text-forest font-bold">En línea ahora</span>
+                        <span className="text-emerald-600 font-bold flex items-center gap-1">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                          En línea ahora
+                        </span>
                       ) : (
                         <span className="text-text-muted">Mensajería privada</span>
                       )}
@@ -942,11 +965,13 @@ export default function ChatPage() {
                   </span>
                 </div>
 
-                {activeConversation.messages.map((msg) => {
+                {(activeConversation.messages || [])
+                  .filter((msg) => !(user?.id && msg.deletedFor?.[user.id]))
+                  .map((msg) => {
                   const isUser = isUserMsg(msg, user?.id);
                   const isDeleted = Boolean(msg.isDeleted);
                   const canEdit = isUser && !isDeleted && !msg.image && msg.type !== 'audio' && msg.type !== 'video';
-                  const canDelete = isUser && !isDeleted;
+                  const canDelete = !isDeleted;
 
                   return (
                     <div
@@ -1128,7 +1153,7 @@ export default function ChatPage() {
                               </div>
                             )}
 
-                            {(msg.type === 'image' || msg.type === 'video') && msg.mediaUrl && (
+                            {(msg.type === 'image' || msg.type === 'video') && msg.mediaUrl && !msg.image && (
                               <div
                                 className="mb-2 overflow-hidden rounded-xl cursor-pointer group/media relative"
                                 onClick={() => setViewingMedia({
@@ -1380,6 +1405,7 @@ export default function ChatPage() {
                 ) : (
                   /* 3. STATE: STANDARD TEXT & ATTACHMENT CONTROLS */
                   <>
+                    {/* Inputs ocultos para Galería, Cámara de Foto y Cámara de Video */}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1387,11 +1413,49 @@ export default function ChatPage() {
                       onChange={handleFileSelect}
                       className="hidden"
                     />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      capture="environment"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+
+                    {/* Botón: Tomar Foto */}
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FAF8F5] text-text-muted hover:bg-crema hover:text-forest transition-all shadow-2xs border border-[#E8D9C8]/50"
+                      title="Tomar foto con la cámara"
+                    >
+                      <Camera size={18} />
+                    </button>
+
+                    {/* Botón: Grabar Video */}
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FAF8F5] text-text-muted hover:bg-crema hover:text-forest transition-all shadow-2xs border border-[#E8D9C8]/50"
+                      title="Grabar video con la cámara"
+                    >
+                      <Video size={18} />
+                    </button>
+
+                    {/* Botón: Adjuntar desde galería o archivos */}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FAF8F5] text-text-muted hover:bg-crema hover:text-cafe transition-all shadow-2xs border border-[#E8D9C8]/50"
-                      title="Adjuntar foto o video"
+                      title="Adjuntar foto o video existente"
                     >
                       <Paperclip size={17} />
                     </button>
@@ -1479,23 +1543,46 @@ export default function ChatPage() {
             </div>
             <h3 className="text-base font-black text-cafe mb-2">¿Eliminar mensaje?</h3>
             <p className="text-xs text-text-secondary leading-relaxed mb-6">
-              El mensaje se marcará como eliminado para todos los participantes del chat.
+              {(() => {
+                const targetMsg = activeConversation?.messages?.find((m) => m.id === confirmDeleteId);
+                const isSender = isUserMsg(targetMsg, user?.id);
+                return isSender
+                  ? 'Elige si deseas eliminar este mensaje para todos los participantes o solo para ti.'
+                  : '¿Deseas eliminar este mensaje solo para ti de esta conversación?';
+              })()}
             </p>
-            <div className="flex gap-2.5 justify-center">
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 py-2.5 rounded-xl border border-border bg-[#FAF8F5] text-xs font-bold text-cafe hover:bg-crema transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteMessage(confirmDeleteId)}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs"
-              >
-                Eliminar para todos
-              </button>
+            <div className="flex flex-col gap-2.5">
+              {(() => {
+                const targetMsg = activeConversation?.messages?.find((m) => m.id === confirmDeleteId);
+                const isSender = isUserMsg(targetMsg, user?.id);
+                return (
+                  <>
+                    {isSender && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMessage(confirmDeleteId, true)}
+                        className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs"
+                      >
+                        Eliminar para todos
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMessage(confirmDeleteId, false)}
+                      className="w-full py-2.5 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors"
+                    >
+                      Eliminar solo para mí
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="w-full py-2.5 rounded-xl border border-border bg-[#FAF8F5] text-xs font-bold text-cafe hover:bg-crema transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

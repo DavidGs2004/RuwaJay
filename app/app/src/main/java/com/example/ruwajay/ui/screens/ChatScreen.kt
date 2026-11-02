@@ -2,6 +2,7 @@ package com.example.ruwajay.ui.screens
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -198,23 +199,22 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Filter messages for current user if clearedAt exists (Per-user clear chat)
+    // Filter messages for current user if clearedAt exists (Per-user clear chat) or deletedFor includes uid
     val myClearedTimestamp = (room["clearedAt"] as? Map<*, *>)?.get(uid) as? Timestamp
     val myClearedTime = myClearedTimestamp?.toDate()?.time ?: 0L
-    val visibleMessages = remember(messages, myClearedTime) {
-        if (myClearedTime == 0L) messages
-        else messages.filter { msg ->
+    val visibleMessages = remember(messages, myClearedTime, uid) {
+        messages.filter { msg ->
             val msgTime = (msg["createdAt"] as? Timestamp)?.toDate()?.time ?: Long.MAX_VALUE
-            msgTime > myClearedTime
+            if (myClearedTime > 0L && msgTime <= myClearedTime) return@filter false
+            val deletedForMap = msg["deletedFor"] as? Map<*, *>
+            val isDeletedForMe = uid != null && deletedForMap?.get(uid) == true
+            !isDeletedForMe
         }
     }
 
-    // Scroll Anchoring: Immediately position at bottom on frame 0, never jumping or flashing top
+    // Scroll Anchoring: Immediately position at bottom
     var isInitialScrollDone by remember(conversationId) { mutableStateOf(false) }
-    LaunchedEffect(conversationId) {
-        isInitialScrollDone = false
-    }
-    LaunchedEffect(visibleMessages.size) {
+    LaunchedEffect(visibleMessages.size, conversationId) {
         if (visibleMessages.isNotEmpty()) {
             if (!isInitialScrollDone) {
                 list.scrollToItem(visibleMessages.lastIndex)
@@ -259,6 +259,18 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
 
     fun deleteMessage(messageId: String) {
         repo.deleteMessage(conversationId, messageId) { result ->
+            result.onFailure { error = "No se pudo eliminar el mensaje: ${it.localizedMessage ?: it.message}" }
+        }
+    }
+
+    fun deleteMessageForEveryone(messageId: String) {
+        repo.deleteMessageForEveryone(conversationId, messageId) { result ->
+            result.onFailure { error = "No se pudo eliminar el mensaje: ${it.localizedMessage ?: it.message}" }
+        }
+    }
+
+    fun deleteMessageForMe(messageId: String) {
+        repo.deleteMessageForMe(conversationId, messageId) { result ->
             result.onFailure { error = "No se pudo eliminar el mensaje: ${it.localizedMessage ?: it.message}" }
         }
     }
@@ -385,8 +397,11 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     }
     val images = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
+            val mime = context.contentResolver.getType(uri).orEmpty().lowercase()
+            val uriStr = uri.toString().lowercase()
+            val isVid = mime.startsWith("video/") || uriStr.endsWith(".mp4") || uriStr.endsWith(".webm") || uriStr.endsWith(".3gp")
             pendingMediaUri = uri
-            pendingMediaType = "image"
+            pendingMediaType = if (isVid) "video" else "image"
             pendingMediaCaption = ""
         }
     }
@@ -421,17 +436,44 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
             error = "No se pudo iniciar la cámara: ${e.localizedMessage}"
         }
     }
-    var otherAvatar by remember(other) { mutableStateOf("") }
+
+    // High-Resolution Video Capture with FileProvider
+    var videoOutputUri by remember { mutableStateOf<Uri?>(null) }
+    val videoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { success ->
+        if (success && videoOutputUri != null) {
+            pendingMediaUri = videoOutputUri
+            pendingMediaType = "video"
+            pendingMediaCaption = ""
+        }
+    }
+    val videoPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            videoOutputUri?.let { videoLauncher.launch(it) }
+        } else {
+            error = "Activa el permiso de cámara para grabar videos."
+        }
+    }
+    fun recordVideo() {
+        try {
+            val file = File.createTempFile("chat-video-", ".mp4", context.cacheDir)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            videoOutputUri = uri
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                videoLauncher.launch(uri)
+            } else {
+                videoPermission.launch(Manifest.permission.CAMERA)
+            }
+        } catch (e: Exception) {
+            error = "No se pudo iniciar la cámara de video: ${e.localizedMessage}"
+        }
+    }
+    var otherProfile by remember(other) { mutableStateOf<com.example.ruwajay.data.repository.PublicProfile?>(null) }
     var otherEmail by remember(other) { mutableStateOf("") }
     DisposableEffect(other) {
         if (other.isNullOrBlank()) return@DisposableEffect onDispose {}
-        val registration = FirebaseFirestore.getInstance().collection("users").document(other)
-            .addSnapshotListener { document, _ ->
-                otherAvatar = listOf("avatarImage", "avatar", "photoURL")
-                    .firstNotNullOfOrNull { key -> document?.getString(key)?.takeIf(String::isNotBlank) }
-                    .orEmpty()
-                otherEmail = document?.getString("email")?.trim()?.lowercase().orEmpty()
-            }
+        val registration = com.example.ruwajay.data.repository.PublicProfileRepository.observe(other) { profile ->
+            otherProfile = profile
+        }
         onDispose { registration.remove() }
     }
     fun initiateCall() {
@@ -449,8 +491,7 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
             "callerEmails" to listOfNotNull(user.email?.trim()?.lowercase()).filter(String::isNotBlank),
             "receiverId" to other,
             "receiverIds" to listOf(other),
-            "receiverName" to otherName,
-            "receiverAvatar" to otherAvatar,
+            "receiverAvatar" to (otherProfile?.avatar ?: ""), "receiverName" to (otherProfile?.name?.takeIf(String::isNotBlank) ?: otherName),
             "receiverEmail" to otherEmail,
             "receiverEmails" to listOf(otherEmail).filter(String::isNotBlank),
             "propertyTitle" to (room["propertyTitle"] as? String ?: "Propiedad RuwaJay"),
@@ -500,7 +541,13 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
 
                     Spacer(Modifier.width(4.dp))
 
-                    // Contact Avatar with ring border
+                    // Contact Avatar with ring border - siempre visible
+                    val displayHeaderAvatar = otherProfile?.avatar?.takeIf(String::isNotBlank)
+                        ?: listOf("seekerAvatar", "ownerAvatar", "seekerPhoto", "ownerPhoto", "participantAvatar", "otherUserPhoto")
+                            .firstNotNullOfOrNull { key -> (room[key] as? String)?.takeIf(String::isNotBlank) }
+                            .orEmpty()
+                    val displayHeaderName = otherProfile?.name?.takeIf(String::isNotBlank) ?: otherName
+                    val isOtherOnline = otherProfile?.isOnline == true
                     Box(
                         modifier = Modifier
                             .size(42.dp)
@@ -508,9 +555,9 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                             .background(BrandForest.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (otherAvatar.isNotBlank()) {
+                        if (displayHeaderAvatar.isNotBlank()) {
                             AsyncImage(
-                                model = otherAvatar,
+                                model = displayHeaderAvatar,
                                 contentDescription = "Foto de $otherName",
                                 modifier = Modifier.fillMaxSize().clip(CircleShape),
                                 contentScale = ContentScale.Crop
@@ -530,26 +577,36 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                     // Contact Name & Status
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = otherName,
+                            text = displayHeaderName,
                             style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                             fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
                             color = BrandTextPrimary,
                             maxLines = 1
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF22C55E))
-                            )
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                text = (room["propertyTitle"] as? String)?.takeIf { it.isNotBlank() } ?: "En línea",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = BrandForest,
-                                maxLines = 1
-                            )
+                            if (isOtherOnline) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF22C55E))
+                                )
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    text = "En línea",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color(0xFF16A34A),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            } else {
+                                Text(
+                                    text = (room["propertyTitle"] as? String)?.takeIf { it.isNotBlank() } ?: "Desconectado",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = BrandTextMuted,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
 
@@ -788,6 +845,17 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                                 Icon(Icons.Default.PhotoCamera, "Tomar foto", tint = BrandForest, modifier = Modifier.size(19.dp))
                             }
 
+                            // High-Res Video Button
+                            IconButton(
+                                onClick = { recordVideo() },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandCrema.copy(alpha = 0.7f))
+                            ) {
+                                Icon(Icons.Default.Videocam, "Grabar video", tint = BrandForest, modifier = Modifier.size(20.dp))
+                            }
+
                             // Mic / Stop Button: Record on mic -> Stop on RED square
                             IconButton(
                                 onClick = {
@@ -933,8 +1001,7 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                 state = list,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 10.dp)
-                    .alpha(if (isInitialScrollDone || visibleMessages.isEmpty()) 1f else 0f),
+                    .padding(horizontal = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
@@ -1094,7 +1161,8 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                                                     viewingImageUrl = resolvedUrl
                                                     viewingImageSender = if (mine) "Tú" else otherName
                                                     viewingImageTime = timeFormatted
-                                                }
+                                                },
+                                                onLongClick = { if (!isDeleted) selectedMessageForMenu = message }
                                             )
                                             if (textContent.isNotBlank() && textContent != "Foto" && textContent != "Archivo enviado") {
                                                 Spacer(Modifier.height(4.dp))
@@ -1294,8 +1362,8 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                         Text("Responder", color = BrandForest, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     }
 
-                    if (isMine && !isDeleted) {
-                        if (targetType == "text" && targetMsg["image"] == null) {
+                    if (!isDeleted) {
+                        if (isMine && targetType == "text" && targetMsg["image"] == null) {
                             TextButton(
                                 onClick = {
                                     editingMessageId = targetMsgId
@@ -1310,16 +1378,32 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
                             }
                         }
 
+                        if (isMine) {
+                            TextButton(
+                                onClick = {
+                                    val id = targetMsgId
+                                    selectedMessageForMenu = null
+                                    deleteMessageForEveryone(id)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = BrandTerracota)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Eliminar para todos", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
+                        }
+
                         TextButton(
                             onClick = {
+                                val id = targetMsgId
                                 selectedMessageForMenu = null
-                                showDeleteMessageDialog = targetMsgId
+                                deleteMessageForMe(id)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = BrandTerracota)
                             Spacer(Modifier.width(8.dp))
-                            Text("Eliminar para todos", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            Text("Eliminar solo para mí", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                         }
                     }
 
@@ -1521,17 +1605,41 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
 
     // Confirmation Dialog for Deleting Message
     if (showDeleteMessageDialog != null) {
+        val targetId = showDeleteMessageDialog!!
+        val targetMsg = messages.find { it["id"] == targetId }
+        val isTargetMine = targetMsg?.get("senderId") == uid
+
         AlertDialog(
             onDismissRequest = { showDeleteMessageDialog = null },
-            title = { Text("¿Eliminar mensaje?", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
-            text = { Text("El mensaje se marcará como eliminado para todos los participantes.") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = BrandTerracota)
+                    Spacer(Modifier.width(8.dp))
+                    Text("¿Eliminar mensaje?", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    if (isTargetMine) "Elige si deseas eliminar este mensaje para todos o solo para ti."
+                    else "¿Deseas eliminar este mensaje solo para ti de esta conversación?"
+                )
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    val idToDelete = showDeleteMessageDialog!!
-                    showDeleteMessageDialog = null
-                    deleteMessage(idToDelete)
-                }) {
-                    Text("Eliminar", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Column(horizontalAlignment = Alignment.End) {
+                    if (isTargetMine) {
+                        TextButton(onClick = {
+                            showDeleteMessageDialog = null
+                            deleteMessageForEveryone(targetId)
+                        }) {
+                            Text("Eliminar para todos", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                    }
+                    TextButton(onClick = {
+                        showDeleteMessageDialog = null
+                        deleteMessageForMe(targetId)
+                    }) {
+                        Text("Eliminar para mí", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
@@ -1700,12 +1808,67 @@ private fun AudioAttachment(url: String, mine: Boolean) {
 }
 
 @Composable
+private fun VideoAttachment(url: String, mine: Boolean) {
+    val context = LocalContext.current
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(Uri.parse(url), "video/*")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    android.widget.Toast.makeText(context, "No se encontró reproductor de video", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+        color = if (mine) Color.Black.copy(alpha = 0.35f) else Color(0xFF0F172A)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.9f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Reproducir video",
+                        tint = BrandForest,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Toca para reproducir video",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun PrivateAttachment(
     reference: String,
     type: String,
     uid: String?,
     mine: Boolean = false,
-    onImageClick: ((String) -> Unit)? = null
+    onImageClick: ((String) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     val initial = remember(reference) {
         if (!reference.startsWith("supabase://")) reference
@@ -1743,8 +1906,12 @@ private fun PrivateAttachment(
 
     val resolved = url
     if (resolved != null) {
-        if (type == "audio") {
+        val isVideo = type == "video" || resolved.contains(".mp4", ignoreCase = true) || resolved.contains(".webm", ignoreCase = true) || resolved.contains(".3gp", ignoreCase = true)
+        val isAudio = type == "audio" || (!isVideo && (resolved.contains(".m4a", ignoreCase = true) || resolved.contains(".aac", ignoreCase = true) || resolved.contains(".mp3", ignoreCase = true) || resolved.contains(".ogg", ignoreCase = true) || resolved.contains(".wav", ignoreCase = true)))
+        if (isAudio) {
             AudioAttachment(resolved, mine)
+        } else if (isVideo) {
+            VideoAttachment(resolved, mine)
         } else {
             AsyncImage(
                 model = resolved,
@@ -1753,7 +1920,10 @@ private fun PrivateAttachment(
                     .fillMaxWidth()
                     .height(200.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { onImageClick?.invoke(resolved) },
+                    .combinedClickable(
+                        onClick = { onImageClick?.invoke(resolved) },
+                        onLongClick = { onLongClick?.invoke() }
+                    ),
                 contentScale = ContentScale.Crop
             )
         }
@@ -1840,7 +2010,7 @@ private fun MediaSendPreviewDialog(
                     )
                 }
 
-                // Full-resolution image preview
+                // Full-resolution image or video preview
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -1848,14 +2018,43 @@ private fun MediaSendPreviewDialog(
                         .padding(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Vista previa",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(14.dp)),
-                        contentScale = ContentScale.Fit
-                    )
+                    if (type == "video") {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandForest),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Videocam,
+                                    contentDescription = "Video listo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                "Video listo para enviar",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Vista previa",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(14.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
                 }
 
                 // Bottom bar with caption & RuwaJay styled send button

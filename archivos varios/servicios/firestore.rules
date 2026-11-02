@@ -124,7 +124,9 @@ service cloud.firestore {
         allow update: if roomMember() && (
           (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','isEdited','editedAt','isDeleted','mediaUrl','image','deletedAt']))
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
-            && request.resource.data.get('reactions',{}).diff(resource.data.get('reactions',{})).affectedKeys().hasOnly([request.auth.uid])));
+            && request.resource.data.get('reactions',{}).diff(resource.data.get('reactions',{})).affectedKeys().hasOnly([request.auth.uid]))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor'])
+            && request.resource.data.get('deletedFor',{}).diff(resource.data.get('deletedFor',{})).affectedKeys().hasOnly([request.auth.uid])));
         allow delete: if roomMember() && resource.data.senderId == request.auth.uid;
       }
     }
@@ -158,6 +160,17 @@ service cloud.firestore {
       );
     }
     match /system_updates/{updateId} { allow read: if true; allow write: if isAdmin(); }
+    // Perfil público mínimo (nombre, foto y presencia) visible para usuarios autenticados.
+    // Los datos sensibles siguen protegidos en /users/{userId}.
+    match /public_profiles/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['name','avatarImage','isOnline','lastSeen'])
+        && request.resource.data.get('name','') is string && request.resource.data.get('name','').size() <= 120
+        && request.resource.data.get('avatarImage','') is string && request.resource.data.get('avatarImage','').size() <= 2048
+        && request.resource.data.get('isOnline',false) is bool;
+      allow delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+    }
     // Authenticated WebRTC call signaling
     match /active_calls/{callId} {
       function callMember(data) {

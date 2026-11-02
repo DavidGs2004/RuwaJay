@@ -44,8 +44,8 @@ fun InboxScreen(
     var activeTab by remember { mutableStateOf("all") } // "all" | "unread"
     val chatRepo = remember { ChatRepository() }
     val currentUser = FirebaseAuth.getInstance().currentUser
-    var firestoreConversations by remember { mutableStateOf<List<Conversation>>(emptyList()) }
-    var profilePhotos by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var rawConversationMaps by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
+    var userPresences by remember { mutableStateOf<Map<String, com.example.ruwajay.data.repository.PublicProfile>>(emptyMap()) }
     var loadError by remember { mutableStateOf<String?>(null) }
 
     val configuration = LocalConfiguration.current
@@ -58,89 +58,90 @@ fun InboxScreen(
             loadError = "Error: ${error.message}"
         }) { maps ->
             loadError = null
-            val conversations = maps.map { map ->
-                val ts = map["lastMessageTimestamp"] as? Timestamp
-                val dateStr = ts?.let {
-                    SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.toDate())
-                } ?: ""
-
-                Conversation(
-                    id = map["id"] as? String ?: "",
-                    propertyId = map["propertyId"] as? String ?: "",
-                    ownerId = map["ownerId"] as? String ?: "",
-                    participantName = ((if (map["ownerId"] == currentUser.uid) map["seekerName"] else map["ownerName"]) as? String)
-                        ?: (map["participantName"] as? String)
-                        ?: (map["otherUserName"] as? String)
-                        ?: "Usuario",
-                    participantId = (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString().orEmpty(),
-                    participantAvatar = run {
-                        val otherId = (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString().orEmpty()
-                        profilePhotos[otherId]
-                            ?: ((if (map["ownerId"] == currentUser.uid) map["seekerAvatar"] else map["ownerAvatar"]) as? String)
-                            ?: (map["participantAvatar"] as? String)
-                            ?: ""
-                    },
-                    participantOnline = false,
-                    participantPhone = "",
-                    participantRole = "Contacto",
-                    unreadCount = run {
-                        val unreadMap = map["unreadCount"] as? Map<*, *>
-                        val countInMap = (unreadMap?.get(currentUser.uid) as? Number)?.toInt()
-                        val unreadCountsMap = map["unreadCounts"] as? Map<*, *>
-                        val countInCountsMap = (unreadCountsMap?.get(currentUser.uid) as? Number)?.toInt()
-                        val directCount = (map["unreadCount"] as? Number)?.toInt()
-
-                        val isFromOther = map["lastSenderId"] != null && map["lastSenderId"] != currentUser.uid
-                        val lastMsgTime = (map["lastMessageTimestamp"] as? Timestamp)?.toDate()?.time ?: 0L
-                        val readAtMap = map["readAt"] as? Map<*, *>
-                        val readAtTime = (readAtMap?.get(currentUser.uid) as? Timestamp)?.toDate()?.time ?: 0L
-                        val isTimestampUnread = isFromOther && lastMsgTime > readAtTime
-
-                        val rawCount = countInMap ?: countInCountsMap ?: directCount ?: 0
-                        if (rawCount > 0) rawCount else if (isTimestampUnread) 1 else 0
-                    },
-                    lastMessage = map["lastMessage"] as? String ?: "",
-                    lastMessageTimestamp = dateStr,
-                    messages = emptyList()
-                )
-            }
-
-            firestoreConversations = conversations
-                .groupBy { it.participantId.ifBlank { it.participantName.trim().lowercase() } }
-                .values
-                .mapNotNull { group ->
-                    val latest = group.maxByOrNull { conversation ->
-                        maps.firstOrNull { it["id"] == conversation.id }
-                            ?.get("lastMessageTimestamp")
-                            .let { it as? Timestamp }
-                            ?.toDate()?.time ?: 0L
-                    }
-                    latest?.copy(unreadCount = group.sumOf { it.unreadCount })
-                }
-                .sortedByDescending { conversation ->
-                    maps.firstOrNull { it["id"] == conversation.id }
-                        ?.get("lastMessageTimestamp")
-                        .let { it as? Timestamp }
-                        ?.toDate()?.time ?: 0L
-                }
-
-            val otherIds = maps.mapNotNull { map ->
-                (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString()
-            }.distinct()
-
-            otherIds.forEach { otherId ->
-                FirebaseFirestore.getInstance().collection("users").document(otherId).get()
-                    .addOnSuccessListener { doc ->
-                        val photo = listOf("avatarImage", "avatar", "photoURL")
-                            .firstNotNullOfOrNull { key -> doc.getString(key)?.takeIf(String::isNotBlank) }
-                            .orEmpty()
-                        if (photo.isNotBlank()) {
-                            profilePhotos = profilePhotos + (otherId to photo)
-                        }
-                    }
-            }
+            rawConversationMaps = maps
         }
         onDispose { listener.remove() }
+    }
+
+    // IDs de contactos: solo cambian cuando aparece/desaparece un contacto (no con cada mensaje),
+    // así no se reinician los listeners en cada actualización del chat.
+    val otherIds = remember(rawConversationMaps, currentUser?.uid) {
+        rawConversationMaps.mapNotNull { map ->
+            (map["participants"] as? List<*>)?.firstOrNull { it != currentUser?.uid }?.toString()
+        }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+
+    // Foto, nombre y estado en línea en tiempo real desde /public_profiles
+    DisposableEffect(otherIds) {
+        val registrations = otherIds.map { otherId ->
+            com.example.ruwajay.data.repository.PublicProfileRepository.observe(otherId) { profile ->
+                userPresences = userPresences + (otherId to profile)
+            }
+        }
+        onDispose { registrations.forEach { it.remove() } }
+    }
+
+    val firestoreConversations = remember(rawConversationMaps, userPresences, currentUser?.uid) {
+        if (currentUser == null) return@remember emptyList<Conversation>()
+        val timeOf: (Map<String, Any>) -> Long = { (it["lastMessageTimestamp"] as? Timestamp)?.toDate()?.time ?: 0L }
+        val timeById = rawConversationMaps.associate { (it["id"] as? String ?: "") to timeOf(it) }
+        val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val conversations = rawConversationMaps.map { map ->
+            val ts = map["lastMessageTimestamp"] as? Timestamp
+            val dateStr = ts?.let { formatter.format(it.toDate()) } ?: ""
+            val isOwner = map["ownerId"] == currentUser.uid
+            val otherId = (map["participants"] as? List<*>)?.firstOrNull { it != currentUser.uid }?.toString().orEmpty()
+            val presence = userPresences[otherId]
+            val docAvatar = listOf(
+                if (isOwner) "seekerAvatar" else "ownerAvatar",
+                if (isOwner) "seekerPhoto" else "ownerPhoto",
+                "participantAvatar", "otherUserPhoto"
+            ).firstNotNullOfOrNull { key -> (map[key] as? String)?.takeIf { it.isNotBlank() && it != "null" } }
+
+            Conversation(
+                id = map["id"] as? String ?: "",
+                propertyId = map["propertyId"] as? String ?: "",
+                ownerId = map["ownerId"] as? String ?: "",
+                participantName = ((if (isOwner) map["seekerName"] else map["ownerName"]) as? String)?.takeIf { it.isNotBlank() }
+                    ?: presence?.name?.takeIf { it.isNotBlank() }
+                    ?: (map["participantName"] as? String)
+                    ?: (map["otherUserName"] as? String)
+                    ?: "Usuario",
+                participantId = otherId,
+                participantAvatar = presence?.avatar?.takeIf { it.isNotBlank() } ?: docAvatar ?: "",
+                participantOnline = presence?.isOnline == true,
+                participantPhone = "",
+                participantRole = "Contacto",
+                unreadCount = run {
+                    val unreadMap = map["unreadCount"] as? Map<*, *>
+                    val countInMap = (unreadMap?.get(currentUser.uid) as? Number)?.toInt()
+                    val unreadCountsMap = map["unreadCounts"] as? Map<*, *>
+                    val countInCountsMap = (unreadCountsMap?.get(currentUser.uid) as? Number)?.toInt()
+                    val directCount = (map["unreadCount"] as? Number)?.toInt()
+
+                    val isFromOther = map["lastSenderId"] != null && map["lastSenderId"] != currentUser.uid
+                    val lastMsgTime = timeOf(map)
+                    val readAtMap = map["readAt"] as? Map<*, *>
+                    val readAtTime = (readAtMap?.get(currentUser.uid) as? Timestamp)?.toDate()?.time ?: 0L
+                    val isTimestampUnread = isFromOther && lastMsgTime > readAtTime
+
+                    val rawCount = countInMap ?: countInCountsMap ?: directCount ?: 0
+                    if (rawCount > 0) rawCount else if (isTimestampUnread) 1 else 0
+                },
+                lastMessage = map["lastMessage"] as? String ?: "",
+                lastMessageTimestamp = dateStr,
+                messages = emptyList()
+            )
+        }
+
+        conversations
+            .groupBy { it.participantId.ifBlank { it.participantName.trim().lowercase() } }
+            .values
+            .mapNotNull { group ->
+                val latest = group.maxByOrNull { timeById[it.id] ?: 0L }
+                latest?.copy(unreadCount = group.sumOf { it.unreadCount })
+            }
+            .sortedByDescending { timeById[it.id] ?: 0L }
     }
 
     val totalUnreadCount = remember(firestoreConversations) {
@@ -321,7 +322,7 @@ fun InboxScreen(
                         .widthIn(max = 840.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                 ) {
-                    items(filteredConversations) { conv ->
+                    items(filteredConversations, key = { it.id }) { conv ->
                         ConversationItemCard(
                             conversation = conv,
                             onClick = { onConversationClick(conv.id) }
@@ -356,12 +357,14 @@ private fun ConversationItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Avatar con indicador
+            var avatarLoadFailed by remember(conversation.participantAvatar) { mutableStateOf(false) }
             Box {
-                if (conversation.participantAvatar.isNotBlank()) {
+                if (conversation.participantAvatar.isNotBlank() && !avatarLoadFailed) {
                     AsyncImage(
                         model = conversation.participantAvatar,
                         contentDescription = conversation.participantName,
                         contentScale = ContentScale.Crop,
+                        onError = { avatarLoadFailed = true },
                         modifier = Modifier
                             .size(50.dp)
                             .clip(CircleShape)
@@ -384,15 +387,17 @@ private fun ConversationItemCard(
                     }
                 }
 
-                // Punto en línea
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF22C55E),
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
-                    modifier = Modifier
-                        .size(12.dp)
-                        .align(Alignment.BottomEnd)
-                ) {}
+                // Punto en línea - Únicamente para personas que están en línea
+                if (conversation.participantOnline) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF22C55E),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White),
+                        modifier = Modifier
+                            .size(12.dp)
+                            .align(Alignment.BottomEnd)
+                    ) {}
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))

@@ -9,6 +9,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -79,11 +80,26 @@ fun GlobalCallOverlay(
 
     fun stopRinging() {
         try {
-            ringtone?.stop()
+            ringtone?.let { if (it.isPlaying) it.stop() }
             ringtone = null
             vibrator?.cancel()
             vibrator = null
         } catch (_: Exception) {}
+    }
+
+    // Al minimizar la app o pasar a segundo plano, se detiene cualquier timbre sonando
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE || event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                stopRinging()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            stopRinging()
+        }
     }
 
     fun startRinging() {
@@ -179,7 +195,7 @@ fun GlobalCallOverlay(
     // Escuchar llamadas entrantes provenientes de Notificaciones Push cuando la app se abrió desde una alerta
     LaunchedEffect(currentUserId) {
         CallRequestBus.incomingPushEvents.collect { pushCallId ->
-            if (currentUserId != null && pushCallId.isNotBlank() && callStatus == "idle") {
+            if (currentUserId != null && pushCallId.isNotBlank() && callStatus == "idle" && !callRepo.isCallDismissed(pushCallId)) {
                 callRepo.observeCall(pushCallId, currentUserId) { incoming ->
                     if (incoming.status == "calling" && callStatus == "idle") {
                         activeSession = incoming
@@ -199,7 +215,7 @@ fun GlobalCallOverlay(
             userId = currentUserId,
             userEmail = currentUserEmail ?: ""
         ) { incoming ->
-            if (callStatus == "idle") {
+            if (callStatus == "idle" && !callRepo.isCallDismissed(incoming.id)) {
                 activeSession = incoming
                 callStatus = "incoming"
                 startRinging()
@@ -312,12 +328,16 @@ fun GlobalCallOverlay(
     }
 
     fun rejectIncomingCall() {
-        val session = activeSession ?: return
         stopRinging()
-        callRepo.endCall(session.id, "rejected")
-        callStatus = "idle"
+        val session = activeSession
         activeSession = null
+        callStatus = "idle"
         webrtcManager.close()
+        if (session != null) {
+            callRepo.dismissCall(session.id)
+            callRepo.endCall(session.id, "rejected")
+            RuwaNotifications.cancel(context, "call_${session.id}")
+        }
     }
 
     fun hangUpCall() {
@@ -326,6 +346,25 @@ fun GlobalCallOverlay(
         callRepo.endCall(session.id, "ended")
         callStatus = "ended"
         webrtcManager.close()
+    }
+
+    // Auto-timeout a los 25 segundos para evitar timbres infinitos si nadie atiende
+    LaunchedEffect(callStatus, activeSession?.id) {
+        if (callStatus == "incoming") {
+            delay(25_000L)
+            if (callStatus == "incoming") {
+                rejectIncomingCall()
+            }
+        }
+    }
+
+    // Botón físico o gesto atrás en Android cancela la llamada entrante de inmediato
+    BackHandler(enabled = callStatus != "idle") {
+        if (callStatus == "incoming") {
+            rejectIncomingCall()
+        } else {
+            hangUpCall()
+        }
     }
 
     fun toggleMute() {
@@ -502,6 +541,21 @@ fun GlobalCallOverlay(
                                     contentDescription = "Rechazar",
                                     tint = Color.White,
                                     modifier = Modifier.size(28.dp)
+                                )
+                            }
+
+                            // Silence Button
+                            IconButton(
+                                onClick = { stopRinging() },
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .background(Color(0xFF475569), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VolumeOff,
+                                    contentDescription = "Silenciar timbre",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
 

@@ -12,7 +12,12 @@ val ruwaLocalProperties = Properties().apply {
 }
 
 fun localSetting(name: String): String =
-    (ruwaLocalProperties.getProperty(name) ?: System.getenv(name) ?: "")
+    (ruwaLocalProperties.getProperty(name) ?: System.getenv(name) ?: when (name) {
+        "SUPABASE_URL" -> "https://yrwrvmcmxqmvkwmsuegc.supabase.co"
+        "RUWA_BACKEND_URL" -> "https://yrwrvmcmxqmvkwmsuegc.supabase.co/functions/v1/ruwajay-api"
+        "SUPABASE_ANON_KEY" -> "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyd3J2bWNteHFtdmt3bXN1ZWdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExMzY0NTUsImV4cCI6MjEwNjcxMjQ1NX0.cUwqizqGXbBfDtI00UrvL91fnagbEuvafV95JuS5t44"
+        else -> ""
+    })
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 

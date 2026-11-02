@@ -27,7 +27,6 @@ import RuwaJayLoader from './components/ui/RuwaJayLoader';
 import PropertyCompareModal from './components/property/PropertyCompareModal';
 import ChatNotificationToast from './components/chat/ChatNotificationToast';
 import ErrorBoundary from './components/ui/ErrorBoundary';
-import NotificationCenter from './components/ui/NotificationCenter';
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -226,7 +225,6 @@ function RuwaJayRoutes() {
       {showLayout && <MobileNav />}
       <PropertyCompareModal />
       <ChatNotificationToast />
-      {!isAuthRoute && <NotificationCenter />}
       <MobileAppConnectModal
         isOpen={mobileAppModalOpen}
         onClose={() => setMobileAppModalOpen(false)}

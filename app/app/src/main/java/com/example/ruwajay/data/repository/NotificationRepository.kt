@@ -18,13 +18,26 @@ object NotificationRepository {
         }.addOnFailureListener { onResult(Result.failure(it)) }
     }
     fun signOut(onResult: () -> Unit) {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return onResult()
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            val token = if (task.isSuccessful) task.result else null
-            if (token == null) { FirebaseAuth.getInstance().signOut();onResult();return@addOnCompleteListener }
-            val id = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
-            FirebaseFirestore.getInstance().collection("users").document(uid).collection("devices").document(id).delete()
-                .addOnCompleteListener { FirebaseMessaging.getInstance().deleteToken();FirebaseAuth.getInstance().signOut();onResult() }
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid != null) {
+            try { PublicProfileRepository.publishPresence(false) } catch (_: Exception) {}
+
+            try {
+                FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                    try {
+                        if (task.isSuccessful && task.result != null) {
+                            val token = task.result
+                            val id = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
+                            FirebaseFirestore.getInstance().collection("users").document(uid).collection("devices").document(id).delete()
+                        }
+                    } catch (_: Exception) {}
+                    try { FirebaseMessaging.getInstance().deleteToken() } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
         }
+        try {
+            FirebaseAuth.getInstance().signOut()
+        } catch (_: Exception) {}
+        onResult()
     }
 }

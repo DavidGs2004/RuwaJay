@@ -102,8 +102,8 @@ class ChatRepository(
             RuwaBackend.upload("chat", uri, contentResolver, roomId = roomId, mime = mime, expectedUid = uid)
                 .addOnSuccessListener { url ->
                     completeWithMessage(url)
-                }.addOnFailureListener {
-                    uploadWithFirebaseStorage()
+                }.addOnFailureListener { err ->
+                    onResult(Result.failure(Exception("Error al subir multimedia: ${err.localizedMessage ?: err.message}")))
                 }
         } else {
             uploadWithFirebaseStorage()
@@ -119,8 +119,20 @@ class ChatRepository(
     }
 
     fun deleteMessage(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {
+        deleteMessageForEveryone(roomId, messageId, onResult)
+    }
+
+    fun deleteMessageForEveryone(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {
         firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
             .update(mapOf("isDeleted" to true, "text" to "Este mensaje fue eliminado", "mediaUrl" to FieldValue.delete(), "image" to FieldValue.delete(), "deletedAt" to FieldValue.serverTimestamp()))
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
+
+    fun deleteMessageForMe(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {
+        val uid = auth.currentUser?.uid ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
+        firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
+            .update("deletedFor.$uid", true)
             .addOnSuccessListener { onResult(Result.success(Unit)) }
             .addOnFailureListener { onResult(Result.failure(it)) }
     }

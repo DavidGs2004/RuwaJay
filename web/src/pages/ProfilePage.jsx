@@ -607,19 +607,19 @@ export default function ProfilePage() {
 
     setVerifyBusy(true);
     try {
-      if (isVerified) {
-        // Para usuario ya verificado: actualización directa de datos de contacto sin revocar certificación
+      const isReplacing = Boolean(
+        (dpiForm.documentPhoto && dpiForm.documentPhoto !== user?.dpiData?.documentPhoto) ||
+        (cleanCui !== (user?.dpiData?.cui || ''))
+      );
+      if (isVerified && !isReplacing) {
+        // Para usuario ya verificado: actualización directa de datos de contacto y domicilio sin revocar certificación
         await updateDpiData({
-          cui: cleanCui,
           department: sanitizeText(dpiForm.department),
           municipality: sanitizeText(dpiForm.municipality),
-          birthDate: sanitizeText(dpiForm.birthDate),
-          expirationDate: sanitizeText(dpiForm.expirationDate),
           legalAddress: sanitizeText(dpiForm.legalAddress),
           emergencyName: sanitizeText(dpiForm.emergencyName),
           emergencyPhone: sanitizeText(dpiForm.emergencyPhone),
           emergencyRelation: sanitizeText(dpiForm.emergencyRelation),
-          ...(dpiForm.documentPhoto ? { documentPhoto: dpiForm.documentPhoto } : {}),
         });
         setVerifyBusy(false);
         setShowDpiModal(false);
@@ -647,9 +647,9 @@ export default function ProfilePage() {
       setShowDpiSuccessModal(true);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 3500);
-    } catch {
+    } catch (err) {
       setVerifyBusy(false);
-      setDpiError('Hubo un problema al procesar la verificación. Intenta nuevamente.');
+      setDpiError(err?.message || 'Hubo un problema al procesar la verificación. Intenta nuevamente.');
     }
   };
 
@@ -2473,11 +2473,17 @@ export default function ProfilePage() {
                       {req.documentPhoto && (
                         <div className="mt-3 flex items-center justify-between rounded-2xl bg-amber-500/10 border border-amber-300/40 p-3">
                           <div className="flex items-center gap-3">
-                            <img
-                              src={req.documentPhoto}
-                              alt="Miniatura DPI"
-                              className="h-12 w-18 object-cover rounded-xl border border-amber-300 shadow-xs"
-                            />
+                            <div
+                              onClick={() => setViewingDpiPhoto(req.documentPhoto)}
+                              className="h-14 w-20 shrink-0 overflow-hidden rounded-xl border border-amber-300 shadow-xs bg-black/5 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+                              title="Toca para ampliar foto"
+                            >
+                              <PrivateMedia
+                                src={req.documentPhoto}
+                                alt="Miniatura DPI"
+                                className="h-full w-full object-cover rounded-xl"
+                              />
+                            </div>
                             <div>
                               <p className="text-xs font-black text-amber-950">Foto de Documento Adjunta</p>
                               <p className="text-[11px] text-amber-800">El usuario adjuntó imagen frontal de su DPI.</p>
@@ -3947,8 +3953,8 @@ export default function ProfilePage() {
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-4 rounded-2xl border border-dashed border-[#D4962A]/50 bg-[#FAF5EE]/40 p-4">
                   {dpiForm.documentPhoto ? (
-                    <div className="relative w-36 h-24 rounded-xl overflow-hidden border border-dorado shadow-xs bg-black">
-                      <img src={dpiForm.documentPhoto} alt="DPI" className="w-full h-full object-cover" />
+                    <div className="relative w-36 h-24 rounded-xl overflow-hidden border border-dorado shadow-xs bg-black/5 flex items-center justify-center">
+                      <PrivateMedia src={dpiForm.documentPhoto} alt="DPI" className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => setDpiForm({ ...dpiForm, documentPhoto: null })}
@@ -4845,11 +4851,13 @@ export default function ProfilePage() {
             >
               <X size={18} />
             </button>
-            <img
-              src={viewingDpiPhoto}
-              alt="Foto del DPI"
-              className="max-h-[82vh] w-auto max-w-full object-contain mx-auto"
-            />
+            <div className="flex items-center justify-center max-h-[82vh] p-2 bg-black">
+              <PrivateMedia
+                src={viewingDpiPhoto}
+                alt="Foto del DPI"
+                className="max-h-[80vh] w-auto max-w-full object-contain mx-auto rounded-lg"
+              />
+            </div>
             <div className="bg-black/90 p-3 text-center text-xs text-white/80 font-bold">
               Documento de Identificación (DPI) presentado para verificación
             </div>
