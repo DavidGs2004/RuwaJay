@@ -23,7 +23,7 @@ class RuwaMessagingService : FirebaseMessagingService() {
 
         fun ensureNotificationChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= 26) {
-                val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
                 
                 // Canal 1: Mensajes y Alertas
                 val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -109,7 +109,7 @@ object RuwaNotifications {
     @Synchronized
     fun show(context: Context, title: String, body: String, path: String, eventId: String): Boolean {
         RuwaMessagingService.ensureNotificationChannel(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         if (eventId in delivered) return true
@@ -174,7 +174,7 @@ object RuwaNotifications {
     @Synchronized
     fun showCall(context: Context, title: String, body: String, path: String, eventId: String, callId: String): Boolean {
         RuwaMessagingService.ensureNotificationChannel(context)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
         if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(RuwaMessagingService.CHANNEL_CALLS_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         if (eventId in delivered) return true
@@ -259,7 +259,9 @@ object RuwaNotifications {
     }
 
     fun cancel(context: Context, eventId: String) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(eventId.hashCode())
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            manager?.cancel(eventId.hashCode())
+        } catch (_: Exception) {}
     }
 }

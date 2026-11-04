@@ -32,6 +32,10 @@ android {
         versionCode = 6
         versionName = "2.6.1"
 
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
+
         buildConfigField("String", "MAPBOX_ACCESS_TOKEN", "\"${localSetting("MAPBOX_ACCESS_TOKEN")}\"")
         buildConfigField("String", "RUWA_BACKEND_URL", "\"${localSetting("RUWA_BACKEND_URL")}\"")
         buildConfigField("String", "SUPABASE_URL", "\"${localSetting("SUPABASE_URL")}\"")
