@@ -470,7 +470,7 @@ fun PropertyDetailScreen(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // ── ESTIMADOR DE PRESUPUESTO MENSUAL (EXACTO A LA WEB) ──
+                    // ── ESTIMADOR DE PRESUPUESTO MENSUAL (EXACTO Y EMPATADO CON LA WEB) ──
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
@@ -481,25 +481,73 @@ fun PropertyDetailScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Calculate, null, tint = BrandForest, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Estimador de presupuesto mensual", fontWeight = FontWeight.Black, fontSize = 15.sp, color = BrandTextPrimary)
+                                Text("Simulador Financiero de Contrato", fontWeight = FontWeight.Black, fontSize = 15.sp, color = BrandTextPrimary)
                             }
                             Spacer(Modifier.height(10.dp))
+
+                            // Selector interactivo de meses de contrato (Igual a la Web)
+                            Text("Plazo de contrato deseado:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandTextSecondary)
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(6, 12, 18, 24).forEach { months ->
+                                    val isSelected = leaseMonths == months
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { leaseMonths = months },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) BrandForest else BrandCremaDark,
+                                        border = if (isSelected) null else BorderStroke(1.dp, BrandBorder)
+                                    ) {
+                                        Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "$months meses",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else BrandTextPrimary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            val monthlyTotal = property.price + maintenanceFee
+                            val firstMonthTotal = monthlyTotal + depositAmount
+                            val totalContractCost = (monthlyTotal * leaseMonths) + depositAmount
+
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Renta base mensual:", fontSize = 13.sp, color = BrandTextSecondary)
                                 Text("Q ${"%,.2f".format(property.price)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandTextPrimary)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Depósito de garantía (reembolsable):", fontSize = 13.sp, color = BrandTextSecondary)
-                                Text("Q ${"%,.2f".format(depositAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandTextPrimary)
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("Mantenimiento y servicios:", fontSize = 13.sp, color = BrandTextSecondary)
                                 Text("Q ${"%,.2f".format(maintenanceFee)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandTextPrimary)
                             }
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = BrandBorder)
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Total primer mes (Renta + Depósito):", fontWeight = FontWeight.Black, fontSize = 13.sp, color = BrandForest)
-                                Text("Q ${"%,.2f".format(property.price + depositAmount + maintenanceFee)}", fontWeight = FontWeight.Black, fontSize = 14.sp, color = BrandForest)
+                                Text("Depósito de garantía (reembolsable):", fontSize = 13.sp, color = BrandTextSecondary)
+                                Text("Q ${"%,.2f".format(depositAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandTextPrimary)
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = BrandBorder)
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Pago mensual regular:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = BrandTextPrimary)
+                                Text("Q ${"%,.2f".format(monthlyTotal)}", fontWeight = FontWeight.Black, fontSize = 13.sp, color = BrandTextPrimary)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Inversión inicial (Mes 1 + Depósito):", fontWeight = FontWeight.Black, fontSize = 13.sp, color = BrandTerracota)
+                                Text("Q ${"%,.2f".format(firstMonthTotal)}", fontWeight = FontWeight.Black, fontSize = 14.sp, color = BrandTerracota)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Proyección total ($leaseMonths meses):", fontWeight = FontWeight.Black, fontSize = 13.sp, color = BrandForest)
+                                Text("Q ${"%,.2f".format(totalContractCost)}", fontWeight = FontWeight.Black, fontSize = 14.sp, color = BrandForest)
                             }
                         }
                     }
