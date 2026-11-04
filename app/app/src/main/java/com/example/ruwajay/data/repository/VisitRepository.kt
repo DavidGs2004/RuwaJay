@@ -54,17 +54,17 @@ class VisitRepository(
             return
         }
 
-        RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId,"date" to cleanDate,"time" to cleanTime,"notes" to notes))
-            .addOnSuccessListener { response ->
-                val id = response["id"] as? String
-                if (!id.isNullOrBlank()) {
-                    onResult(Result.success(id))
-                } else {
-                    fallbackCreateVisitInFirestore(propertyId, propertyTitle, propertyAddress, ownerId, ownerName, cleanDate, cleanTime, notes, user, onResult)
-                }
-            }.addOnFailureListener {
-                fallbackCreateVisitInFirestore(propertyId, propertyTitle, propertyAddress, ownerId, ownerName, cleanDate, cleanTime, notes, user, onResult)
+        fallbackCreateVisitInFirestore(
+            propertyId, propertyTitle, propertyAddress, ownerId, ownerName,
+            cleanDate, cleanTime, notes, user
+        ) { result ->
+            onResult(result)
+            if (result.isSuccess) {
+                try {
+                    RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId, "date" to cleanDate, "time" to cleanTime, "notes" to notes))
+                } catch (_: Exception) {}
             }
+        }
     }
 
     private fun fallbackCreateVisitInFirestore(
@@ -130,13 +130,16 @@ class VisitRepository(
     }
 
     fun updateVisitStatus(visitId: String, newStatus: String, onResult: (Result<Unit>) -> Unit) {
-        RuwaBackend.invoke("changeVisitStatus", mapOf("visitId" to visitId,"status" to newStatus))
-            .addOnSuccessListener { onResult(Result.success(Unit)) }
-            .addOnFailureListener {
-                firestore.collection("visits").document(visitId)
-                    .update("status", newStatus, "updatedAt", FieldValue.serverTimestamp())
-                    .addOnSuccessListener { onResult(Result.success(Unit)) }
-                    .addOnFailureListener { err -> onResult(Result.failure(err)) }
+        firestore.collection("visits").document(visitId)
+            .update("status", newStatus, "updatedAt", FieldValue.serverTimestamp())
+            .addOnSuccessListener {
+                onResult(Result.success(Unit))
+                try {
+                    RuwaBackend.invoke("changeVisitStatus", mapOf("visitId" to visitId, "status" to newStatus))
+                } catch (_: Exception) {}
+            }
+            .addOnFailureListener { err ->
+                onResult(Result.failure(err))
             }
     }
 
