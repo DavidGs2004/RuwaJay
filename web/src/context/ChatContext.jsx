@@ -32,74 +32,72 @@ export function ChatProvider({ children }) {
   useEffect(() => { activeConversationIdRef.current = activeConversationId; }, [activeConversationId]);
   const [userPresences, setUserPresences] = useState({});
 
+  // Optimize Firestore usage: Only observe presence for the active conversation's participant
   useEffect(() => {
-    if (!firestore || !user?.id) return;
-    const participantIds = items.map(item => otherParticipantId(item, user.id)).filter(Boolean);
-    const uniqueIds = [...new Set(participantIds)];
-    if (uniqueIds.length === 0) return;
+    if (!firestore || !user?.id || !activeConversationId) return;
+    const activeItem = items.find(i => i.id === activeConversationId);
+    const otherId = activeItem ? otherParticipantId(activeItem, user.id) : null;
+    if (!otherId) return;
 
-    const unsubs = uniqueIds.map(otherId => {
-      return onSnapshot(doc(firestore, 'public_profiles', otherId), snap => {
-        if (!snap.exists()) return;
-        const data = snap.data() || {};
-        const avatar = data.avatarImage || data.avatar || data.photoURL || data.photoUrl || null;
-        const isOnline = Boolean(data.isOnline);
-        const name = data.name || null;
-        setUserPresences(prev => ({
-          ...prev,
-          [otherId]: { avatar, isOnline, name }
-        }));
-      }, () => {
-        onSnapshot(doc(firestore, 'users', otherId), fallbackSnap => {
-          if (!fallbackSnap.exists()) return;
-          const data = fallbackSnap.data() || {};
-          const avatar = data.avatarImage || data.avatar || data.photoURL || data.photoUrl || null;
-          const isOnline = Boolean(data.isOnline);
-          const name = data.name || null;
-          setUserPresences(prev => ({
-            ...prev,
-            [otherId]: { avatar, isOnline, name }
-          }));
-        }, () => {});
-      });
+    let unsubFallback = null;
+    const unsubscribeProfile = onSnapshot(doc(firestore, 'public_profiles', otherId), snap => {
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      const avatar = data.avatarImage || data.avatar || data.photoURL || data.photoUrl || null;
+      const isOnline = Boolean(data.isOnline);
+      const name = data.name || null;
+      setUserPresences(prev => ({
+        ...prev,
+        [otherId]: { avatar, isOnline, name }
+      }));
+    }, () => {
+      // Do not cascade aggressive fallback loops to users/{id}
     });
 
     return () => {
-      unsubs.forEach(u => u());
+      unsubscribeProfile();
+      unsubFallback?.();
     };
-  }, [items, user?.id]);
+  }, [activeConversationId, items, user?.id]);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
   const markAsRead = useCallback(async room => {
     const currentUid = user?.id || firebaseAuth?.currentUser?.uid;
     if (!room || !currentUid || !isViewingChat()) return;
 
-    // La bandeja agrupa por contacto varias conversaciones (por inmueble). Al
-    // abrir una, todas las conversaciones de ese contacto deben quedar leidas.
     const target = itemsRef.current.find(item => item.id === room);
+    if (!target) return;
+
+    const getUnread = (item) => {
+      if (!item) return 0;
+      if (typeof item.unreadCount === 'object' && item.unreadCount !== null) {
+        return Number(item.unreadCount[currentUid]) || 0;
+      }
+      return typeof item.unreadCount === 'number' ? item.unreadCount : 0;
+    };
+
     const contactId = otherParticipantId(target, currentUid);
-    const matchingRooms = itemsRef.current.filter(item => {
-      if (item.id === room) return true;
+    const roomsToMark = itemsRef.current.filter(item => {
+      if (item.id === room) return getUnread(item) > 0;
       const otherId = otherParticipantId(item, currentUid);
-      if (contactId && otherId === contactId) return true;
+      if (contactId && otherId === contactId) {
+        return getUnread(item) > 0;
+      }
       return false;
     }).map(item => item.id);
-    const uniqueRoomIds = [...new Set([room, ...matchingRooms].filter(Boolean))];
+
+    // Evitar bucle recursivo de escrituras si ya todo está leído
+    if (roomsToMark.length === 0) return;
+
     const readAt = new Date();
     const readTime = readAt.getTime();
-
-    // Guardar en la memoria local para que ningún snapshot de Firestore
-    // con escritura pendiente (null) revierta la lectura a no leído.
-    for (const rId of uniqueRoomIds) {
+    for (const rId of roomsToMark) {
       locallyReadRoomsRef.current.set(rId, readTime);
     }
 
-    // Descartar toast activo si corresponde a esta conversacion o contacto
-    setActiveToast(current => (current && uniqueRoomIds.includes(current.convId) ? null : current));
+    setActiveToast(current => (current && roomsToMark.includes(current.convId) ? null : current));
 
-    // Actualizacion optimista: evita que el indicador salte 1 -> 2 -> 1
-    // mientras Firestore confirma las escrituras.
-    setItems(current => current.map(item => uniqueRoomIds.includes(item.id)
+    setItems(current => current.map(item => roomsToMark.includes(item.id)
       ? {
           ...item,
           readAt: { ...(item.readAt || {}), [currentUid]: readAt },
@@ -109,7 +107,7 @@ export function ChatProvider({ children }) {
         }
       : item));
 
-    const results = await Promise.allSettled(uniqueRoomIds.map(id => markConversationRead(id, readAt)));
+    const results = await Promise.allSettled(roomsToMark.map(id => markConversationRead(id, readAt)));
     const failure = results.find(result => result.status === 'rejected');
     if (failure) setChatError(failure.reason?.message || 'No se pudo marcar el chat como leido.');
   }, [user?.id]);
@@ -180,6 +178,9 @@ export function ChatProvider({ children }) {
       unreadCount: calculatedUnread
     };
   }, [user?.id, userPresences]);
+  // Profile updates change presentation, not the lifetime of the room listener.
+  const decorateRef = useRef(decorate);
+  useEffect(() => { decorateRef.current = decorate; }, [decorate]);
   useEffect(() => {
     setItems([]); setMessages([]); setDirect(null); setActiveConversationId(null); setActiveToast(null); previous.current = null;
     sessionStartTime.current = Date.now();
@@ -216,7 +217,7 @@ export function ChatProvider({ children }) {
           const isUnread = unreadConversation(item, user.id);
 
           if (isFromOther && hasNewTimestamp && isLiveInSession && !isCurrentlyOpen && isUnread) {
-            const value = decorate(item);
+            const value = decorateRef.current(item);
             setActiveToast({
               convId: item.id,
               senderName: value.participantName,
@@ -229,14 +230,13 @@ export function ChatProvider({ children }) {
       }
       previous.current = next; setItems(reconciledValues); setChatError('');
     }, error => setChatError(error.message));
-  }, [user?.id, decorate]);
+  }, [user?.id]);
   useEffect(() => {
     setDirect(null); setMessages([]);
     if (!user?.id || !activeConversationId) return;
     const a = subscribeToConversation(activeConversationId, user.id, setDirect, error => setChatError(error.message));
     const b = subscribeToMessages(activeConversationId, value => {
       setMessages(value);
-      if (isViewingChat()) markAsRead(activeConversationId);
     }, error => setChatError(error.message));
     return () => { a(); b(); };
   }, [user?.id, activeConversationId, markAsRead]);

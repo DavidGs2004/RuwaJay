@@ -1,9 +1,26 @@
-import { assert } from './errors.js';
+import { ApiError, assert } from './errors.js';
 export class SupabaseFiles {
   constructor({url,serviceKey,fetcher=fetch}){assert(/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url)&&serviceKey,500,'configuration','Supabase Storage no está configurado.');this.url=url;this.key=serviceKey;this.fetcher=fetcher;}
   async request(path,{method='POST',body=null,contentType='application/json'}={}){
     const response=await this.fetcher(this.url+'/storage/v1/'+path,{method,headers:{apikey:this.key,Authorization:'Bearer '+this.key,'Content-Type':contentType,'x-upsert':'false'},body,signal:AbortSignal.timeout(30000)});
-    assert(response.ok,503,'unavailable','No se pudo completar la operación de archivos.');return response.json();
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      const reason = String(detail.message || detail.error || '').toLowerCase();
+      if (/bucket.*not found|bucket.*does not exist/.test(reason)) {
+        throw new ApiError(503,'storage-not-configured','Falta configurar el bucket de archivos en Supabase Storage.');
+      }
+      if (/mime|content.?type/.test(reason)) {
+        throw new ApiError(400,'storage-format-not-allowed','Supabase Storage no permite este formato. Actualiza los formatos del bucket de chat.');
+      }
+      if (response.status === 413 || /size|too large|maximum/.test(reason)) {
+        throw new ApiError(413,'resource-exhausted','El archivo supera el tamaño permitido por el almacenamiento.');
+      }
+      if ([401,403].includes(response.status)) {
+        throw new ApiError(503,'storage-configuration','El servidor no tiene acceso a Supabase Storage. Revisa su configuración.');
+      }
+      throw new ApiError(503,'unavailable','No se pudo completar la operación de archivos.');
+    }
+    return response.json();
   }
   encoded(bucket,path){return encodeURIComponent(bucket)+'/'+path.split('/').map(encodeURIComponent).join('/');}
   async upload(bucket,path,bytes,mime){await this.request('object/'+this.encoded(bucket,path),{body:bytes,contentType:mime});return ['property-images','profile-images'].includes(bucket)?this.url+'/storage/v1/object/public/'+this.encoded(bucket,path):'supabase://'+bucket+'/'+path;}

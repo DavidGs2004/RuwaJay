@@ -114,3 +114,29 @@ test('Only the chat participants can start and answer a call',async()=>{
   await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(),'active_calls','valid')));
   await assertFails(updateDoc(doc(receiver,'active_calls','valid'),{callerId:'owner'}));
 });
+
+for (const sender of ['tenant','owner']) {
+  test(`${sender} sends every media type and deletion stays scoped to the user`, async () => {
+    const other = sender === 'tenant' ? 'owner' : 'tenant';
+    const db = env.authenticatedContext(sender).firestore();
+    const recipient = env.authenticatedContext(other).firestore();
+    for (const type of ['text','image','audio','video']) {
+      const id = sender + '-' + type;
+      const own = doc(db,'conversations','room','messages',id);
+      const received = doc(recipient,'conversations','room','messages',id);
+      await assertSucceeds(setDoc(own,{senderId:sender,type,text:'Message',mediaUrl:'https://example.test/media',createdAt:serverTimestamp()}));
+      await assertSucceeds(getDoc(received));
+      await assertSucceeds(updateDoc(received,{['deletedFor.'+other]:true}));
+      await assertFails(updateDoc(received,{['deletedFor.'+sender]:true}));
+      await assertFails(updateDoc(received,{isDeleted:true,text:'Forged deletion'}));
+      await assertSucceeds(updateDoc(own,{['deletedFor.'+sender]:true}));
+      const { deleteField } = await import('firebase/firestore');
+      await assertSucceeds(updateDoc(own,{isDeleted:true,text:'Este mensaje fue eliminado',mediaUrl:deleteField(),image:deleteField(),deletedAt:serverTimestamp()}));
+      const deleted = await getDoc(received);
+      if (!deleted.data().isDeleted || deleted.data().mediaUrl) throw new Error('Deletion did not reach recipient');
+      const stranger = doc(env.authenticatedContext('stranger').firestore(),'conversations','room','messages',id);
+      await assertFails(getDoc(stranger));
+      await assertFails(updateDoc(stranger,{'deletedFor.stranger':true}));
+    }
+  });
+}

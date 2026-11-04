@@ -1,3 +1,4 @@
+import { FirestoreRest } from '../../archivos varios/servicios/supabase/functions/_shared/firestore.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { firebaseVerifier, googleTokenProvider } from '../../archivos varios/servicios/supabase/functions/_shared/google.js';
@@ -64,4 +65,54 @@ test('Gateway rejects unauthorized origins and oversized uploads before performi
   const denied=await handler(new Request('https://api.test/ruwajay-api',{method:'OPTIONS',headers:{Origin:'https://unrelated.test'}}));assert.equal(denied.status,403);
   const accepted=await handler(new Request('https://api.test/ruwajay-api',{method:'OPTIONS',headers:{Origin:'https://ruwa-jay.web.app'}}));assert.equal(accepted.status,204);assert.equal(accepted.headers.get('Access-Control-Allow-Origin'),'https://ruwa-jay.web.app');
   const large=await handler(new Request('https://api.test/ruwajay-api/upload',{method:'POST',headers:{Authorization:'Bearer valid','Content-Length':String(21*1024*1024)},body:'small'}));assert.equal(large.status,413);assert.equal(uploads,0);
+});
+
+test('Either participant can upload and send every chat media type with authenticated identity',async()=>{
+  const room={exists:true,path:'conversations/room',data:{participants:['tenant','owner'],readAt:{}}};
+  const uploads=[];
+  const db={get:async path=>path==='conversations/room'?room:{exists:true,data:{name:path.endsWith('owner')?'Owner':'Tenant',role:path.endsWith('owner')?'owner':'seeker'}}};
+  const service=new RuwaService({db,files:{upload:async(bucket,path,bytes,mime)=>{uploads.push(mime);return 'supabase://'+bucket+'/'+path;}}});
+  for(const uid of ['tenant','owner']){
+    const user={uid,name:uid,claims:{}};
+    for(const [type,mime] of [['text',null],['image','image/gif'],['audio','audio/webm;codecs=opus'],['video','video/mp4']]){
+      const written=new Map();
+      const tx={get:db.get,set:(path,data)=>written.set(path,data),create:(path,data)=>written.set(path,data),update:(path,data)=>written.set(path,data)};
+      const media=mime?await service.upload(user,{kind:'chat',roomId:'room',mime,bytes:new Uint8Array([1,2,3])}):null;
+      const result=await service.sendMessage(tx,user,{roomId:'room',type,text:type==='text'?'Hello':'',...(media?{mediaUrl:media.url}:{}),senderId:'forged'});
+      const message=written.get('conversations/room/messages/'+result.id);
+      assert.equal(message.senderId,uid);
+      assert.equal(message.type,type);
+      if(media)assert.equal(message.mediaUrl,media.url);
+      const other=uid==='tenant'?'owner':'tenant';
+      assert.equal(written.get('conversations/room')['unreadCount.'+other],1);
+    }
+  }
+  assert.deepEqual(uploads,['image/gif','audio/webm','video/mp4','image/gif','audio/webm','video/mp4']);
+  await assert.rejects(service.upload({uid:'stranger',claims:{}},{kind:'chat',roomId:'room',mime:'video/mp4',bytes:new Uint8Array([1])}),error=>error.status===403);
+});
+
+test('Storage failures identify configuration, formats and size without exposing upstream details',async()=>{
+  const cases=[
+    [404,{message:'Bucket not found'},503,'storage-not-configured'],
+    [400,{message:'mime type video/mp4 is not supported'},400,'storage-format-not-allowed'],
+    [413,{message:'The object exceeded the maximum allowed size'},413,'resource-exhausted'],
+    [403,{message:'upstream secret diagnostic'},503,'storage-configuration'],
+    [503,{message:'upstream secret diagnostic'},503,'unavailable'],
+  ];
+  for(const [status,body,expectedStatus,code] of cases){
+    const storage=new SupabaseFiles({url:'https://test-project.supabase.co',serviceKey:'server-secret',fetcher:async()=>Response.json(body,{status})});
+    await assert.rejects(storage.upload('chat-media','chat/room/user/file',new Uint8Array([1]),'video/mp4'),error=>{
+      assert.equal(error.status,expectedStatus);
+      assert.equal(error.code,code);
+      assert.doesNotMatch(error.message,/server-secret|upstream secret/);
+      return true;
+    });
+  }
+});
+
+test('Firestore quota errors retain their cause and return 429 instead of a generic 503', async()=>{
+  for (const status of [429,503]) {
+    const db=new FirestoreRest({projectId:'ruwa-jay',tokenProvider:async()=> 'server-token',fetcher:async()=>Response.json({error:{status:'RESOURCE_EXHAUSTED',message:'Quota exceeded'}},{status})});
+    await assert.rejects(db.get('users/user'),error=>error.status===429 && error.code==='RESOURCE_EXHAUSTED');
+  }
 });

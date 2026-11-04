@@ -1,17 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAccountActive(userData) {
-      return userData.get('accountStatus', '') in ['active','inactive','suspended']
-        ? userData.accountStatus == 'active'
-        : (userData.get('suspended', false) == false
-            && !(userData.get('status', 'active') in ['suspended','inactive']));
-    }
     function signedIn() {
-      return request.auth != null && (
-        !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        || isAccountActive(get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-      );
+      return request.auth != null;
     }
     function isAdmin() {
       return signedIn() && (
@@ -20,7 +11,12 @@ service cloud.firestore {
       );
     }
     function member(data) {
-      return signedIn() && request.auth.uid in data.get('participants', []);
+      return signedIn() && (
+        request.auth.uid in data.get('participants', [])
+        || data.get('seekerId', '') == request.auth.uid
+        || data.get('ownerId', '') == request.auth.uid
+        || data.get('tenantId', '') == request.auth.uid
+      );
     }
     function ownsProperty() { return signedIn() && resource.data.ownerId == request.auth.uid; }
     function validProfile(data) {
@@ -97,39 +93,54 @@ service cloud.firestore {
       }
     }
     match /conversations/{conversationId} {
-      allow read: if signedIn() && (
-        request.auth.uid in resource.data.get('participants', []) ||
+      allow list: if signedIn() && request.auth.uid in resource.data.participants;
+      allow get: if signedIn() && (
+        request.auth.uid in resource.data.participants ||
         member(resource.data) ||
         isAdmin()
       );
       allow create: if false;
-      allow update: if member(resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','unreadCount','clearedAt','lastMessage','lastMessageTimestamp','lastSenderId','lastSenderName','lastMessageId','activeCall'])
+      allow update: if signedIn() && (
+        member(resource.data) ||
+        request.auth.uid in resource.data.participants ||
+        isAdmin()
+      )
         && request.resource.data.get('readAt',{}).diff(resource.data.get('readAt',{})).affectedKeys().hasOnly([request.auth.uid])
         && request.resource.data.get('clearedAt',{}).diff(resource.data.get('clearedAt',{})).affectedKeys().hasOnly([request.auth.uid])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','unreadCount','clearedAt','lastMessage','lastMessageTimestamp','lastSenderId','lastSenderName','lastMessageId','activeCall'])
         && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt','unreadCount','clearedAt','activeCall'])
-          ? request.resource.data.get('unreadCount',{}).diff(resource.data.get('unreadCount',{})).affectedKeys().hasOnly([request.auth.uid])
-          : (request.resource.data.lastSenderId == request.auth.uid
-            && request.resource.data.lastMessageId != resource.data.get('lastMessageId','')
-            && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.senderId == request.auth.uid
-            && getAfter(/databases/$(database)/documents/conversations/$(conversationId)/messages/$(request.resource.data.lastMessageId)).data.createdAt == request.time));
+          ? true
+          : (request.resource.data.lastSenderId == request.auth.uid));
       allow delete: if isAdmin();
       match /messages/{messageId} {
-        function roomMember() { return member(get(/databases/$(database)/documents/conversations/$(conversationId)).data); }
-        allow read: if roomMember();
-        allow create: if roomMember() && request.resource.data.senderId == request.auth.uid
+        function chatParticipant() {
+          let userDoc = /databases/$(database)/documents/users/$(request.auth.uid);
+          let isSuspended = exists(userDoc) && (
+            get(userDoc).data.get('suspended', false) == true
+            || get(userDoc).data.get('accountStatus', 'active') == 'suspended'
+            || get(userDoc).data.get('status', 'active') == 'suspended'
+            || get(userDoc).data.get('status', 'active') == 'inactive'
+          );
+          return signedIn() && !isSuspended && (
+            member(get(/databases/$(database)/documents/conversations/$(conversationId)).data)
+            || isAdmin()
+          );
+        }
+        allow read: if signedIn() && (chatParticipant() || isAdmin());
+        allow create: if signedIn() && chatParticipant() && request.resource.data.senderId == request.auth.uid
           && request.resource.data.type in ['text','image','audio','video','location']
-          && request.resource.data.text is string && request.resource.data.text.size() <= 4000
-          && request.resource.data.createdAt == request.time;
-        allow update: if roomMember() && (
+          && request.resource.data.text is string && request.resource.data.text.size() <= 4000;
+        allow update: if signedIn() && chatParticipant() && (
           (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text','isEdited','editedAt','isDeleted','mediaUrl','image','deletedAt']))
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
             && request.resource.data.get('reactions',{}).diff(resource.data.get('reactions',{})).affectedKeys().hasOnly([request.auth.uid]))
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedFor'])
-            && request.resource.data.get('deletedFor',{}).diff(resource.data.get('deletedFor',{})).affectedKeys().hasOnly([request.auth.uid])));
-        allow delete: if roomMember() && resource.data.senderId == request.auth.uid;
+            && request.resource.data.deletedFor[request.auth.uid] == true)
+        );
+        allow delete: if signedIn() && ((chatParticipant() && resource.data.senderId == request.auth.uid) || isAdmin());
       }
     }
+
     match /visits/{visitId} {
       allow read: if signedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());
       allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || resource.data.tenantId == request.auth.uid || isAdmin());

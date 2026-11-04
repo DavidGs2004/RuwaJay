@@ -5,7 +5,7 @@ begin;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values
  ('property-images','property-images',true,8388608,array['image/jpeg','image/png','image/webp']),
  ('profile-images','profile-images',true,8388608,array['image/jpeg','image/png','image/webp']),
- ('chat-media','chat-media',false,20971520,array['image/jpeg','image/png','image/webp','audio/webm','audio/ogg','audio/mp4','audio/mpeg','audio/wav','video/webm']),
+ ('chat-media','chat-media',false,20971520,array['image/jpeg','image/png','image/webp','image/gif','image/avif','image/heic','image/heif','audio/webm','audio/ogg','audio/mp4','audio/mpeg','audio/wav','audio/x-wav','audio/aac','audio/flac','audio/x-m4a','audio/3gpp','audio/opus','video/webm','video/mp4','video/quicktime','video/3gpp','video/x-matroska','video/ogg']),
  ('verification','verification',false,8388608,array['image/jpeg','image/png','image/webp'])
 on conflict(id) do update set public=excluded.public,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
 

@@ -24,7 +24,9 @@ try {
 }
 
 const db=new FirestoreRest({projectId,tokenProvider});
-const files=new SupabaseFiles({url:Deno.env.get('SUPABASE_URL'),serviceKey:Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')});
+// A dedicated server-only key can replace a stale platform-injected credential.
+const storageKey = Deno.env.get('RUWA_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const files=new SupabaseFiles({url:Deno.env.get('SUPABASE_URL'),serviceKey:storageKey?.trim()});
 const push=async(token:string,notice:Notice)=>{
   const isCall = notice.type === 'call' || (notice as any).type === 'call';
   const response=await fetch('https://fcm.googleapis.com/v1/projects/'+projectId+'/messages:send',{

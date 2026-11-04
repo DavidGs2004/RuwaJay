@@ -10,7 +10,7 @@
     "build:vps": "vite build --base=/ruwajay/",
     "build:firebase": "vite build --base=/",
     "preview": "vite preview",
-    "test": "node --test tests/contracts.test.js",
+    "test": "node --test tests/contracts.test.js tests/chat-media.test.js tests/media-resolver.test.js",
     "test:rules": "node scripts/run-emulators.mjs firestore \"node --test tests/firestore.rules.test.js\"",
     "test:integration": "node scripts/run-emulators.mjs auth,firestore,functions \"node --test tests/integration.test.js\"",
     "test:browser": "node scripts/run-emulators.mjs auth,firestore,functions,storage \"playwright test\"",

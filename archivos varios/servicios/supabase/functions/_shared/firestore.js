@@ -52,7 +52,11 @@ export class FirestoreRest {
   }
   async request(path,body=null,method=body?'POST':'GET'){
     const token=await this.tokenProvider();const response=await this.fetcher(this.origin+'/v1/'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(20000)});
-    const data=await response.json();if(!response.ok){const error=new ApiError(response.status===404?404:503,data.error?.status||'unavailable',response.status===404?'Documento inexistente.':'No se pudo completar la operación de datos.');throw error;}return data;
+    const data=await response.json();if(!response.ok){
+      if (response.status === 429 || data.error?.status === 'RESOURCE_EXHAUSTED') {
+        throw new ApiError(429,'RESOURCE_EXHAUSTED','Firestore alcanzó su cuota o límite de solicitudes. Revisa el uso del proyecto Firebase.');
+      }
+      const error=new ApiError(response.status===404?404:503,data.error?.status||'unavailable',response.status===404?'Documento inexistente.':'No se pudo completar la operación de datos.');throw error;}return data;
   }
   async get(path,transaction){
     try {

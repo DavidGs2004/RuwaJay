@@ -35,14 +35,20 @@ class ChatRepository(
                 if (error != null) { onError(error); return@addSnapshotListener }
                 onChange(snapshot?.documents?.map { it.data.orEmpty() + ("id" to it.id) } ?: emptyList())
             }
+    private val recentlyRead = mutableSetOf<String>()
     fun markAsRead(roomId: String, onError: (Exception) -> Unit = {}) {
         val uid = auth.currentUser?.uid ?: return
+        if (recentlyRead.contains(roomId)) return
+        recentlyRead.add(roomId)
         firestore.collection("conversations").document(roomId).update(
             mapOf(
                 "readAt.$uid" to FieldValue.serverTimestamp(),
                 "unreadCount.$uid" to 0
             )
-        ).addOnFailureListener { onError(it) }
+        ).addOnFailureListener {
+            recentlyRead.remove(roomId)
+            onError(it)
+        }
     }
     fun markAllAsRead(userId: String, onResult: (Result<Unit>) -> Unit = {}) {
         firestore.collection("conversations")
@@ -121,8 +127,8 @@ class ChatRepository(
             RuwaBackend.upload("chat", uri, contentResolver, roomId = roomId, mime = mime, expectedUid = uid)
                 .addOnSuccessListener { url ->
                     completeWithMessage(url)
-                }.addOnFailureListener { err ->
-                    onResult(Result.failure(Exception("Error al subir multimedia: ${err.localizedMessage ?: err.message}")))
+                }.addOnFailureListener {
+                    uploadWithFirebaseStorage()
                 }
         } else {
             uploadWithFirebaseStorage()
@@ -142,10 +148,14 @@ class ChatRepository(
     }
 
     fun deleteMessageForEveryone(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {
-        firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
-            .update(mapOf("isDeleted" to true, "text" to "Este mensaje fue eliminado", "mediaUrl" to FieldValue.delete(), "image" to FieldValue.delete(), "deletedAt" to FieldValue.serverTimestamp()))
+        val docRef = firestore.collection("conversations").document(roomId).collection("messages").document(messageId)
+        docRef.update(mapOf("isDeleted" to true, "text" to "Este mensaje fue eliminado", "mediaUrl" to FieldValue.delete(), "image" to FieldValue.delete(), "deletedAt" to FieldValue.serverTimestamp()))
             .addOnSuccessListener { onResult(Result.success(Unit)) }
-            .addOnFailureListener { onResult(Result.failure(it)) }
+            .addOnFailureListener {
+                docRef.delete()
+                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { err -> onResult(Result.failure(err)) }
+            }
     }
 
     fun deleteMessageForMe(roomId: String, messageId: String, onResult: (Result<Unit>) -> Unit) {

@@ -52,7 +52,10 @@ export function createHandler({service,verifyIdentity,cronSecret,allowedOrigins=
     } catch(error){
       onError(error);
       console.error('[RUWAJAY_HANDLER_ERROR]', error);
-      if(error instanceof ApiError)return json({error:{code:error.code,message:error.message}},error.status);
+      if(error instanceof ApiError){
+        if(error.status===429)headers['Retry-After']='60';
+        return json({error:{code:error.code,message:error.message}},error.status);
+      }
       return json({error:{code:'internal',message:'No se pudo completar la operación. Inténtalo de nuevo.'}},500);
     }
   };

@@ -14,6 +14,7 @@ export default function MediaSendPreviewModal({ media, onSend, onCancel }) {
 
   if (!media) return null;
 
+  const isAudio = media.type === 'audio';
   const isVideo = media.type === 'video' || (media.file && media.file.type.startsWith('video'));
 
   const handleConfirm = () => {
@@ -35,7 +36,7 @@ export default function MediaSendPreviewModal({ media, onSend, onCancel }) {
         </button>
 
         <span className="text-sm font-medium text-white/70">
-          {isVideo ? 'Vista previa de video' : 'Vista previa de imagen'}
+          {isAudio ? 'Vista previa de audio' : isVideo ? 'Vista previa de video' : 'Vista previa de imagen'}
         </span>
 
         <div className="w-16" /> {/* Spacer */}
@@ -43,7 +44,9 @@ export default function MediaSendPreviewModal({ media, onSend, onCancel }) {
 
       {/* Main Preview Container */}
       <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
-        {isVideo ? (
+        {isAudio ? (
+          <audio controls src={media.url} className="max-w-full" />
+        ) : isVideo ? (
           <video
             controls
             autoPlay

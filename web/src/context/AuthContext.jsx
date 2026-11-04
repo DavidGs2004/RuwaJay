@@ -271,13 +271,12 @@ export function AuthProvider({ children }) {
     const accountId = user?.id;
     if (!accountId || !firestore) return;
 
-    const updatePresence = (isOnline) => {
+    let lastUpdate = 0;
+    const updatePresence = (isOnline, force = false) => {
+      const now = Date.now();
+      if (!force && now - lastUpdate < 30000) return; // Limit to at most once every 30 seconds
+      lastUpdate = now;
       try {
-        updateDoc(doc(firestore, 'users', accountId), {
-          isOnline: isOnline,
-          lastSeen: serverTimestamp()
-        }).catch(() => {});
-
         const rawAvatar = user?.avatarImage || user?.photoURL || user?.avatar || '';
         const effectiveAvatar = typeof rawAvatar === 'string' && rawAvatar.length <= 2048 && !rawAvatar.startsWith('data:') ? rawAvatar : '';
         const effectiveName = String(user?.name || user?.displayName || 'Usuario').slice(0, 120);
@@ -291,21 +290,22 @@ export function AuthProvider({ children }) {
       } catch {}
     };
 
-    updatePresence(true);
+    updatePresence(true, true);
 
     const handleVisibilityChange = () => {
-      updatePresence(document.visibilityState === 'visible');
+      if (document.visibilityState === 'visible') {
+        updatePresence(true);
+      }
     };
 
     const handleBeforeUnload = () => {
-      updatePresence(false);
+      updatePresence(false, true);
     };
 
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      updatePresence(false);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };

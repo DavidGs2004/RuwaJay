@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
@@ -26,7 +26,11 @@ try {
   console.warn('Firebase init warning:', err);
 }
 
-export const firestore = app ? getFirestore(app) : null;
+export const firestore = app
+  ? initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    })
+  : null;
 export const storage = app ? getStorage(app) : null;
 export const firebaseAuth = app ? getAuth(app) : null;
 export const googleProvider = app ? new GoogleAuthProvider() : null;

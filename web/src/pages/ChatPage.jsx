@@ -1,3 +1,4 @@
+import { chatMediaInfo } from '../lib/chatMedia';
 import PrivateMedia from '../components/chat/PrivateMedia';
 import NotificationCenter from '../components/ui/NotificationCenter';
 import MediaSendPreviewModal from '../components/chat/MediaSendPreviewModal';
@@ -19,6 +20,15 @@ import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { useCall } from '../context/CallContext';
 import { firebaseAuth } from '../lib/firebase';
+import { isMessageDeletedForMeLocally } from '../lib/chatService';
+
+function friendlyChatError(err, fallback) {
+  const msg = String(err?.message || err?.code || '');
+  if (/quota|cuota|resource[-_ ]?exhausted|429|operación de datos/i.test(msg)) {
+    return 'El servidor de datos (Firebase) alcanzó su límite diario de uso. Los envíos se reactivarán cuando se restablezca la cuota o se amplíe el plan del proyecto.';
+  }
+  return msg || fallback;
+}
 
 function isUserMsg(message, currentUserId) {
   return Boolean(message && currentUserId && message.senderId === currentUserId);
@@ -151,6 +161,8 @@ export default function ChatPage() {
   const [audioReview, setAudioReview] = useState(null); // { blob, url, duration }
   const [audioPlaying, setAudioPlaying] = useState(false);
   const audioReviewRef = useRef(null);
+  const mediaSendingRef = useRef(false);
+  const recordingStartedAtRef = useRef(0);
   const recordingTimerRef = useRef(null);
   const recorderRef = useRef(null);
   const recordingStream = useRef(null);
@@ -249,12 +261,7 @@ export default function ChatPage() {
     }
   }, [activeConversationId, conversations, urlConversationId, urlPropertyId, setActiveConversationId]);
 
-  // Mark active conversation as read
-  useEffect(() => {
-    if (activeConversationId) {
-      markAsRead(activeConversationId);
-    }
-  }, [activeConversationId, markAsRead]);
+// markAsRead is handled on contact selection
 
   // Posicionar directamente en el último mensaje sin animación de transición al entrar a un chat
   useLayoutEffect(() => {
@@ -369,7 +376,7 @@ export default function ChatPage() {
         window.alert('Para enviar mensajes en tiempo real debes cerrar esta sesión e iniciar nuevamente con Google. Así ambos usuarios recibirán el mismo historial.');
         return;
       }
-      window.alert('No se pudo enviar el mensaje. Revisa tu conexión e inténtalo otra vez.');
+      window.alert('No se pudo enviar el mensaje: ' + friendlyChatError(error, 'Revisa tu conexión e inténtalo otra vez.'));
     }
   };
 
@@ -390,7 +397,7 @@ export default function ChatPage() {
       setConfirmDeleteId(null);
     } catch (error) {
       console.error('Error al eliminar mensaje:', error);
-      window.alert('No se pudo eliminar el mensaje.');
+      window.alert('No se pudo eliminar el mensaje: ' + friendlyChatError(error, 'Intenta de nuevo.'));
     }
   };
 
@@ -425,7 +432,8 @@ export default function ChatPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStream.current = stream;
-      const recorder = new MediaRecorder(stream);
+      const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       const chunks = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunks.push(event.data);
@@ -435,11 +443,12 @@ export default function ChatPage() {
         clearInterval(recordingTimerRef.current);
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         const url = URL.createObjectURL(blob);
-        setAudioReview({ blob, url, duration: recordingSeconds });
+        setAudioReview({ blob, url, duration: Math.round((Date.now() - recordingStartedAtRef.current) / 1000) });
         setIsRecordingAudio(false);
       };
 
       recorderRef.current = recorder;
+      recordingStartedAtRef.current = Date.now();
       recorder.start();
       setIsRecordingAudio(true);
       setRecordingSeconds(0);
@@ -447,6 +456,7 @@ export default function ChatPage() {
         setRecordingSeconds(sec => sec + 1);
       }, 1000);
     } catch {
+      recordingStream.current?.getTracks().forEach(track => track.stop());
       window.alert('Permite el acceso al micrófono de tu dispositivo para grabar audio.');
     }
   };
@@ -472,16 +482,19 @@ export default function ChatPage() {
   };
 
   const handleSendAudioReview = async () => {
-    if (!audioReview?.blob || !activeConversation?.id) return;
+    if (!audioReview?.blob || !activeConversation?.id || mediaSendingRef.current) return;
     const blobToSend = audioReview.blob;
     const room = activeConversation.id;
-    handleCancelAudio();
+    mediaSendingRef.current = true;
     try {
       await sendMessage(room, '', blobToSend, true, replyingTo);
+      handleCancelAudio();
       setReplyingTo(null);
     } catch (err) {
       console.error('Error al enviar audio:', err);
-      window.alert('No se pudo enviar el audio: ' + (err?.message || 'Intenta nuevamente.'));
+      window.alert('No se pudo enviar el audio: ' + friendlyChatError(err, 'Intenta nuevamente.'));
+    } finally {
+      mediaSendingRef.current = false;
     }
   };
 
@@ -500,24 +513,34 @@ export default function ChatPage() {
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const isVideo = file.type.startsWith('video');
+    let type;
+    try {
+      type = chatMediaInfo(file).type;
+    } catch (error) {
+      e.target.value = '';
+      window.alert(error.message);
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setPendingSendMedia({
       file,
       url: previewUrl,
       src: previewUrl,
-      type: isVideo ? 'video' : 'image',
+      type,
       name: file.name,
     });
     e.target.value = '';
   };
 
   const handleConfirmSendMedia = async (caption) => {
-    if (!pendingSendMedia || !activeConversation?.id) return;
+    if (!pendingSendMedia || !activeConversation?.id || mediaSendingRef.current) return;
     const mediaToSend = pendingSendMedia;
-    setPendingSendMedia(null);
+    mediaSendingRef.current = true;
+    let sent = false;
     try {
       await sendMessage(activeConversation.id, caption || '', mediaToSend.file, false, replyingTo);
+      sent = true;
+      setPendingSendMedia(null);
       setReplyingTo(null);
     } catch (error) {
       console.error('Error enviando archivo multimedia:', error);
@@ -525,9 +548,10 @@ export default function ChatPage() {
         window.alert('Para enviar mensajes en tiempo real debes cerrar esta sesión e iniciar nuevamente con Google.');
         return;
       }
-      window.alert('No se pudo enviar el archivo multimedia. Revisa tu conexión.');
+      window.alert('No se pudo enviar el archivo multimedia: ' + friendlyChatError(error, 'Revisa tu conexión.'));
     } finally {
-      if (mediaToSend.url) {
+      mediaSendingRef.current = false;
+      if (sent && mediaToSend.url) {
         URL.revokeObjectURL(mediaToSend.url);
       }
     }
@@ -966,7 +990,7 @@ export default function ChatPage() {
                 </div>
 
                 {(activeConversation.messages || [])
-                  .filter((msg) => !(user?.id && msg.deletedFor?.[user.id]))
+                  .filter((msg) => !(user?.id && (msg.deletedFor?.[user.id] || isMessageDeletedForMeLocally(activeConversation?.id, msg.id, user.id))))
                   .map((msg) => {
                   const isUser = isUserMsg(msg, user?.id);
                   const isDeleted = Boolean(msg.isDeleted);
@@ -1409,7 +1433,7 @@ export default function ChatPage() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*,video/*"
+                      accept="image/*,video/*,audio/*"
                       onChange={handleFileSelect}
                       className="hidden"
                     />

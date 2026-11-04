@@ -1,3 +1,4 @@
+import { createMediaResolver } from './mediaResolver';
 import { firebaseAuth, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 const defaultSupabaseUrl = 'https://yrwrvmcmxqmvkwmsuegc.supabase.co';
@@ -13,7 +14,17 @@ async function authorizedRequest(url,options,expectedUid){
   const account=requireSession(expectedUid),uid=account.uid;let response;
   for(let attempt=0;attempt<2;attempt++){
     const token=await account.getIdToken(attempt===1);requireSession(uid);
-    response=await fetch(url,{...options,headers:{...options.headers,Authorization:'Bearer '+token},signal:AbortSignal.timeout(60000)});
+    try {
+      response=await fetch(url,{...options,headers:{...options.headers,Authorization:'Bearer '+token},signal:AbortSignal.timeout(60000)});
+    } catch (networkErr) {
+      if (attempt === 1) {
+        const error = new Error('No se pudo conectar con el servidor. Revisa tu conexión a internet o intenta de nuevo.');
+        error.code = 'network-error';
+        error.status = 0;
+        throw error;
+      }
+      continue;
+    }
     if(response.status!==401)break;
   }
   requireSession(uid);
@@ -24,7 +35,14 @@ async function authorizedRequest(url,options,expectedUid){
     result = null;
   }
   if (!response.ok || result?.error) {
-    throw new Error(result?.error?.message || `Error del servidor (${response.status || '503'}).`);
+    let message = result?.error?.message;
+    if (response.status === 429 || result?.error?.code === 'RESOURCE_EXHAUSTED' || result?.code === 'RESOURCE_EXHAUSTED') {
+      message = 'El servidor alcanzó el límite temporal de solicitudes. Por favor espera un momento o intenta más tarde.';
+    }
+    const error = new Error(message || `Error del servidor (${response.status || '503'}).`);
+    error.status = response.status;
+    error.code = result?.error?.code || result?.code || (response.status === 429 ? 'resource-exhausted' : 'unavailable');
+    throw error;
   }
   return result.data;
 }
@@ -46,30 +64,9 @@ export async function uploadBackendMedia(kind,source,{roomId,propertyId,expected
   }
   const result=await authorizedRequest(url,{method:'POST',headers:{'Content-Type':contentType},body:blob},uid);return result.url;
 }
-const mediaCache = new Map();
-export function getCachedMediaUrl(reference) {
-  if (!reference) return '';
-  if (!reference.startsWith('supabase://')) return reference;
-  const entry = mediaCache.get(reference);
-  if (!entry || entry.uid !== firebaseAuth?.currentUser?.uid || entry.expiresAt <= Date.now()) {
-    mediaCache.delete(reference);
-    return null;
-  }
-  return entry.url;
-}
-export async function resolveMediaUrl(reference){
-  if(!reference?.startsWith('supabase://'))return reference;
-  const cached = getCachedMediaUrl(reference);
-  if(cached) return cached;
-  const uid = requireSession().uid;
-  try {
-    const res = await callBackend('resolveMedia',{reference},{expectedUid:uid});
-    const url = res?.url || null;
-    requireSession(uid);
-    if (url) mediaCache.set(reference, {url,uid,expiresAt:Date.now()+Math.max(0,(Number(res.expiresIn)||300)-60)*1000});
-    return url;
-  } catch (err) {
-    mediaCache.delete(reference);
-    throw err;
-  }
-}
+const privateMedia = createMediaResolver({
+  getUid: () => firebaseAuth?.currentUser?.uid || null,
+  resolve: (reference, uid) => callBackend('resolveMedia', { reference }, { expectedUid: uid }),
+});
+export const getCachedMediaUrl = privateMedia.cachedUrl;
+export const resolveMediaUrl = privateMedia.resolveUrl;

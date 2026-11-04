@@ -184,7 +184,6 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     DisposableEffect(conversationId, uid) {
         val a = repo.observeMessages(conversationId, onError = { error = it.message }) {
             messages = it
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) repo.markAsRead(conversationId)
         }
         val b = FirebaseFirestore.getInstance().collection("conversations").document(conversationId).addSnapshotListener { snap, failure ->
             if (failure != null) error = failure.message else room = snap?.data.orEmpty()

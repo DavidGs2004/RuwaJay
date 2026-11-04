@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Bell, X } from 'lucide-react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { Bell, X, CheckCheck } from 'lucide-react';
+import { doc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { enableNotifications, subscribeNotifications } from '../../lib/notificationService';
@@ -45,6 +45,26 @@ export default function NotificationCenter({ className = '' }) {
     }
   };
 
+  
+  const markAllAsRead = async () => {
+    if (!user?.id || !items.length) return;
+    const unreadItems = items.filter(item => !item.readAt);
+    if (!unreadItems.length) return;
+    // Optimistic update immediately removes the unread badge
+    setItems(prev => prev.map(item => ({ ...item, readAt: item.readAt || new Date() })));
+    try {
+      const batch = writeBatch(firestore);
+      unreadItems.forEach(item => {
+        batch.update(doc(firestore, 'users', user.id, 'notifications', item.id), {
+          readAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    } catch (e) {
+      console.error('Error marcando notificaciones como leídas:', e);
+    }
+  };
+
   if (!user) return null;
   const unread = items.filter(item => !item.readAt).length;
 
@@ -83,27 +103,52 @@ export default function NotificationCenter({ className = '' }) {
             <div className="flex items-center justify-between border-b border-border p-4 bg-[#FAF8F5]">
               <h2 id="notification-center-title" className="font-bold flex items-center gap-2 text-sm text-cafe">
                 <Bell size={18} className="text-forest" />
-                Tus avisos {unread > 0 && `(${unread} sin leer)`}
+                <span>Tus avisos {unread > 0 && `(${unread} sin leer)`}</span>
               </h2>
-              <button
-                type="button"
-                aria-label="Cerrar avisos"
-                onClick={() => setOpen(false)}
-                className="rounded-full p-1.5 hover:bg-black/5 text-cafe transition-colors"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {unread > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllAsRead}
+                    title="Marcar todas las notificaciones como leídas"
+                    className="flex items-center gap-1 text-xs font-bold text-forest bg-forest/10 hover:bg-forest/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <CheckCheck size={14} />
+                    <span>Marcar leídas</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label="Cerrar avisos"
+                  onClick={() => setOpen(false)}
+                  className="rounded-full p-1.5 hover:bg-black/5 text-cafe transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="overflow-y-auto p-4 flex-1 divide-y divide-border/60" aria-busy={loading}>
-              <button
-                type="button"
-                disabled={busy}
-                className="text-forest text-xs font-bold mb-3 block hover:underline disabled:opacity-60"
-                onClick={activate}
-              >
-                {busy ? 'Activando…' : 'Activar notificaciones en este dispositivo'}
-              </button>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="text-forest text-xs font-bold hover:underline disabled:opacity-60 text-left"
+                  onClick={activate}
+                >
+                  {busy ? 'Activando…' : 'Activar notificaciones en este dispositivo'}
+                </button>
+                {unread > 0 && (
+                  <button
+                    type="button"
+                    onClick={markAllAsRead}
+                    className="text-xs font-bold text-forest bg-forest/10 hover:bg-forest/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                  >
+                    <CheckCheck size={13} />
+                    <span>Marcar todas como leídas</span>
+                  </button>
+                )}
+              </div>
               {error && <p role="alert" className="text-xs mb-3 text-red-700">{error}</p>}
               {status && <p role="status" className="text-xs mb-3 text-forest">{status}</p>}
               {loading ? (
@@ -118,6 +163,7 @@ export default function NotificationCenter({ className = '' }) {
                     to={typeof item.path === 'string' && item.path.startsWith('/') && !item.path.startsWith('//') && !item.path.includes('\\') ? item.path : '/perfil'}
                     onClick={() => {
                       if (!item.readAt) {
+                        setItems(prev => prev.map(it => it.id === item.id ? { ...it, readAt: new Date() } : it));
                         updateDoc(doc(firestore, 'users', user.id, 'notifications', item.id), { readAt: serverTimestamp() })
                           .catch(() => { if (uidRef.current === user.id) setError('No se pudo marcar el aviso como leído.'); });
                       }

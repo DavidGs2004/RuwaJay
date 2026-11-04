@@ -1,4 +1,5 @@
-import { collection, query, orderBy, onSnapshot, doc, writeBatch, setDoc, serverTimestamp, updateDoc, where, getDocs, deleteField, increment, getDoc } from 'firebase/firestore';
+import { chatMediaInfo } from './chatMedia';
+import { collection, query, orderBy, onSnapshot, doc, writeBatch, setDoc, serverTimestamp, updateDoc, where, getDocs, deleteField, increment, getDoc, deleteDoc } from 'firebase/firestore';
 import { callBackend, usesServerOperations, usesSupabaseBackend } from './backendService';
 import { firebaseAuth, firestore, functions } from './firebase';
 import { conversationId, timestampMillis } from './contracts';
@@ -36,18 +37,23 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
   if (!account) throw new Error('CHAT_REQUIRES_FIREBASE_AUTH');
   if ((text || '').length > 4000) throw new Error('El mensaje supera los 4000 caracteres.');
   const media = extras.media || extras.image;
-  const isVideo = extras.isVideo || (media instanceof File && media.type?.startsWith('video')) || (typeof media === 'string' && media.startsWith('data:video'));
-  const type = extras.type || (media ? (extras.isVoice ? 'audio' : isVideo ? 'video' : 'image') : 'text');
-  const mediaUrl = media ? await uploadChatMedia(roomId, media) : null;
+  const type = extras.type || (media ? chatMediaInfo(media, extras.isVoice).type : 'text');
+  if (!media && type === 'text' && !text?.trim()) throw new Error('Escribe un mensaje.');
+  const mediaUrl = media ? await uploadChatMedia(roomId, media, extras.isVoice) : null;
+  if (firebaseAuth.currentUser?.uid !== account.uid) throw new Error('La sesión cambió. Inténtalo con la cuenta actual.');
   // The gateway commits the message, summary and notification job together.
   // Direct writes remain available for installations without the gateway.
   if (usesSupabaseBackend) {
-    return (await callBackend('sendMessage', {
-        roomId, type, text: text || '',
-        ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
-        ...(mediaUrl ? { mediaUrl } : {}),
-        ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
-    }, { expectedUid: account.uid })).id;
+    try {
+      return (await callBackend('sendMessage', {
+          roomId, type, text: text || '',
+          ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
+          ...(mediaUrl ? { mediaUrl } : {}),
+          ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
+      }, { expectedUid: account.uid })).id;
+    } catch (backendErr) {
+      console.warn('Backend sendMessage falló, recurriendo a Firestore directo:', backendErr);
+    }
   }
   try {
     let recipientIds = [];
@@ -69,6 +75,7 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
       }
     }
 
+    if (firebaseAuth.currentUser?.uid !== account.uid) throw new Error('La sesión cambió.');
     const messageRef = doc(collection(firestore, 'conversations', roomId, 'messages'));
     const batch = writeBatch(firestore);
     batch.set(messageRef, {
@@ -105,6 +112,7 @@ export async function sendMessageToFirestore(roomId, _senderId, senderName, text
         roomId,
         type,
         text: text || '',
+        ...(extras.replyTo ? { replyTo: extras.replyTo } : {}),
         ...(mediaUrl ? { mediaUrl } : {}),
         ...(type === 'location' ? { latitude: extras.latitude, longitude: extras.longitude } : {}),
       }, { expectedUid: account.uid })).id;
@@ -150,24 +158,71 @@ export async function editMessageInFirestore(roomId, messageId, newText) {
 }
 
 export async function deleteMessageForEveryone(roomId, messageId) {
-  if (!roomId || !messageId) throw new Error('Parámetros inválidos.');
+  const uid = firebaseAuth?.currentUser?.uid;
+  if (!roomId || !messageId || !uid) throw new Error('Debes iniciar sesión y seleccionar un mensaje.');
   const messageRef = doc(firestore, 'conversations', roomId, 'messages', messageId);
-  await updateDoc(messageRef, {
+  const snap = await getDoc(messageRef);
+  if (!snap.exists()) return;
+  if (snap.data().senderId !== uid) throw new Error('Solo puedes eliminar para todos tus propios mensajes.');
+  if (firebaseAuth.currentUser?.uid !== uid) throw new Error('La sesión cambió.');
+  const updatePayload = {
     isDeleted: true,
     text: 'Este mensaje fue eliminado',
-    mediaUrl: deleteField(),
-    image: deleteField(),
     deletedAt: serverTimestamp(),
-  });
+  };
+  if (snap.data().mediaUrl) updatePayload.mediaUrl = deleteField();
+  if (snap.data().image) updatePayload.image = deleteField();
+
+  try {
+    await updateDoc(messageRef, updatePayload);
+  } catch (err) {
+    try {
+      await deleteDoc(messageRef);
+    } catch {
+      throw err;
+    }
+  }
+}
+
+export function getLocalDeletedForMeKey(uid, roomId) {
+  return `ruwa_deleted_for_me_${uid}_${roomId}`;
+}
+
+export function isMessageDeletedForMeLocally(roomId, messageId, uid) {
+  if (!roomId || !messageId || !uid) return false;
+  try {
+    const list = JSON.parse(localStorage.getItem(getLocalDeletedForMeKey(uid, roomId)) || '[]');
+    return list.includes(messageId);
+  } catch {
+    return false;
+  }
+}
+
+export function hideMessageLocallyForMe(roomId, messageId, uid) {
+  if (!roomId || !messageId || !uid) return;
+  try {
+    const key = getLocalDeletedForMeKey(uid, roomId);
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!list.includes(messageId)) {
+      list.push(messageId);
+      localStorage.setItem(key, JSON.stringify(list));
+    }
+  } catch (e) {
+    console.warn('Error guardando mensaje eliminado localmente:', e);
+  }
 }
 
 export async function deleteMessageForMe(roomId, messageId, currentUid) {
-  const uid = currentUid || firebaseAuth?.currentUser?.uid;
-  if (!roomId || !messageId || !uid) throw new Error('Parámetros inválidos.');
-  const messageRef = doc(firestore, 'conversations', roomId, 'messages', messageId);
-  await updateDoc(messageRef, {
-    [`deletedFor.${uid}`]: true,
-  });
+  const uid = firebaseAuth?.currentUser?.uid || currentUid;
+  if (!roomId || !messageId || !uid) throw new Error('Debes iniciar sesión.');
+  hideMessageLocallyForMe(roomId, messageId, uid);
+  try {
+    await updateDoc(doc(firestore, 'conversations', roomId, 'messages', messageId), {
+      [`deletedFor.${uid}`]: true,
+    });
+  } catch (err) {
+    console.warn('No se pudo guardar en Firestore deletedFor, pero se ocultó localmente:', err);
+  }
 }
 
 export const deleteMessageFromFirestore = deleteMessageForEveryone;

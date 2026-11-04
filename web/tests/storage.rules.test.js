@@ -39,3 +39,15 @@ test('Suspension blocks private downloads and every authenticated upload path',a
     }
   }
 });
+
+test('Both participants upload and download supported images, audio and videos',async()=>{
+  const types = ['image/gif','image/avif','image/heic','audio/webm','audio/mp4','video/mp4','video/webm','video/quicktime','video/3gpp'];
+  for (const sender of ['tenant','owner']) {
+    const other = sender === 'tenant' ? 'owner' : 'tenant';
+    for (let i=0;i<types.length;i++) {
+      const path = `chat/room/${sender}/format-${i}`;
+      await assertSucceeds(uploadBytes(ref(env.authenticatedContext(sender).storage(),path),new Uint8Array([1,2,3]),{contentType:types[i]}));
+      await assertSucceeds(getBytes(ref(env.authenticatedContext(other).storage(),path)));
+    }
+  }
+});

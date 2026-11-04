@@ -12,7 +12,9 @@ service firebase.storage {
           || isAccountActive(firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data));
     }
     function chatMember(roomId) {
-      return signedIn() && request.auth.uid in firestore.get(/databases/(default)/documents/conversations/$(roomId)).data.participants;
+      let data = firestore.get(/databases/(default)/documents/conversations/$(roomId)).data;
+      return signedIn() && (request.auth.uid in data.get('participants', [])
+        || data.get('seekerId','') == request.auth.uid || data.get('tenantId','') == request.auth.uid || data.get('ownerId','') == request.auth.uid);
     }
     function isAdmin() {
       return signedIn() && (
@@ -23,8 +25,8 @@ service firebase.storage {
     match /chat/{roomId}/{userId}/{fileName} {
       allow read: if chatMember(roomId) || isAdmin();
       allow create: if ((chatMember(roomId) && request.auth.uid == userId) || isAdmin())
-        && request.resource.size < 20 * 1024 * 1024
-        && request.resource.contentType.matches('(image/(jpeg|png|webp)|audio/.*|video/(webm|mp4|quicktime))');
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('(image/(jpeg|png|webp|gif|avif|heic|heif)|audio/.*|video/(webm|mp4|quicktime|3gpp|x-matroska|ogg))');
       allow delete: if (chatMember(roomId) && request.auth.uid == userId) || isAdmin();
     }
     match /profiles/{userId}/{fileName} {

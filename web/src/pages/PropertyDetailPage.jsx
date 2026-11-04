@@ -237,12 +237,12 @@ function PropertyDetailContent({ property }) {
     } catch (err) {
       console.error('Error agendando visita:', err);
       const msg = err?.message || '';
-      if (msg.includes('sesión') || msg.includes('auth') || msg.includes('cuenta')) {
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || !msg) {
+        setVisitConflictError('No se pudo conectar con el servidor para agendar la visita. Revisa tu conexión a internet o intenta de nuevo.');
+      } else if (msg.includes('sesión') || msg.includes('auth') || msg.includes('cuenta')) {
         setVisitConflictError(msg || 'Debes iniciar sesión para agendar una visita.');
-      } else if (msg) {
-        setVisitConflictError(msg);
       } else {
-        setVisitConflictError('No se pudo enviar la solicitud. Verifica tu conexión e intenta nuevamente.');
+        setVisitConflictError(msg);
       }
       return;
     }
