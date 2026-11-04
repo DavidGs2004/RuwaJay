@@ -56,38 +56,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val appPermissionsLauncher = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ ->
-        NotificationRepository.register()
-    }
-
-    private var hasRequestedAppPermissions = false
-    private fun checkAndRequestAllPermissions() {
-        if (hasRequestedAppPermissions) return
-        hasRequestedAppPermissions = true
-
-        val permissionsToRequest = mutableListOf(
-            android.Manifest.permission.ACCESS_FINE_LOCATION,
-            android.Manifest.permission.ACCESS_COARSE_LOCATION,
-            android.Manifest.permission.CAMERA,
-            android.Manifest.permission.RECORD_AUDIO
-        )
-
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        val ungranted = permissionsToRequest.filter { permission ->
-            androidx.core.content.ContextCompat.checkSelfPermission(this, permission) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-        }
-
-        if (ungranted.isNotEmpty()) {
-            appPermissionsLauncher.launch(ungranted.toTypedArray())
-        } else {
+    private val notificationPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
             NotificationRepository.register()
         }
+    }
+
+    private var hasRequestedNotificationPermission = false
+    private fun checkAndRequestNotificationPermission() {
+        if (hasRequestedNotificationPermission) return
+        hasRequestedNotificationPermission = true
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+        NotificationRepository.register()
     }
 
     private fun updateUserPresence(isOnline: Boolean) {
@@ -180,7 +171,7 @@ class MainActivity : ComponentActivity() {
                     val listener = FirebaseAuth.AuthStateListener { auth ->
                         currentUid = auth.currentUser?.uid
                         if (currentUid != null) {
-                            checkAndRequestAllPermissions()
+                            checkAndRequestNotificationPermission()
                             updateUserPresence(true)
                         }
                     }
@@ -274,8 +265,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(500)
-                    checkAndRequestAllPermissions()
+                    kotlinx.coroutines.delay(1000)
+                    checkAndRequestNotificationPermission()
                 }
 
                 // Rutas donde NO mostramos la barra inferior
