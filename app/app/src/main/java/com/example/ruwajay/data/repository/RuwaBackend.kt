@@ -59,10 +59,6 @@ object RuwaBackend {
             connection.setFixedLengthStreamingMode(bytes.size)
             connection.setRequestProperty("Authorization", "Bearer " + token)
             connection.setRequestProperty("Content-Type", mime)
-            val anonKey = BuildConfig.SUPABASE_ANON_KEY.ifBlank { DEFAULT_ANON_KEY }
-            if (anonKey.isNotBlank()) {
-                connection.setRequestProperty("apikey", anonKey)
-            }
             connection.outputStream.use { it.write(bytes) }
             val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() } ?: "{}"

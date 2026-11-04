@@ -24,9 +24,14 @@ object PublicProfileRepository {
     fun publishPresence(isOnline: Boolean) {
         val user = FirebaseAuth.getInstance().currentUser ?: return
         val db = FirebaseFirestore.getInstance()
-        val ref = db.collection("public_profiles").document(user.uid)
+        val userRef = db.collection("users").document(user.uid)
+        val publicRef = db.collection("public_profiles").document(user.uid)
+
+        val presencePayload = mapOf("isOnline" to isOnline, "lastSeen" to FieldValue.serverTimestamp())
+        userRef.set(presencePayload, SetOptions.merge())
+
         if (!isOnline) {
-            ref.set(mapOf("isOnline" to false, "lastSeen" to FieldValue.serverTimestamp()), SetOptions.merge())
+            publicRef.set(presencePayload, SetOptions.merge())
             return
         }
         db.collection("users").document(user.uid).get()
@@ -36,7 +41,7 @@ object PublicProfileRepository {
                 // Solo URLs (no imágenes base64 enormes) para respetar el límite de las reglas.
                 val avatar = (extractAvatar(data).ifBlank { user.photoUrl?.toString().orEmpty() })
                     .takeIf { it.length <= 2048 && !it.startsWith("data:") }.orEmpty()
-                ref.set(
+                publicRef.set(
                     mapOf(
                         "name" to name,
                         "avatarImage" to avatar,

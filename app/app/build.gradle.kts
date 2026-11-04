@@ -23,12 +23,12 @@ fun localSetting(name: String): String =
 
 android {
     namespace = "com.example.ruwajay"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.ruwajay"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 35
         versionCode = 6
         versionName = "2.6.1"
 
@@ -43,9 +43,7 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = false
         }
     }
     compileOptions {
