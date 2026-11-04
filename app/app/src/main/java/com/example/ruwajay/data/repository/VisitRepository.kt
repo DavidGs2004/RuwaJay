@@ -48,11 +48,54 @@ class VisitRepository(
         visitDate: String, visitTime: String, notes: String, onResult: (Result<String>) -> Unit) {
         val cleanDate = normalizeDate(visitDate)
         val cleanTime = normalizeTime(visitTime)
+        val user = auth.currentUser
+        if (user == null) {
+            onResult(Result.failure(Exception("Debes iniciar sesión para agendar una visita.")))
+            return
+        }
+
         RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId,"date" to cleanDate,"time" to cleanTime,"notes" to notes))
             .addOnSuccessListener { response ->
                 val id = response["id"] as? String
-                if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta inválida del servidor.")))
-            }.addOnFailureListener { onResult(Result.failure(it)) }
+                if (!id.isNullOrBlank()) {
+                    onResult(Result.success(id))
+                } else {
+                    fallbackCreateVisitInFirestore(propertyId, propertyTitle, propertyAddress, ownerId, ownerName, cleanDate, cleanTime, notes, user, onResult)
+                }
+            }.addOnFailureListener {
+                fallbackCreateVisitInFirestore(propertyId, propertyTitle, propertyAddress, ownerId, ownerName, cleanDate, cleanTime, notes, user, onResult)
+            }
+    }
+
+    private fun fallbackCreateVisitInFirestore(
+        propertyId: String, propertyTitle: String, propertyAddress: String, ownerId: String, ownerName: String,
+        cleanDate: String, cleanTime: String, notes: String, user: com.google.firebase.auth.FirebaseUser,
+        onResult: (Result<String>) -> Unit
+    ) {
+        val docRef = firestore.collection("visits").document()
+        val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        val visitData = hashMapOf(
+            "propertyId" to propertyId,
+            "propertyTitle" to propertyTitle,
+            "propertyAddress" to propertyAddress,
+            "ownerId" to ownerId,
+            "ownerName" to ownerName.ifBlank { "Propietario" },
+            "tenantId" to user.uid,
+            "tenantName" to (user.displayName?.ifBlank { "Inquilino" } ?: "Inquilino"),
+            "tenantPhone" to (user.phoneNumber ?: ""),
+            "tenantEmail" to (user.email ?: ""),
+            "date" to cleanDate,
+            "visitDate" to cleanDate,
+            "time" to cleanTime,
+            "visitTime" to cleanTime,
+            "notes" to notes,
+            "status" to "pendiente",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "createdAtIso" to isoFormat.format(Date())
+        )
+        docRef.set(visitData)
+            .addOnSuccessListener { onResult(Result.success(docRef.id)) }
+            .addOnFailureListener { err -> onResult(Result.failure(err)) }
     }
 
     private fun normalizeDate(input: String): String {
@@ -88,7 +131,13 @@ class VisitRepository(
 
     fun updateVisitStatus(visitId: String, newStatus: String, onResult: (Result<Unit>) -> Unit) {
         RuwaBackend.invoke("changeVisitStatus", mapOf("visitId" to visitId,"status" to newStatus))
-            .addOnSuccessListener { onResult(Result.success(Unit)) }.addOnFailureListener { onResult(Result.failure(it)) }
+            .addOnSuccessListener { onResult(Result.success(Unit)) }
+            .addOnFailureListener {
+                firestore.collection("visits").document(visitId)
+                    .update("status", newStatus, "updatedAt", FieldValue.serverTimestamp())
+                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { err -> onResult(Result.failure(err)) }
+            }
     }
 
     private fun docToVisit(id: String, data: Map<String, Any>?): VisitRequest? {
