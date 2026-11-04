@@ -44,6 +44,25 @@ class ChatRepository(
             )
         ).addOnFailureListener { onError(it) }
     }
+    fun markAllAsRead(userId: String, onResult: (Result<Unit>) -> Unit = {}) {
+        firestore.collection("conversations")
+            .whereArrayContains("participants", userId)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val batch = firestore.batch()
+                for (doc in snapshot.documents) {
+                    batch.update(doc.reference, mapOf(
+                        "readAt.$userId" to FieldValue.serverTimestamp(),
+                        "unreadCount.$userId" to 0,
+                        "unreadCounts.$userId" to 0
+                    ))
+                }
+                batch.commit()
+                    .addOnSuccessListener { onResult(Result.success(Unit)) }
+                    .addOnFailureListener { onResult(Result.failure(it)) }
+            }
+            .addOnFailureListener { onResult(Result.failure(it)) }
+    }
     fun sendText(roomId: String, text: String, replyTo: Map<String, Any>? = null, onResult: (Result<Unit>) -> Unit) {
         if (text.isBlank() || text.length > 4000) return onResult(Result.failure(Exception("Mensaje invalido.")))
         val payload = mutableMapOf<String, Any>("type" to "text", "text" to text.trim())

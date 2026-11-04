@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -182,6 +183,19 @@ fun InboxScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Regresar", tint = BrandForest)
+                    }
+                },
+                actions = {
+                    if (totalUnreadCount > 0 && currentUser != null) {
+                        TextButton(
+                            onClick = {
+                                chatRepo.markAllAsRead(currentUser.uid)
+                            }
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = BrandForest, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Visto a todos", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandForest)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BrandSurfaceElevated)
