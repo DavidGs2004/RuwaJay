@@ -65,7 +65,7 @@ fun GlobalCallOverlay(
 ) {
     val context = LocalContext.current
     val callRepo = remember { CallRepository() }
-    val webrtcManager = remember { WebRtcManager(context) }
+    val webrtcManager = remember { WebRtcManager(context.applicationContext) }
 
     var activeSession by remember { mutableStateOf<CallSession?>(null) }
     var callStatus by remember { mutableStateOf("idle") } // idle, incoming, calling, connected, ended

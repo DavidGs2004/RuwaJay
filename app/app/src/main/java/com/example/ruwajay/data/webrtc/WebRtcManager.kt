@@ -10,11 +10,18 @@ private const val TAG = "WebRtcManager"
 
 class WebRtcManager(baseContext: Context) {
 
-    private val context: Context = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
-        baseContext.createAttributionContext("microphone") else baseContext
+    private val context: Context = try {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            baseContext.createAttributionContext("microphone")
+        } else {
+            baseContext
+        }
+    } catch (_: Throwable) {
+        baseContext
+    }
 
     private val executor = Executors.newSingleThreadExecutor()
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val audioManager = baseContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
 
     private var factory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
@@ -207,18 +214,18 @@ class WebRtcManager(baseContext: Context) {
 
     fun toggleSpeakerphone(speakerOn: Boolean) {
         try {
-            audioManager.isSpeakerphoneOn = speakerOn
+            audioManager?.isSpeakerphoneOn = speakerOn
         } catch (_: Exception) {}
     }
 
     private fun configureAudioMode(inCall: Boolean) {
         try {
             if (inCall) {
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-                audioManager.isSpeakerphoneOn = true
+                audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
+                audioManager?.isSpeakerphoneOn = true
             } else {
-                audioManager.mode = AudioManager.MODE_NORMAL
-                audioManager.isSpeakerphoneOn = false
+                audioManager?.mode = AudioManager.MODE_NORMAL
+                audioManager?.isSpeakerphoneOn = false
             }
         } catch (_: Exception) {}
     }
