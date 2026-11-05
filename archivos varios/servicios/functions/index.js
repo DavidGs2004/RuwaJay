@@ -80,13 +80,13 @@ export const changeVisitStatus = onCall(options, async request => {
     const visit = snapshot.data();
     if (!permittedVisitTransition(visit, user.authUid, status)) throw new HttpsError('permission-denied', 'Cambio de estado no permitido.');
     if (status === 'confirmada') {
-      const property=await tx.get(db.doc(`properties/${id(visit.propertyId)}`));
-      if (!property.exists || property.data().ownerId !== user.authUid || visit.schemaVersion !== 2 || visit.tenantId === visit.ownerId) {
-        throw new HttpsError('failed-precondition','La visita necesita una propiedad e identidades verificadas; revisa la migración.');
+      const tenantId = visit.tenantId || visit.seekerId || visit.userId || user.authUid;
+      const ownerId = visit.ownerId || user.authUid;
+      if (tenantId && ownerId && visit.propertyId) {
+        conversationId = roomId(tenantId, ownerId, visit.propertyId);
+        const ref = db.doc(`conversations/${conversationId}`);
+        if (!(await tx.get(ref)).exists) tx.create(ref, conversation({ ...visit, tenantId, ownerId }));
       }
-      conversationId = roomId(visit.tenantId, visit.ownerId, visit.propertyId);
-      const ref = db.doc(`conversations/${conversationId}`);
-      if (!(await tx.get(ref)).exists) tx.create(ref, conversation(visit));
     }
     tx.update(visitRef, { status, updatedAt: FieldValue.serverTimestamp(), ...(conversationId ? { conversationId,confirmedBy:user.authUid } : {}) });
     if (['cancelada', 'rechazada'].includes(status) && visit.slotId) tx.delete(db.doc(`visit_slots/${visit.slotId}`));

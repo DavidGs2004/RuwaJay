@@ -21,13 +21,73 @@ class ChatRepository(
 
     fun getOrCreateConversation(propertyId: String, ownerId: String, propertyTitle: String, seekerId: String? = null,
         onResult: (Result<String>) -> Unit) {
-        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesion.")))
+        val user = auth.currentUser ?: return onResult(Result.failure(Exception("Debes iniciar sesión.")))
         val sid = seekerId ?: user.uid
-        RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to ownerId, "seekerId" to sid), user.uid)
-                    .addOnSuccessListener { result ->
-                        val id = result["id"] as? String
-                        if (id != null) onResult(Result.success(id)) else onResult(Result.failure(Exception("Respuesta de chat invalida.")))
-                    }.addOnFailureListener { onResult(Result.failure(it)) }
+        val finalOwner = ownerId.ifBlank { sid }
+        val canonicalId = "v2_${sid}_${finalOwner}_${propertyId}"
+
+        fun createDirectFirestoreConversation() {
+            firestore.collection("conversations")
+                .whereArrayContains("participants", sid)
+                .whereEqualTo("propertyId", propertyId)
+                .get()
+                .addOnSuccessListener { querySnap ->
+                    val existing = querySnap.documents.firstOrNull { doc ->
+                        val parts = doc.get("participants") as? List<*>
+                        parts != null && (finalOwner == sid || parts.contains(finalOwner))
+                    }
+                    if (existing != null) {
+                        onResult(Result.success(existing.id))
+                        return@addOnSuccessListener
+                    }
+                    val docRef = firestore.collection("conversations").document(canonicalId)
+                    val data = hashMapOf(
+                        "id" to canonicalId,
+                        "propertyId" to propertyId,
+                        "propertyTitle" to propertyTitle,
+                        "ownerId" to finalOwner,
+                        "seekerId" to sid,
+                        "participants" to listOf(sid, finalOwner).distinct(),
+                        "lastMessage" to "",
+                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "schemaVersion" to 2
+                    )
+                    docRef.set(data, com.google.firebase.firestore.SetOptions.merge())
+                        .addOnSuccessListener { onResult(Result.success(canonicalId)) }
+                        .addOnFailureListener { onResult(Result.failure(it)) }
+                }
+                .addOnFailureListener {
+                    val docRef = firestore.collection("conversations").document(canonicalId)
+                    val data = hashMapOf(
+                        "id" to canonicalId,
+                        "propertyId" to propertyId,
+                        "propertyTitle" to propertyTitle,
+                        "ownerId" to finalOwner,
+                        "seekerId" to sid,
+                        "participants" to listOf(sid, finalOwner).distinct(),
+                        "lastMessage" to "",
+                        "lastMessageTimestamp" to FieldValue.serverTimestamp(),
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "schemaVersion" to 2
+                    )
+                    docRef.set(data, com.google.firebase.firestore.SetOptions.merge())
+                        .addOnSuccessListener { onResult(Result.success(canonicalId)) }
+                        .addOnFailureListener { err -> onResult(Result.failure(err)) }
+                }
+        }
+
+        if (RuwaBackend.isConfigured) {
+            RuwaBackend.invoke("openConversation", mapOf("propertyId" to propertyId, "ownerId" to finalOwner, "seekerId" to sid), user.uid)
+                .addOnSuccessListener { result ->
+                    val id = result["id"] as? String
+                    if (!id.isNullOrBlank()) onResult(Result.success(id)) else createDirectFirestoreConversation()
+                }.addOnFailureListener {
+                    createDirectFirestoreConversation()
+                }
+        } else {
+            createDirectFirestoreConversation()
+        }
     }
     fun observeMessages(roomId: String, onError: (Exception) -> Unit = {}, onChange: (List<Map<String, Any>>) -> Unit) =
         firestore.collection("conversations").document(roomId).collection("messages")
@@ -240,7 +300,7 @@ class ChatRepository(
             RuwaBackend.invoke("sendMessage", payload + ("roomId" to roomId), user.uid)
                 .addOnSuccessListener { onResult(Result.success(Unit)) }
                 .addOnFailureListener {
-                    onResult(Result.failure(it))
+                    writeDirectlyToFirestore()
                 }
         } else {
             writeDirectlyToFirestore()

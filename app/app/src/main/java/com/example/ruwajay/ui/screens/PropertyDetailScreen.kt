@@ -83,6 +83,8 @@ fun PropertyDetailScreen(
 
     var hasConfirmedVisit by remember { mutableStateOf(false) }
     var hasPendingVisit by remember { mutableStateOf(false) }
+    var confirmedVisitConversationId by remember { mutableStateOf<String?>(null) }
+    var confirmedVisitOwnerId by remember { mutableStateOf<String?>(null) }
     val isOwner = firebaseUser?.uid != null && firebaseUser.uid == property.ownerId
     val canAccessContract = isOwner || hasConfirmedVisit
     var showVisitDialog by remember { mutableStateOf(false) }
@@ -136,9 +138,14 @@ fun PropertyDetailScreen(
                 .whereEqualTo("propertyId", propertyId)
                 .whereEqualTo("tenantId", firebaseUser.uid)
                 .addSnapshotListener { snap, _ ->
-                    val statuses = snap?.documents?.mapNotNull { it.getString("status") }.orEmpty()
-                    hasConfirmedVisit = statuses.any { it == "confirmada" || it == "aceptada" }
-                    hasPendingVisit = statuses.contains("pendiente")
+                    val confirmedDoc = snap?.documents?.firstOrNull {
+                        val s = it.getString("status")
+                        s == "confirmada" || s == "aceptada"
+                    }
+                    hasConfirmedVisit = confirmedDoc != null
+                    confirmedVisitConversationId = confirmedDoc?.getString("conversationId")
+                    confirmedVisitOwnerId = confirmedDoc?.getString("ownerId")
+                    hasPendingVisit = snap?.documents?.any { it.getString("status") == "pendiente" } == true
                 }
         } else null
         onDispose { listener?.remove() }
@@ -729,14 +736,27 @@ fun PropertyDetailScreen(
                         Button(
                             onClick = {
                                 if (isCreatingChat) return@Button
+                                val existingId = confirmedVisitConversationId
+                                if (!existingId.isNullOrBlank()) {
+                                    onChatClick(existingId)
+                                    return@Button
+                                }
                                 isCreatingChat = true
+                                val targetOwner = property.ownerId.ifBlank { confirmedVisitOwnerId.orEmpty() }
                                 chatRepo.getOrCreateConversation(
                                     propertyId = property.id,
-                                    ownerId = property.ownerId,
+                                    ownerId = targetOwner,
                                     propertyTitle = property.title
                                 ) { result ->
                                     isCreatingChat = false
                                     result.onSuccess { convId -> onChatClick(convId) }
+                                    result.onFailure { error ->
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            error.localizedMessage ?: "No se pudo abrir el chat",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -744,9 +764,13 @@ fun PropertyDetailScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
                             enabled = !isCreatingChat
                         ) {
-                            Icon(Icons.Default.Chat, null, tint = Color.White)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Abrir chat directo con el propietario", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            if (isCreatingChat) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Chat, null, tint = Color.White)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Abrir chat directo con el propietario", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            }
                         }
                     } else {
                         Button(

@@ -21,11 +21,9 @@ import com.example.ruwajay.ui.screens.InboxScreen
 
 @Composable
 fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifier) {
-    val hasActiveSession = FirebaseAuth.getInstance().currentUser != null
-
     NavHost(
         navController = navController,
-        startDestination = if (hasActiveSession) Screen.Home.route else Screen.Login.route,
+        startDestination = Screen.Home.route,
         modifier = modifier
     ) {
         composable(
@@ -134,8 +132,11 @@ fun AppNavigation(navController: NavHostController, modifier: Modifier = Modifie
             )
         ) {
             LoginScreen(onLoginSuccess = {
-                navController.navigate(Screen.Profile.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
+                if (!navController.popBackStack()) {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 }
             })
         }

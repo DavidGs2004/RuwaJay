@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
@@ -16,8 +15,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.ruwajay.ui.navigation.Screen
 import com.example.ruwajay.ui.theme.*
@@ -40,9 +38,9 @@ data class RuwaNavItem(
 )
 
 /**
- * Barra de navegación inferior idéntica a MobileNav.jsx de la web:
+ * Barra de navegación inferior oficial de RuwaJay (idéntica a MobileNav.jsx de la web):
  * Pestañas: Inicio, Mapa, Mensajes, Perfil.
- * Indicador activo: píldora de gradiente terracota-naranja inferior debajo del texto y cambio inmediato de color.
+ * Botón central "+" para publicar: Oculto por defecto, visible únicamente para propietarios/administradores activos.
  */
 @Composable
 fun BottomNavBar(
@@ -50,7 +48,7 @@ fun BottomNavBar(
     unreadCount: Int = 0,
     onMapClick: (() -> Unit)? = null,
     onFavoritesClick: (() -> Unit)? = null,
-    showPublishButton: Boolean = true,
+    showPublishButton: Boolean = false,
     onPublishClick: () -> Unit = { navController.navigate(Screen.Publish.route) { launchSingleTop = true } }
 ) {
     val items = remember {
@@ -64,9 +62,6 @@ fun BottomNavBar(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-
-    // Estado reactivo inmediato para feedback instantáneo al tocar cualquier opción
-    var optimisticRoute by remember(currentRoute) { mutableStateOf<String?>(currentRoute) }
 
     Column(
         modifier = Modifier
@@ -90,8 +85,6 @@ fun BottomNavBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceAround
         ) {
-            val activeRoute = optimisticRoute ?: currentRoute
-
             items.forEachIndexed { index, item ->
                 if (index == 2 && showPublishButton) {
                     Column(
@@ -113,12 +106,13 @@ fun BottomNavBar(
                         Text("Publicar", color = BrandTerracota, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
+
                 val selected = when (item.route) {
-                    Screen.Home.route -> activeRoute == Screen.Home.route
-                    Screen.Explore.route -> activeRoute == Screen.Explore.route
-                    Screen.Inbox.route -> activeRoute == Screen.Inbox.route || activeRoute?.startsWith("chat/") == true
-                    Screen.Profile.route -> activeRoute == Screen.Profile.route || activeRoute == Screen.Verification.route
-                    else -> activeRoute == item.route
+                    Screen.Home.route -> currentRoute == Screen.Home.route
+                    Screen.Explore.route -> currentRoute == Screen.Explore.route
+                    Screen.Inbox.route -> currentRoute == Screen.Inbox.route || currentRoute?.startsWith("chat/") == true
+                    Screen.Profile.route -> currentRoute?.startsWith(Screen.Profile.route) == true || currentRoute == Screen.Verification.route
+                    else -> currentRoute == item.route
                 }
 
                 val interactionSource = remember { MutableInteractionSource() }
@@ -137,26 +131,16 @@ fun BottomNavBar(
                                 color = BrandForest
                             )
                         ) {
-                            optimisticRoute = item.route
-                            when {
-                                item.isMapTab -> {
-                                    if (onMapClick != null) {
-                                        onMapClick()
-                                    } else {
-                                        navController.navigate(Screen.Explore.route) {
-                                            popUpTo(Screen.Home.route) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
+                            if (!selected) {
+                                if (item.isMapTab && onMapClick != null) {
+                                    onMapClick()
+                                } else {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
                                         }
-                                    }
-                                }
-                                else -> {
-                                    if (currentRoute != item.route) {
-                                        navController.navigate(item.route) {
-                                            popUpTo(Screen.Home.route) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
                                 }
                             }

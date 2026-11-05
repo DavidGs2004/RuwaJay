@@ -184,11 +184,18 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
         while (recording) { kotlinx.coroutines.delay(1000); recordingSeconds++ }
     }
     DisposableEffect(conversationId, uid) {
-        val a = repo.observeMessages(conversationId, onError = { error = it.message }) {
+        val a = repo.observeMessages(conversationId, onError = { 
+            if (it.message?.contains("PERMISSION_DENIED", ignoreCase = true) != true) {
+                error = it.message
+            }
+        }) {
             messages = it
+            error = null
         }
         val b = FirebaseFirestore.getInstance().collection("conversations").document(conversationId).addSnapshotListener { snap, failure ->
-            if (failure != null) error = failure.message else room = snap?.data.orEmpty()
+            if (failure == null) {
+                room = snap?.data.orEmpty()
+            }
         }
         onDispose { a.remove(); b.remove() }
     }

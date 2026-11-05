@@ -58,6 +58,8 @@ fun RouteScreen(propertyId: String = "", onNavigateBack: () -> Unit = {}) {
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale("es", "GT")
+                tts?.setSpeechRate(0.85f)
+                tts?.setPitch(1.0f)
                 ttsEngine = tts
             }
         }

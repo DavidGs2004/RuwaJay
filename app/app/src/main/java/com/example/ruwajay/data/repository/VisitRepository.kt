@@ -54,16 +54,23 @@ class VisitRepository(
             return
         }
 
-        fallbackCreateVisitInFirestore(
-            propertyId, propertyTitle, propertyAddress, ownerId, ownerName,
-            cleanDate, cleanTime, notes, user
-        ) { result ->
-            onResult(result)
-            if (result.isSuccess) {
-                try {
-                    RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId, "date" to cleanDate, "time" to cleanTime, "notes" to notes))
-                } catch (_: Exception) {}
-            }
+        if (RuwaBackend.isConfigured) {
+            RuwaBackend.invoke("createVisit", mapOf("propertyId" to propertyId, "date" to cleanDate, "time" to cleanTime, "notes" to notes), user.uid)
+                .addOnSuccessListener { result ->
+                    val visitId = result["id"] as? String ?: propertyId
+                    onResult(Result.success(visitId))
+                }
+                .addOnFailureListener {
+                    fallbackCreateVisitInFirestore(
+                        propertyId, propertyTitle, propertyAddress, ownerId, ownerName,
+                        cleanDate, cleanTime, notes, user, onResult
+                    )
+                }
+        } else {
+            fallbackCreateVisitInFirestore(
+                propertyId, propertyTitle, propertyAddress, ownerId, ownerName,
+                cleanDate, cleanTime, notes, user, onResult
+            )
         }
     }
 

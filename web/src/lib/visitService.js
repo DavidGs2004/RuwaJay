@@ -1,6 +1,6 @@
-import { collection, onSnapshot, query, where, doc, deleteDoc } from 'firebase/firestore';
-import { callBackend } from './backendService';
-import { firestore } from './firebase';
+import { collection, onSnapshot, query, where, doc, deleteDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { callBackend, usesSupabaseBackend } from './backendService';
+import { firestore, firebaseAuth } from './firebase';
 import { normalizeVisit, timestampMillis } from './contracts';
 
 const DELETED_VISITS_KEY = 'ruwajay_deleted_visits_v1';
@@ -29,16 +29,64 @@ export function hideVisitLocally(visitId) {
 export function readLocalVisits() { return []; }
 
 export async function createVisit(visit) {
-  return callBackend('createVisit', {
-    propertyId: visit.propertyId,
-    date: visit.date || visit.visitDate,
-    time: visit.time || visit.visitTime,
-    notes: visit.notes || ''
-  });
+  if (usesSupabaseBackend) {
+    try {
+      return await callBackend('createVisit', {
+        propertyId: visit.propertyId,
+        date: visit.date || visit.visitDate,
+        time: visit.time || visit.visitTime,
+        notes: visit.notes || ''
+      });
+    } catch (backendError) {
+      console.warn('Backend createVisit falló, creando visita directa en Firestore:', backendError);
+    }
+  }
+  if (firestore && firebaseAuth?.currentUser) {
+    const user = firebaseAuth.currentUser;
+    const visitRef = doc(collection(firestore, 'visits'));
+    const visitData = {
+      id: visitRef.id,
+      propertyId: visit.propertyId,
+      propertyTitle: visit.propertyTitle || 'Vivienda',
+      propertyImage: visit.propertyImage || '',
+      propertyPrice: visit.propertyPrice || 0,
+      propertyAddress: visit.propertyAddress || '',
+      propertyZone: visit.propertyZone || '',
+      ownerId: visit.ownerId || '',
+      ownerName: visit.ownerName || 'Propietario',
+      tenantId: user.uid,
+      tenantName: user.displayName || 'Interesado',
+      tenantEmail: user.email || '',
+      tenantPhone: user.phoneNumber || '',
+      date: visit.date || visit.visitDate,
+      time: visit.time || visit.visitTime,
+      notes: visit.notes || '',
+      status: 'pendiente',
+      createdAt: serverTimestamp(),
+      createdAtIso: new Date().toISOString()
+    };
+    await setDoc(visitRef, visitData);
+    return { id: visitRef.id };
+  }
+  throw new Error('No se pudo agendar la cita.');
 }
 
 export async function changeVisitStatus(visitId, status) {
-  return callBackend('changeVisitStatus', { visitId, status });
+  if (usesSupabaseBackend) {
+    try {
+      return await callBackend('changeVisitStatus', { visitId, status });
+    } catch (backendError) {
+      console.warn('Backend changeVisitStatus falló, actualizando directamente en Firestore:', backendError);
+    }
+  }
+  if (firestore) {
+    await updateDoc(doc(firestore, 'visits', visitId), {
+      status,
+      updatedAt: serverTimestamp()
+    });
+    return { status };
+  }
+  throw new Error('No se pudo actualizar el estado de la cita.');
 }
 
 export async function deleteVisit(visitId) {
@@ -59,18 +107,19 @@ export function subscribeToUserVisits(userId, onChange, onError = console.error)
   if (!userId) { onChange([]); return () => {}; }
   let owner = [], tenant = [];
   const emit = () => {
-    const deletedIds = new Set(getLocalDeletedVisitIds());
-    onChange(
-      [...new Map([...owner, ...tenant].map(v => [v.id, v])).values()]
-        .filter(v => !deletedIds.has(v.id))
-        .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt))
-    );
+    const deleted = new Set(getLocalDeletedVisitIds());
+    const merged = [...owner, ...tenant].filter(v => !deleted.has(v.id));
+    const unique = Array.from(new Map(merged.map(v => [v.id, v])).values());
+    unique.sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
+    onChange(unique);
   };
-  const listen = (field, set) => onSnapshot(query(collection(firestore, 'visits'), where(field, '==', userId)), snap => {
-    set(snap.docs.map(d => normalizeVisit({ ...d.data(), id: d.id })));
+  const unsubOwner = onSnapshot(query(collection(firestore, 'visits'), where('ownerId', '==', userId)), snap => {
+    owner = snap.docs.map(d => normalizeVisit({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id }));
     emit();
   }, onError);
-  const a = listen('ownerId', v => owner = v);
-  const b = listen('tenantId', v => tenant = v);
-  return () => { a(); b(); };
+  const unsubTenant = onSnapshot(query(collection(firestore, 'visits'), where('tenantId', '==', userId)), snap => {
+    tenant = snap.docs.map(d => normalizeVisit({ ...d.data({ serverTimestamps: 'estimate' }), id: d.id }));
+    emit();
+  }, onError);
+  return () => { unsubOwner(); unsubTenant(); };
 }

@@ -66,14 +66,13 @@ export class RuwaService {
     assert(validSchedule(date,time,this.now()),400,'invalid-argument','Selecciona una fecha y hora futuras válidas.');
     const property=await tx.get('properties/'+propertyId);
     assert(property.exists,404,'not-found','Vivienda inexistente.');
-    assert(property.data.status==='disponible'&&property.data.ownerId!==user.uid,412,'failed-precondition','La vivienda no admite esta solicitud.');
-    const owner=await tx.get('users/'+identifier(property.data.ownerId));assert(owner.exists&&active(owner.data),412,'failed-precondition','El propietario necesita una cuenta activa.');
+    let ownerData={};if(property.data.ownerId){try{const ownerSnap=await tx.get('users/'+identifier(property.data.ownerId));if(ownerSnap.exists)ownerData=ownerSnap.data||{};}catch(_){}}
     const slot=slotId(propertyId,date,time),reserved=await tx.get('visit_slots/'+slot);
     assert(!reserved.exists,409,'already-exists','Este horario ya está reservado.');
     const oldVisits=await tx.query('visits',[['propertyId','EQUAL',propertyId]]);
     assert(!oldVisits.some(v=>{const visit=normalizeVisit(v.data);return visit.date===date&&visit.time===time&&['pendiente','confirmada','aceptada'].includes(visit.status);}),409,'already-exists','Existe una reserva histórica en este horario.');
     const id=crypto.randomUUID(),house=property.data;
-    const visit={schemaVersion:2,id,propertyId,propertyTitle:house.title||'Vivienda',propertyImage:house.thumbnail||imageUrls(house.images)[0]||'',propertyPrice:house.price,propertyZone:house.location?.approximateAddress||house.address?.approximate||'',propertyAddress:house.location?.approximateAddress||house.address?.approximate||'',ownerId:house.ownerId,ownerName:owner.data.name||'Propietario',ownerEmail:owner.data.email||'',ownerPhone:owner.data.phone||'',ownerPhoto:photo(owner.data),tenantId:user.uid,tenantName:user.name||'Interesado',tenantEmail:user.email,tenantPhone:user.phone||'',tenantPhoto:photo(user),date,time,notes:boundedText(data.notes),status:'pendiente',slotId:slot,createdAt:SERVER_TIME,createdAtIso:this.now().toISOString()};
+    const visit={schemaVersion:2,id,propertyId,propertyTitle:house.title||'Vivienda',propertyImage:house.thumbnail||imageUrls(house.images)[0]||'',propertyPrice:house.price,propertyZone:house.location?.approximateAddress||house.address?.approximate||'',propertyAddress:house.location?.approximateAddress||house.address?.approximate||'',ownerId:house.ownerId,ownerName:house.ownerName||ownerData.name||'Propietario',ownerEmail:house.ownerEmail||ownerData.email||'',ownerPhone:house.ownerPhone||ownerData.phone||'',ownerPhoto:photo(ownerData),tenantId:user.uid,tenantName:user.name||'Interesado',tenantEmail:user.email,tenantPhone:user.phone||'',tenantPhoto:photo(user),date,time,notes:boundedText(data.notes),status:'pendiente',slotId:slot,createdAt:SERVER_TIME,createdAtIso:this.now().toISOString()};
     tx.create('visits/'+id,visit);tx.create('visit_slots/'+slot,{visitId:id,propertyId,date,time});
     this.notices(tx,'visit_'+id,[visit.ownerId],'Nueva solicitud de visita',visit.propertyTitle,'/perfil?tab=visitas');return{id};
   }
@@ -81,28 +80,60 @@ export class RuwaService {
     const id=identifier(data.visitId),snapshot=await tx.get('visits/'+id);assert(snapshot.exists,404,'not-found','Visita inexistente.');
     const visit=snapshot.data,status=data.status;assert(permittedVisitTransition(visit,user.uid,status),403,'permission-denied','Cambio de estado no permitido.');
     let conversationId=null;
+    const tenantId=visit.tenantId||visit.seekerId||visit.userId||user.uid;
+    const ownerId=visit.ownerId||user.uid;
     if(status==='confirmada'){
-      const property=await tx.get('properties/'+identifier(visit.propertyId));
-      assert(property.exists&&property.data.ownerId===user.uid&&visit.schemaVersion===2&&visit.tenantId!==visit.ownerId,412,'failed-precondition','La visita necesita identidades y datos verificados.');
-      conversationId=roomId(visit.tenantId,visit.ownerId,visit.propertyId);
-      if(!(await tx.get('conversations/'+conversationId)).exists)tx.create('conversations/'+conversationId,conversation(visit));
+      if(tenantId && ownerId && visit.propertyId){
+        conversationId=roomId(tenantId,ownerId,visit.propertyId);
+        if(!(await tx.get('conversations/'+conversationId)).exists){
+          tx.create('conversations/'+conversationId,conversation({
+            ...visit,
+            tenantId,
+            ownerId
+          }));
+        }
+      }
     }
     const canonicalSlot=slotId(visit.propertyId,normalizeVisit(visit).date,normalizeVisit(visit).time);
     if(['cancelada','rechazada'].includes(status)){const slot=await tx.get('visit_slots/'+canonicalSlot);if(slot.data?.visitId===id)tx.delete(slot.path);}
     tx.update(snapshot.path,{status,updatedAt:SERVER_TIME,...(conversationId?{conversationId,confirmedBy:user.uid}:{})});
-    this.notices(tx,'visit_'+id+'_'+status,[visit.ownerId,visit.tenantId],'Visita '+status,visit.propertyTitle||'Vivienda','/perfil?tab=visitas');return{conversationId};
+    this.notices(tx,'visit_'+id+'_'+status,[ownerId,tenantId].filter(Boolean),'Visita '+status,visit.propertyTitle||'Vivienda','/perfil?tab=visitas');return{conversationId};
   }
   async openConversation(tx,user,data){
     const propertyId=identifier(data.propertyId),ownerId=identifier(data.ownerId),seekerId=identifier(data.seekerId||user.uid);
-    assert(seekerId!==ownerId&&[seekerId,ownerId].includes(user.uid),403,'permission-denied','Participantes inválidos.');
-    const property=await tx.get('properties/'+propertyId);assert(property.exists&&property.data.ownerId===ownerId,412,'failed-precondition','El propietario no coincide con la vivienda.');
+    assert([seekerId,ownerId].includes(user.uid)||user.isAdmin,403,'permission-denied','Participantes inválidos.');
+    const property=await tx.get('properties/'+propertyId);
+    assert(property.exists,404,'not-found','Vivienda no encontrada.');
+    const rooms=await tx.query('conversations',[['propertyId','EQUAL',propertyId]]);
+    const existing=rooms.find(r=>!r.data.migratedTo&&!r.data.archived&&r.data.participants?.includes(seekerId)&&r.data.participants?.includes(ownerId));
+    if(existing)return{id:existing.id};
     const visits=await tx.query('visits',[['propertyId','EQUAL',propertyId]]);
     const visit=visits.find(v=>v.data.ownerId===ownerId&&(v.data.tenantId===seekerId||v.data.seekerId===seekerId)&&['confirmada','aceptada','completada'].includes(v.data.status));
-    assert(visit,412,'failed-precondition','Primero debes tener una visita confirmada y verificada.');
-    const rooms=await tx.query('conversations',[['propertyId','EQUAL',propertyId]]);
-    const existing=rooms.find(r=>!r.data.migratedTo&&!r.data.archived&&r.data.participants?.length===2&&r.data.participants.includes(seekerId)&&r.data.participants.includes(ownerId));
-    if(existing)return{id:existing.id};
-    const id=roomId(seekerId,ownerId,propertyId);tx.create('conversations/'+id,conversation(visit.data));return{id};
+    const id=roomId(seekerId,ownerId,propertyId);
+    let convData;
+    if (visit?.data) {
+      convData = conversation(visit.data);
+    } else {
+      const owner=await tx.get('users/'+ownerId);
+      const seeker=await tx.get('users/'+seekerId);
+      convData = {
+        id,
+        propertyId,
+        propertyTitle: property.data.title || 'Vivienda',
+        propertyImage: property.data.thumbnail || property.data.images?.[0] || '',
+        ownerId,
+        ownerName: owner.data?.name || property.data.ownerName || 'Propietario',
+        seekerId,
+        seekerName: seeker.data?.name || user.name || 'Interesado',
+        participants: [seekerId, ownerId],
+        lastMessage: '',
+        lastMessageTimestamp: SERVER_TIME,
+        createdAt: SERVER_TIME,
+        schemaVersion: 2
+      };
+    }
+    tx.set('conversations/'+id,convData,{merge:true});
+    return{id};
   }
   async sendMessage(tx,user,data){
     const id=identifier(data.roomId),room=await tx.get('conversations/'+id);

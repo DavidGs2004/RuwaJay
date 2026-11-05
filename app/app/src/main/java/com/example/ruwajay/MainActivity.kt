@@ -162,7 +162,9 @@ class MainActivity : ComponentActivity() {
                     val listener = FirebaseFirestore.getInstance().collection("users").document(uid)
                         .addSnapshotListener { snapshot, error ->
                             val status = com.example.ruwajay.data.model.resolveAccountStatus(snapshot?.data)
-                            canStartPublishing = error == null && snapshot?.exists() == true && status == "active"
+                            val role = (snapshot?.getString("role") ?: snapshot?.getString("userRole") ?: "seeker").lowercase().trim()
+                            val isOwnerOrAdmin = role == "owner" || role == "admin" || role == "propietario"
+                            canStartPublishing = error == null && snapshot?.exists() == true && status == "active" && isOwnerOrAdmin
                         }
                     onDispose { listener.remove() }
                 }
