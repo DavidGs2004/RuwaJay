@@ -24,8 +24,8 @@ import { isMessageDeletedForMeLocally } from '../lib/chatService';
 
 function friendlyChatError(err, fallback) {
   const msg = String(err?.message || err?.code || '');
-  if (/quota|cuota|resource[-_ ]?exhausted|429|operación de datos/i.test(msg)) {
-    return 'El servidor de datos (Firebase) alcanzó su límite diario de uso. Los envíos se reactivarán cuando se restablezca la cuota o se amplíe el plan del proyecto.';
+  if (/quota|cuota|resource[-_ ]?exhausted|429|operaci[oó]n de datos/i.test(msg)) {
+    return 'El servidor de datos alcanzó temporalmente su cuota diaria del plan gratuito Spark. La cuota se restablece automáticamente a las 2:00 AM (Guatemala).';
   }
   return msg || fallback;
 }

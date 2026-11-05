@@ -25,13 +25,13 @@ export class SupabaseFiles {
   encoded(bucket,path){return encodeURIComponent(bucket)+'/'+path.split('/').map(encodeURIComponent).join('/');}
   async upload(bucket,path,bytes,mime){await this.request('object/'+this.encoded(bucket,path),{body:bytes,contentType:mime});return ['property-images','profile-images'].includes(bucket)?this.url+'/storage/v1/object/public/'+this.encoded(bucket,path):'supabase://'+bucket+'/'+path;}
   async signedUrl(bucket,path){
-    const data=await this.request('object/sign/'+this.encoded(bucket,path),{body:JSON.stringify({expiresIn:300})});
+    const data=await this.request('object/sign/'+this.encoded(bucket,path),{body:JSON.stringify({expiresIn:86400})});
     const rawUrl = data?.signedURL || data?.signedUrl;
     assert(typeof rawUrl === 'string' && rawUrl.length > 0, 503, 'unavailable', 'Respuesta de archivo inválida.');
     const url = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
       ? rawUrl
       : this.url + (rawUrl.startsWith('/storage/v1') ? '' : '/storage/v1') + (rawUrl.startsWith('/') ? '' : '/') + rawUrl;
-    return {url, expiresIn: 300};
+    return {url, expiresIn: 86400};
   }
 }
 export function parseMediaReference(reference){

@@ -35,7 +35,7 @@ export function ChatProvider({ children }) {
   // Optimize Firestore usage: Only observe presence for the active conversation's participant
   useEffect(() => {
     if (!firestore || !user?.id || !activeConversationId) return;
-    const activeItem = items.find(i => i.id === activeConversationId);
+    const activeItem = itemsRef.current.find(i => i.id === activeConversationId);
     const otherId = activeItem ? otherParticipantId(activeItem, user.id) : null;
     if (!otherId) return;
 
@@ -58,7 +58,7 @@ export function ChatProvider({ children }) {
       unsubscribeProfile();
       unsubFallback?.();
     };
-  }, [activeConversationId, items, user?.id]);
+  }, [activeConversationId, user?.id]);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
   const markAsRead = useCallback(async room => {
@@ -255,7 +255,7 @@ export function ChatProvider({ children }) {
     // 1. Filtrar únicamente personas con las que realmente se ha hecho contacto
     const realContacts = decorated.filter(item => {
       if (!item.participantId || item.participantId === currentUid) return false;
-      if (!item.lastMessage) return false;
+      if (!item.lastMessage && item.id !== activeConversationId) return false;
       const isAutoPlaceholder = (item.participantName === 'Usuario' || !item.lastSenderId) &&
         String(item.lastMessage).trim().toLowerCase().startsWith('consulta sobre');
       if (isAutoPlaceholder) return false;

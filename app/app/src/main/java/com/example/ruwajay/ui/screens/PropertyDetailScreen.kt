@@ -86,6 +86,15 @@ fun PropertyDetailScreen(
     val isOwner = firebaseUser?.uid != null && firebaseUser.uid == property.ownerId
     val canAccessContract = isOwner || hasConfirmedVisit
     var showVisitDialog by remember { mutableStateOf(false) }
+    var propertyVisits by remember(propertyId) { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
+    DisposableEffect(propertyId) {
+        val reg = com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("visits")
+            .whereEqualTo("propertyId", propertyId)
+            .addSnapshotListener { snapshot, _ ->
+                propertyVisits = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
+            }
+        onDispose { reg.remove() }
+    }
     var showContractModal by remember { mutableStateOf(false) }
     var showLightbox by remember { mutableStateOf(false) }
     var selectedImageIndex by remember { mutableStateOf(0) }
@@ -921,7 +930,7 @@ fun PropertyDetailScreen(
         )
     }
 
-    // Modal Agendar Cita de Visita Presencial
+    // Modal Agendar Cita de Visita Presencial (idéntico a la web)
     if (showVisitDialog) {
         val cal = remember { Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) } }
         var selectedDate by remember {
@@ -930,95 +939,284 @@ fun PropertyDetailScreen(
         var selectedTime by remember { mutableStateOf("10:00") }
         var visitNotes by remember { mutableStateOf("") }
         var isSubmittingVisit by remember { mutableStateOf(false) }
+        var visitSubmittedSuccess by remember { mutableStateOf(false) }
+        var timeDropdownExpanded by remember { mutableStateOf(false) }
 
-        AlertDialog(
-            onDismissRequest = { showVisitDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CalendarMonth, null, tint = BrandTerracota)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Agendar Visita Presencial", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Elige la fecha y hora sugerida para coordinar con el casero:", fontSize = 12.sp, color = BrandTextSecondary)
+        val standardHours = remember { listOf("08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00") }
+        val bookedTimesOnSelectedDate = remember(propertyVisits, selectedDate) {
+            propertyVisits.filter {
+                val d = it["date"]?.toString() ?: it["visitDate"]?.toString() ?: ""
+                val s = it["status"]?.toString() ?: ""
+                d == selectedDate && (s == "pendiente" || s == "confirmada" || s == "aceptada")
+            }.mapNotNull { it["time"]?.toString() ?: it["visitTime"]?.toString() }
+        }
+        val isSelectedTimeConflict = bookedTimesOnSelectedDate.contains(selectedTime)
 
-                    OutlinedButton(
-                        onClick = {
-                            DatePickerDialog(
-                                context,
-                                { _, y, m, d -> selectedDate = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d) },
-                                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
-                            ).show()
-                        },
-                        modifier = Modifier.fillMaxWidth()
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { if (!isSubmittingVisit) showVisitDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .wrapContentHeight(),
+                shape = RoundedCornerShape(24.dp),
+                color = BrandSurfaceCard,
+                shadowElevation = 8.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Header con título y X
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BrandCrema.copy(alpha = 0.5f))
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(Icons.Default.DateRange, null, tint = BrandForest)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Fecha: $selectedDate", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Agendar visita presencial",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 17.sp,
+                            color = BrandCafe
+                        )
+                        IconButton(
+                            onClick = { showVisitDialog = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Close, null, tint = BrandCafe, modifier = Modifier.size(18.dp))
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            TimePickerDialog(
-                                context,
-                                { _, hour, min -> selectedTime = String.format(Locale.US, "%02d:%02d", hour, min) },
-                                10, 0, true
-                            ).show()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.AccessTime, null, tint = BrandForest)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Hora: $selectedTime", fontWeight = FontWeight.Bold)
-                    }
+                    HorizontalDivider(color = BrandBorder.copy(alpha = 0.6f))
 
-                    OutlinedTextField(
-                        value = visitNotes,
-                        onValueChange = { visitNotes = it },
-                        label = { Text("Nota para el casero (opcional)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val uid = firebaseUser?.uid
-                        if (uid != null) {
-                            isSubmittingVisit = true
-                            visitRepo.createVisit(
-                                propertyId = property.id,
-                                propertyTitle = property.title,
-                                propertyAddress = property.location.address.ifBlank { "${property.location.city}, ${property.location.department}" },
-                                ownerId = property.ownerId,
-                                ownerName = property.ownerName.ifBlank { "Propietario" },
-                                visitDate = selectedDate,
-                                visitTime = selectedTime,
-                                notes = visitNotes
-                            ) { result ->
-                                isSubmittingVisit = false
-                                showVisitDialog = false
-                                result.onSuccess {
-                                    Toast.makeText(context, "¡Cita solicitada exitosamente!", Toast.LENGTH_LONG).show()
-                                }.onFailure {
-                                    Toast.makeText(context, "Error: ${it.message}", Toast.LENGTH_SHORT).show()
+                    if (visitSubmittedSuccess) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandForest.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.CheckCircle, null, tint = BrandForest, modifier = Modifier.size(36.dp))
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "¡Solicitud enviada!",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 19.sp,
+                                color = BrandCafe
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "El propietario revisará tu fecha propuesta y recibirás una notificación cuando sea confirmada.",
+                                fontSize = 13.sp,
+                                color = BrandTextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Alerta de estado 'en_cita'
+                            if (property.status == "en_cita") {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFEFF6FF),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE))
+                                ) {
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.AccessTime, null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "Esta vivienda tiene citas en curso. Los horarios marcados como reservados no están disponibles.",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF1E40AF),
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Alerta de conflicto si el horario ya está reservado
+                            if (isSelectedTimeConflict) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFFEF2F2),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA))
+                                ) {
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Warning, null, tint = BrandTerracota, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "El horario de las $selectedTime hrs para el día $selectedDate ya está reservado por otra persona para esta vivienda. Por favor selecciona otro horario para no cruzarte con otra visita.",
+                                            fontSize = 11.sp,
+                                            color = BrandTerracota,
+                                            lineHeight = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Campo Fecha de Visita
+                            Column {
+                                Text("FECHA DE LA VISITA *", fontSize = 11.sp, fontWeight = FontWeight.Black, color = BrandCafe, letterSpacing = 0.5.sp)
+                                Spacer(Modifier.height(6.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        val minCal = Calendar.getInstance()
+                                        DatePickerDialog(
+                                            context,
+                                            { _, y, m, d ->
+                                                selectedDate = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)
+                                            },
+                                            cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
+                                        ).apply {
+                                            datePicker.minDate = minCal.timeInMillis
+                                        }.show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = BrandSurfaceElevated),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                                ) {
+                                    Icon(Icons.Default.DateRange, null, tint = BrandForest, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(selectedDate, fontWeight = FontWeight.Bold, color = BrandCafe, fontSize = 13.sp)
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(Icons.Default.CalendarMonth, null, tint = BrandTextSecondary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+
+                            // Campo Hora Preferida (Dropdown con Disponibilidad)
+                            Column {
+                                Text("HORA PREFERIDA", fontSize = 11.sp, fontWeight = FontWeight.Black, color = BrandCafe, letterSpacing = 0.5.sp)
+                                Spacer(Modifier.height(6.dp))
+                                Box {
+                                    OutlinedButton(
+                                        onClick = { timeDropdownExpanded = true },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(containerColor = BrandSurfaceElevated),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSelectedTimeConflict) BrandTerracota else BrandBorder)
+                                    ) {
+                                        Icon(Icons.Default.AccessTime, null, tint = BrandForest, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        val statusSuffix = if (isSelectedTimeConflict) "❌ (Reservado)" else "✅ (Disponible)"
+                                        Text("$selectedTime hrs $statusSuffix", fontWeight = FontWeight.Bold, color = if (isSelectedTimeConflict) BrandTerracota else BrandCafe, fontSize = 13.sp)
+                                        Spacer(Modifier.weight(1f))
+                                        Icon(Icons.Default.ArrowDropDown, null, tint = BrandTextSecondary)
+                                    }
+                                    DropdownMenu(
+                                        expanded = timeDropdownExpanded,
+                                        onDismissRequest = { timeDropdownExpanded = false }
+                                    ) {
+                                        standardHours.forEach { h ->
+                                            val isBooked = bookedTimesOnSelectedDate.contains(h)
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = "$h hrs",
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.sp,
+                                                            color = if (isBooked) BrandTerracota else BrandTextPrimary
+                                                        )
+                                                        Spacer(Modifier.width(8.dp))
+                                                        Text(
+                                                            text = if (isBooked) "(Reservado)" else "(Disponible)",
+                                                            fontSize = 11.sp,
+                                                            color = if (isBooked) BrandTerracota else BrandForest,
+                                                            fontWeight = FontWeight.SemiBold
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    selectedTime = h
+                                                    timeDropdownExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Nota adicional para el propietario
+                            Column {
+                                Text("NOTA ADICIONAL PARA EL PROPIETARIO", fontSize = 11.sp, fontWeight = FontWeight.Black, color = BrandCafe, letterSpacing = 0.5.sp)
+                                Spacer(Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = visitNotes,
+                                    onValueChange = { visitNotes = it },
+                                    placeholder = { Text("Hola, me gustaría visitar la propiedad...", fontSize = 13.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = BrandSurfaceElevated,
+                                        unfocusedContainerColor = BrandSurfaceElevated,
+                                        focusedBorderColor = BrandForest,
+                                        unfocusedBorderColor = BrandBorder
+                                    ),
+                                    maxLines = 3
+                                )
+                            }
+
+                            // Botón de Confirmación Terracota idéntico a la web
+                            Button(
+                                onClick = {
+                                    val uid = firebaseUser?.uid
+                                    if (uid != null && !isSelectedTimeConflict) {
+                                        isSubmittingVisit = true
+                                        visitRepo.createVisit(
+                                            propertyId = property.id,
+                                            propertyTitle = property.title,
+                                            propertyAddress = property.location.address.ifBlank { "${property.location.city}, ${property.location.department}" },
+                                            ownerId = property.ownerId,
+                                            ownerName = property.ownerName.ifBlank { "Propietario" },
+                                            visitDate = selectedDate,
+                                            visitTime = selectedTime,
+                                            notes = visitNotes
+                                        ) { result ->
+                                            isSubmittingVisit = false
+                                            result.onSuccess {
+                                                visitSubmittedSuccess = true
+                                            }.onFailure {
+                                                Toast.makeText(context, "Error: ${it.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTerracota),
+                                enabled = !isSubmittingVisit && !isSelectedTimeConflict
+                            ) {
+                                if (isSubmittingVisit) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text("Confirmar solicitud de visita", fontWeight = FontWeight.Black, fontSize = 14.sp)
                                 }
                             }
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = BrandForest),
-                    enabled = !isSubmittingVisit
-                ) {
-                    Text("Enviar Solicitud", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showVisitDialog = false }) {
-                    Text("Cancelar")
+                    }
                 }
             }
-        )
+        }
     }
 }

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -151,6 +152,7 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     var showFullEmojiPickerForMessageId by remember { mutableStateOf<String?>(null) }
     var showClearChatDialog by remember { mutableStateOf(false) }
     var showDeleteMessageDialog by remember { mutableStateOf<String?>(null) }
+    var localDeletedForMeIds by remember { mutableStateOf(setOf<String>()) }
     var showTopMenu by remember { mutableStateOf(false) }
     var showWallpaperDialog by remember { mutableStateOf(false) }
 
@@ -201,8 +203,10 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     // Filter messages for current user if clearedAt exists (Per-user clear chat) or deletedFor includes uid
     val myClearedTimestamp = (room["clearedAt"] as? Map<*, *>)?.get(uid) as? Timestamp
     val myClearedTime = myClearedTimestamp?.toDate()?.time ?: 0L
-    val visibleMessages = remember(messages, myClearedTime, uid) {
+    val visibleMessages = remember(messages, myClearedTime, uid, localDeletedForMeIds) {
         messages.filter { msg ->
+            val id = msg["id"]?.toString().orEmpty()
+            if (id in localDeletedForMeIds) return@filter false
             val msgTime = (msg["createdAt"] as? Timestamp)?.toDate()?.time ?: Long.MAX_VALUE
             if (myClearedTime > 0L && msgTime <= myClearedTime) return@filter false
             val deletedForMap = msg["deletedFor"] as? Map<*, *>
@@ -269,8 +273,9 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
     }
 
     fun deleteMessageForMe(messageId: String) {
+        localDeletedForMeIds = localDeletedForMeIds + messageId
         repo.deleteMessageForMe(conversationId, messageId) { result ->
-            result.onFailure { error = "No se pudo eliminar el mensaje: ${it.localizedMessage ?: it.message}" }
+            result.onFailure { android.util.Log.w("ChatScreen", "No se pudo sincronizar deleteMessageForMe", it) }
         }
     }
 
@@ -1608,45 +1613,90 @@ fun ChatScreen(conversationId: String, onNavigateBack: () -> Unit) {
         val targetMsg = messages.find { it["id"] == targetId }
         val isTargetMine = targetMsg?.get("senderId") == uid
 
-        AlertDialog(
-            onDismissRequest = { showDeleteMessageDialog = null },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = BrandTerracota)
-                    Spacer(Modifier.width(8.dp))
-                    Text("¿Eliminar mensaje?", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
-            },
-            text = {
-                Text(
-                    if (isTargetMine) "Elige si deseas eliminar este mensaje para todos o solo para ti."
-                    else "¿Deseas eliminar este mensaje solo para ti de esta conversación?"
-                )
-            },
-            confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    if (isTargetMine) {
-                        TextButton(onClick = {
-                            showDeleteMessageDialog = null
-                            deleteMessageForEveryone(targetId)
-                        }) {
-                            Text("Eliminar para todos", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showDeleteMessageDialog = null }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = BrandSurfaceCard,
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth(0.92f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(CircleShape)
+                            .background(BrandTerracota.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = BrandTerracota,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = "¿Eliminar mensaje?",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp,
+                        color = BrandCafe
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (isTargetMine) "Elige si deseas eliminar este mensaje para todos los participantes o solo para ti."
+                               else "¿Deseas eliminar este mensaje solo para ti de esta conversación?",
+                        fontSize = 13.sp,
+                        color = BrandTextSecondary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (isTargetMine) {
+                            Button(
+                                onClick = {
+                                    showDeleteMessageDialog = null
+                                    deleteMessageForEveryone(targetId)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandTerracota)
+                            ) {
+                                Text("Eliminar para todos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                showDeleteMessageDialog = null
+                                deleteMessageForMe(targetId)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = BrandTerracota.copy(alpha = 0.08f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandTerracota.copy(alpha = 0.25f))
+                        ) {
+                            Text("Eliminar solo para mí", color = BrandTerracota, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { showDeleteMessageDialog = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(containerColor = BrandCrema.copy(alpha = 0.5f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, BrandBorder)
+                        ) {
+                            Text("Cancelar", color = BrandCafe, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
-                    TextButton(onClick = {
-                        showDeleteMessageDialog = null
-                        deleteMessageForMe(targetId)
-                    }) {
-                        Text("Eliminar para mí", color = BrandTerracota, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteMessageDialog = null }) {
-                    Text("Cancelar")
                 }
             }
-        )
+        }
     }
 
     // High-Resolution Preview Dialog before Sending
@@ -1860,6 +1910,7 @@ private fun VideoAttachment(url: String, mine: Boolean) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PrivateAttachment(
     reference: String,
